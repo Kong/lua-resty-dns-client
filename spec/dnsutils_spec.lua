@@ -1,0 +1,289 @@
+local dnsutils = require "dnsutils"
+local splitlines = require("pl.stringx").splitlines
+local writefile = require("pl.utils").writefile
+local tempfilename = require("pl.path").tmpname
+
+describe("testing parsing 'hosts'", function()
+
+  it("tests parsing when the 'hosts' file does not exist", function()
+    local result, err = dnsutils.parse_hosts("non/existing/file")
+    assert.is.Nil(result)
+    assert.is.string(err)
+  end)
+
+  it("tests parsing when the 'hosts' file is empty", function()
+    local filename = tempfilename()
+    writefile(filename, "")
+    local reverse, hosts = dnsutils.parse_hosts(filename)
+    assert.is.same({}, reverse)
+    assert.is.same({}, hosts)
+  end)
+
+  it("tests parsing 'hosts'", function()
+      local hostsfile = splitlines(
+[[# The localhost entry should be in every HOSTS file and is used
+# to point back to yourself.
+
+127.0.0.1 localhost
+
+# My test server for the website
+
+192.168.1.2 test.computer.com
+192.168.1.3 ftp.computer.com alias1 alias2
+192.168.1.4 smtp.computer.com alias3 #alias4
+192.168.1.5 smtp.computer.com alias3 #doubles, first one should win
+
+#Blocking known malicious sites
+127.0.0.1  admin.abcsearch.com
+127.0.0.2  www3.abcsearch.com #[Browseraid]
+127.0.0.3  www.abcsearch.com wwwsearch #[Restricted Zone site]
+]])
+    local reverse, hosts = dnsutils.parse_hosts(hostsfile)
+    assert.is.equal(hosts[1].ip, "127.0.0.1")
+    assert.is.equal(hosts[1].canonical, "localhost")
+    assert.is.Nil(hosts[1][1])  -- no aliases
+    assert.is.Nil(hosts[1][2])
+    assert.is.equal("127.0.0.1", reverse["localhost"])
+  
+    assert.is.equal(hosts[2].ip, "192.168.1.2")
+    assert.is.equal(hosts[2].canonical, "test.computer.com")
+    assert.is.Nil(hosts[2][1])  -- no aliases
+    assert.is.Nil(hosts[2][2])
+    assert.is.equal("192.168.1.2", reverse["test.computer.com"])
+    
+    assert.is.equal(hosts[3].ip, "192.168.1.3")
+    assert.is.equal(hosts[3].canonical, "ftp.computer.com")
+    assert.is.equal(hosts[3][1], "alias1")  
+    assert.is.equal(hosts[3][2], "alias2")  
+    assert.is.Nil(hosts[3][3])
+    assert.is.equal("192.168.1.3", reverse["ftp.computer.com"])
+    assert.is.equal("192.168.1.3", reverse["alias1"])
+    assert.is.equal("192.168.1.3", reverse["alias2"])
+    
+    assert.is.equal(hosts[4].ip, "192.168.1.4")
+    assert.is.equal(hosts[4].canonical, "smtp.computer.com")
+    assert.is.equal(hosts[4][1], "alias3")  
+    assert.is.Nil(hosts[4][2])
+    assert.is.equal("192.168.1.4", reverse["smtp.computer.com"])
+    assert.is.equal("192.168.1.4", reverse["alias3"])
+    
+    assert.is.equal(hosts[5].ip, "192.168.1.5")
+    assert.is.equal(hosts[5].canonical, "smtp.computer.com")
+    assert.is.equal(hosts[5][1], "alias3")  
+    assert.is.Nil(hosts[5][2])
+    assert.is.equal("192.168.1.4", reverse["smtp.computer.com"])  -- .1.4; first one wins!
+    assert.is.equal("192.168.1.4", reverse["alias3"])   -- .1.4; first one wins!
+  end)
+
+end)
+
+describe("testing parsing 'resolv.conf'", function()
+    
+  -- override os.getenv to insert env variables
+  local old_getenv = os.getenv
+  local envvars  -- whatever is in this table, gets served first
+  before_each(function()
+    envvars = {}
+    os.getenv = function(name)
+      return envvars[name] or old_getenv(name)
+    end
+  end)
+  
+  after_each(function()
+    os.getenv = old_getenv
+    envvars = nil
+  end)
+
+  it("tests parsing when the 'resolv.conf' file does not exist", function()
+    local result, err = dnsutils.parse_resolv_conf("non/existing/file")
+    assert.is.Nil(result)
+    assert.is.string(err)
+  end)
+
+  it("tests parsing when the 'resolv.conf' file is empty", function()
+    local filename = tempfilename()
+    writefile(filename, "")
+    local resolv, err = dnsutils.parse_resolv_conf(filename)
+    assert.is.same({}, resolv)
+    assert.is.Nil(err)
+  end)
+
+  it("tests parsing 'resolv.conf' with multiple comment types", function()
+    local file = splitlines(
+    [[# this is just a comment line
+# at the top of the file
+
+domain myservice.com
+
+nameserver 8.8.8.8 
+nameserver 8.8.4.4 ; and a comment here
+
+# search is commented out, test below for a mutually exclusive one
+#search domaina.com domainb.com
+
+sortlist list1 list2 #list3 is not part of it
+
+options ndots:2
+options timeout:3
+options attempts:4
+
+options debug
+options rotate ; let's see about a comment here
+options no-check-names
+options inet6
+; here's annother comment
+options ip6-bytestring  
+options ip6-dotint 
+options no-ip6-dotint
+options edns0
+options single-request
+options single-request-reopen
+options no-tld-query
+options use-vc
+]])
+    local resolv, err = dnsutils.parse_resolv_conf(file)
+    assert.is.Nil(err)
+    assert.is.equal("myservice.com", resolv.domain)
+    assert.is.same({ "8.8.8.8", "8.8.4.4" }, resolv.nameserver)
+    assert.is.same({ "list1", "list2" }, resolv.sortlist)
+    assert.is.same({ ndots = 2, timeout = 3, attempts = 4, debug = true, rotate = true, 
+        ["no-check-names"] = true, inet6 = true, ["ip6-bytestring"] = true,
+        ["ip6-dotint"] = nil,  -- overridden by the next one, mutually exclusive
+        ["no-ip6-dotint"] = true, edns0 = true, ["single-request"] = true,
+        ["single-request-reopen"] = true, ["no-tld-query"] = true, ["use-vc"] = true},
+        resolv.options)
+  end)
+
+  it("tests parsing 'resolv.conf' with mutual exclusive domain vs search", function()
+    local file = splitlines(
+    [[domain myservice.com
+
+# search is overriding domain above
+search domaina.com domainb.com
+
+]])
+    local resolv, err = dnsutils.parse_resolv_conf(file)
+    assert.is.Nil(err)
+    assert.is.Nil(resolv.domain)
+    assert.is.same({ "domaina.com", "domainb.com" }, resolv.search)
+  end)
+
+  it("tests parsing 'resolv.conf' with environment variables", function()
+    local file = splitlines(
+    [[# this is just a comment line
+domain myservice.com
+
+nameserver 8.8.8.8 
+nameserver 8.8.4.4 ; and a comment here
+
+options ndots:1
+]])
+    local resolv, err = dnsutils.parse_resolv_conf(file)
+    assert.is.Nil(err)
+    
+    envvars.LOCALDOMAIN = "domaina.com domainb.com"
+    envvars.RES_OPTIONS = "ndots:2 debug"
+    resolv = dnsutils.apply_env(resolv)
+    
+    assert.is.Nil(resolv.domain)  -- must be nil, mutually exclusive
+    assert.is.same({ "domaina.com", "domainb.com" }, resolv.search)
+    
+    assert.is.same({ ndots = 2, debug = true }, resolv.options)
+  end)
+
+  it("tests parsing 'resolv.conf' with non-existing environment variables", function()
+    local file = splitlines(
+    [[# this is just a comment line
+domain myservice.com
+
+nameserver 8.8.8.8 
+nameserver 8.8.4.4 ; and a comment here
+
+options ndots:2
+]])
+    local resolv, err = dnsutils.parse_resolv_conf(file)
+    assert.is.Nil(err)
+    
+    envvars.LOCALDOMAIN = ""
+    envvars.RES_OPTIONS = ""
+    resolv = dnsutils.apply_env(resolv)
+    
+    assert.is.equals("myservice.com", resolv.domain)  -- must be nil, mutually exclusive
+    
+    assert.is.same({ ndots = 2 }, resolv.options)
+  end)
+
+  it("tests pass-through error handling of 'apply_env'", function()
+    local fname = "non/existing/file"
+    local r1, e1 = dnsutils.parse_resolv_conf(fname)
+    local r2, e2 = dnsutils.apply_env(dnsutils.parse_resolv_conf(fname))
+    assert.are.same(r1, r2)
+    assert.are.same(e1, e2)
+  end)
+
+end)
+
+describe("cached versions", function()
+  
+  local utils = require("pl.utils")
+  local oldreadlines = utils.readlines
+  
+  before_each(function()
+    utils.readlines = function(name)
+      if name:match("hosts") then
+        return {  -- hosts file
+            "127.0.0.1 localhost",
+            "192.168.1.2 test.computer.com",
+            "192.168.1.3 ftp.computer.com alias1 alias2",
+          }
+      else
+        return {  -- resolv.conf file
+            "domain myservice.com",
+            "nameserver 8.8.8.8 ",
+          }
+      end
+    end
+  end)
+  
+  after_each(function()
+    utils.readlines = oldreadlines
+  end)
+  
+  it("tests caching the hosts file", function()
+    local val1r, val1 = dnsutils.gethosts()
+    local val2r, val2 = dnsutils.gethosts()
+    assert.Not.equal(val1, val2) -- no ttl specified, so distinct tables
+    assert.Not.equal(val1r, val2r) -- no ttl specified, so distinct tables
+    
+    val1r, val1 = dnsutils.gethosts(1)
+    val2r, val2 = dnsutils.gethosts()
+    assert.are.equal(val1, val2)   -- ttl specified, so same tables
+    assert.are.equal(val1r, val2r) -- ttl specified, so same tables
+    
+    -- wait for cache to expire
+    local waitfor = os.time() + 2
+    while waitfor > os.time() do end
+    
+    val2r, val2 = dnsutils.gethosts()
+    assert.Not.equal(val1, val2) -- ttl timed out, so distinct tables
+    assert.Not.equal(val1r, val2r) -- ttl timed out, so distinct tables
+  end)
+  
+  it("tests caching the resolv.conf file & variables", function()
+    local val1 = dnsutils.getresolv()
+    local val2 = dnsutils.getresolv()
+    assert.Not.equal(val1, val2) -- no ttl specified, so distinct tables
+    
+    val1 = dnsutils.getresolv(1)
+    val2 = dnsutils.getresolv()
+    assert.are.equal(val1, val2)   -- ttl specified, so same tables
+    
+    -- wait for cache to expire
+    local waitfor = os.time() + 2
+    while waitfor > os.time() do end
+    
+    val2 = dnsutils.getresolv()
+    assert.Not.equal(val1, val2) -- ttl timed out, so distinct tables
+  end)
+  
+end)

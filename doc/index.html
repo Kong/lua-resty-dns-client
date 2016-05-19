@@ -1,0 +1,254 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<head>
+    <title>DnsUtils</title>
+    <link rel="stylesheet" href="ldoc.css" type="text/css" />
+</head>
+<body>
+
+<div id="container">
+
+<div id="product">
+	<div id="product_logo"></div>
+	<div id="product_name"><big><b></b></big></div>
+	<div id="product_description"></div>
+</div> <!-- id="product" -->
+
+
+<div id="main">
+
+
+<!-- Menu -->
+
+<div id="navigation">
+<br/>
+<h1>dnsutils</h1>
+
+
+<h2>Contents</h2>
+<ul>
+<li><a href="#Functions">Functions</a></li>
+</ul>
+
+
+<h2>Modules</h2>
+<ul class="$(kind=='Topics' and '' or 'nowrap'">
+  <li><strong>dnsutils</strong></li>
+</ul>
+<h2>Topics</h2>
+<ul class="$(kind=='Topics' and '' or 'nowrap'">
+  <li><a href="topics/readme.md.html">readme</a></li>
+</ul>
+
+</div>
+
+<div id="content">
+
+<h1>Module <code>dnsutils</code></h1>
+<p>DNS utility module to parse the <code>/etc/hosts</code> and <code>/etc/resolv.conf</code>
+ configuration files.</p>
+<p> Uses LuaSocket if available for the <code>gettime</code> function. Or falls back on <a href="http://www.lua.org/manual/5.1/manual.html#pdf-os.time">os.time</a> if LuaSocket
+ is unavailable.
+ </p>
+    <h3>Info:</h3>
+    <ul>
+        <li><strong>Copyright</strong>: Thijs Schreijer, Mashape Inc.</li>
+        <li><strong>License</strong>: MIT</li>
+    </ul>
+
+
+<h2><a href="#Functions">Functions</a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#apply_env">apply_env (config)</a></td>
+	<td class="summary">Will parse <code>LOCALDOMAIN</code> and <code>RES_OPTIONS</code> environment variables
+ and insert them into the given configuration table.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#gethosts">gethosts (ttl)</a></td>
+	<td class="summary">returns the <code>parse_hosts()</code> results, but cached.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#getresolv">getresolv (ttl)</a></td>
+	<td class="summary">returns the <code>apply_env()</code> results (and <code>parse_resolve_conf()</code>), but cached.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#parse_hosts">parse_hosts (filename)</a></td>
+	<td class="summary">Parses a hosts file.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#parse_resolv_conf">parse_resolv_conf (filename)</a></td>
+	<td class="summary">Parses a resolv.conf file.</td>
+	</tr>
+</table>
+
+<br/>
+<br/>
+
+
+    <h2 class="section-header "><a name="Functions"></a>Functions</h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "apply_env"></a>
+    <strong>apply_env (config)</strong>
+    </dt>
+    <dd>
+    Will parse <code>LOCALDOMAIN</code> and <code>RES_OPTIONS</code> environment variables
+ and insert them into the given configuration table. </p>
+
+<p> NOTE: if the input is <code>nil+error</code> it will return the input, to allow for pass-through error handling
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">config</span>
+         Options table, as parsed by <code>parse_resolv_conf()</code>
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        modified table
+    </ol>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <pre class="example"> <span class="keyword">local</span> dnsutils = <span class="global">require</span>(<span class="string">"dnsutils"</span>)
+
+ <span class="comment">-- errors are passed through, so this;
+</span> <span class="keyword">local</span> config, err = dnsutils.parse_resolf_conf()
+ <span class="keyword">if</span> config <span class="keyword">then</span>
+   config, err = dnsutils.apply_env(config)
+ <span class="keyword">end</span>
+
+ <span class="comment">-- Is identical to;
+</span> <span class="keyword">local</span> config, err = dnsutils.apply_env(dnsutils.parse_resolf_conf())</pre>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "gethosts"></a>
+    <strong>gethosts (ttl)</strong>
+    </dt>
+    <dd>
+    returns the <code>parse_hosts()</code> results, but cached.
+ Once <code>ttl</code> has been provided, only after it expires the file will be parsed again
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">ttl</span>
+         cache time-to-live in seconds
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        reverse and list tables, see <code>parse_hosts()</code>. NOTE: if cached, the <em>SAME</em> tables will be returned, so do not modify them unless you know what you are doing
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "getresolv"></a>
+    <strong>getresolv (ttl)</strong>
+    </dt>
+    <dd>
+    returns the <code>apply_env()</code> results (and <code>parse_resolve_conf()</code>), but cached.
+ Once <code>ttl</code> has been provided, only after it expires it will be parsed again
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">ttl</span>
+         cache time-to-live in seconds
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        configuration table, see <code>parse_resolve_conf()</code>. NOTE: if cached, the <em>SAME</em> table will be returned, so do not modify them unless you know what you are doing
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "parse_hosts"></a>
+    <strong>parse_hosts (filename)</strong>
+    </dt>
+    <dd>
+    Parses a hosts file.
+ Does not check for correctness of ip addresses nor hostnames. Might return <code>nil + error</code> if the file
+ cannot be read.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">filename</span>
+         (optional) File to parse, defaults to "/etc/hosts" if omitted, or a table with the file contents in lines.
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+        <li>
+        1; reverse lookup table, ip addresses indexed by their canonical names and aliases</li>
+        <li>
+        2; list with all entries. Containing fields <code>ip</code> and <code>canonical</code>, and a list of aliasses</li>
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "parse_resolv_conf"></a>
+    <strong>parse_resolv_conf (filename)</strong>
+    </dt>
+    <dd>
+    Parses a resolv.conf file.
+ Does not check for correctness of ip addresses nor hostnames, bad options will be ignored. Might
+ return <code>nil + error</code> if the file cannot be read.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">filename</span>
+         (optional) File to parse (defaults to "/etc/resolv.conf" if omitted) or a table with the file contents in lines.
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        table with fields <code>nameserver</code> (table), <code>domain</code> (string), <code>search</code> (table), <code>sortlist</code> (table) and <code>options</code> (table)
+    </ol>
+
+
+
+
+</dd>
+</dl>
+
+
+</div> <!-- id="content" -->
+</div> <!-- id="main" -->
+<div id="about">
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.3</a></i>
+<i style="float:right;">Last updated 2016-05-19 13:43:38 </i>
+</div> <!-- id="about" -->
+</div> <!-- id="container" -->
+</body>
+</html>

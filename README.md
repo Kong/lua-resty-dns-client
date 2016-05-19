@@ -1,2 +1,6 @@
-# dnsutils.lua
-Lua utility library to parse DNS related files; /etc/hosts and resolv.conf
+dnsutils
+========
+
+Lua library to parse dns configuration files; `resolv.conf` and `/etc/hosts`
+
+This is a work in progress
