@@ -1,5 +1,5 @@
 local dnsutils = require "dnsutils"
-local pretty = require "pl.pretty"
+local pretty = require("pl.pretty").write
 
 print("resolv.conf file;")
 print(pretty(dnsutils.parse_resolv_conf()))
@@ -10,5 +10,8 @@ print(pretty(dnsutils.apply_env({})))
 print("\nresolv.conf including environment settings;")
 print(pretty(dnsutils.apply_env(dnsutils.parse_resolv_conf())))
 
-print("\nHosts file;")
-print(pretty(dnsutils.parse_hosts()))
+local rev, all = dnsutils.parse_hosts()
+print("\nHosts file (all entries);")
+print(pretty(all))
+print("\nHosts file (reverse lookup);")
+print(pretty(rev))

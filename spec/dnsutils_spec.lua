@@ -25,11 +25,12 @@ describe("testing parsing 'hosts'", function()
 # to point back to yourself.
 
 127.0.0.1 localhost
+::1 localhost
 
 # My test server for the website
 
 192.168.1.2 test.computer.com
-192.168.1.3 ftp.computer.com alias1 alias2
+192.168.1.3 ftp.COMPUTER.com alias1 alias2
 192.168.1.4 smtp.computer.com alias3 #alias4
 192.168.1.5 smtp.computer.com alias3 #doubles, first one should win
 
@@ -43,36 +44,40 @@ describe("testing parsing 'hosts'", function()
     assert.is.equal(hosts[1].canonical, "localhost")
     assert.is.Nil(hosts[1][1])  -- no aliases
     assert.is.Nil(hosts[1][2])
-    assert.is.equal("127.0.0.1", reverse["localhost"])
+    assert.is.equal("127.0.0.1", reverse.localhost.ipv4)
+    assert.is.equal("::1", reverse.localhost.ipv6)
   
-    assert.is.equal(hosts[2].ip, "192.168.1.2")
-    assert.is.equal(hosts[2].canonical, "test.computer.com")
-    assert.is.Nil(hosts[2][1])  -- no aliases
-    assert.is.Nil(hosts[2][2])
-    assert.is.equal("192.168.1.2", reverse["test.computer.com"])
+    assert.is.equal(hosts[2].ip, "::1")
+    assert.is.equal(hosts[2].canonical, "localhost")
     
-    assert.is.equal(hosts[3].ip, "192.168.1.3")
-    assert.is.equal(hosts[3].canonical, "ftp.computer.com")
-    assert.is.equal(hosts[3][1], "alias1")  
-    assert.is.equal(hosts[3][2], "alias2")  
-    assert.is.Nil(hosts[3][3])
-    assert.is.equal("192.168.1.3", reverse["ftp.computer.com"])
-    assert.is.equal("192.168.1.3", reverse["alias1"])
-    assert.is.equal("192.168.1.3", reverse["alias2"])
+    assert.is.equal(hosts[3].ip, "192.168.1.2")
+    assert.is.equal(hosts[3].canonical, "test.computer.com")
+    assert.is.Nil(hosts[3][1])  -- no aliases
+    assert.is.Nil(hosts[3][2])
+    assert.is.equal("192.168.1.2", reverse["test.computer.com"].ipv4)
     
-    assert.is.equal(hosts[4].ip, "192.168.1.4")
-    assert.is.equal(hosts[4].canonical, "smtp.computer.com")
-    assert.is.equal(hosts[4][1], "alias3")  
-    assert.is.Nil(hosts[4][2])
-    assert.is.equal("192.168.1.4", reverse["smtp.computer.com"])
-    assert.is.equal("192.168.1.4", reverse["alias3"])
+    assert.is.equal(hosts[4].ip, "192.168.1.3")
+    assert.is.equal(hosts[4].canonical, "ftp.computer.com")   -- converted to lowercase!
+    assert.is.equal(hosts[4][1], "alias1")  
+    assert.is.equal(hosts[4][2], "alias2")  
+    assert.is.Nil(hosts[4][3])
+    assert.is.equal("192.168.1.3", reverse["ftp.computer.com"].ipv4)
+    assert.is.equal("192.168.1.3", reverse["alias1"].ipv4)
+    assert.is.equal("192.168.1.3", reverse["alias2"].ipv4)
     
-    assert.is.equal(hosts[5].ip, "192.168.1.5")
+    assert.is.equal(hosts[5].ip, "192.168.1.4")
     assert.is.equal(hosts[5].canonical, "smtp.computer.com")
     assert.is.equal(hosts[5][1], "alias3")  
     assert.is.Nil(hosts[5][2])
-    assert.is.equal("192.168.1.4", reverse["smtp.computer.com"])  -- .1.4; first one wins!
-    assert.is.equal("192.168.1.4", reverse["alias3"])   -- .1.4; first one wins!
+    assert.is.equal("192.168.1.4", reverse["smtp.computer.com"].ipv4)
+    assert.is.equal("192.168.1.4", reverse["alias3"].ipv4)
+    
+    assert.is.equal(hosts[6].ip, "192.168.1.5")
+    assert.is.equal(hosts[6].canonical, "smtp.computer.com")
+    assert.is.equal(hosts[6][1], "alias3")  
+    assert.is.Nil(hosts[6][2])
+    assert.is.equal("192.168.1.4", reverse["smtp.computer.com"].ipv4)  -- .1.4; first one wins!
+    assert.is.equal("192.168.1.4", reverse["alias3"].ipv4)   -- .1.4; first one wins!
   end)
 
 end)

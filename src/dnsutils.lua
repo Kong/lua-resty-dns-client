@@ -8,9 +8,11 @@
 -- _NOTE_: parsing the files is done using blocking i/o file operations, for non-blocking applications
 -- parse only at startup.
 --
+-- See `./spec/example.lua` for an example and output returned.
+--
 -- @copyright Thijs Schreijer, Mashape Inc.
 -- @license MIT
--- @usage
+
 
 local _M = {}
 local utils = require("pl.utils")
@@ -35,11 +37,11 @@ end
 local DEFAULT_RESOLV_CONF = "/etc/resolv.conf"
 
 --- Parses a hosts file.
--- Does not check for correctness of ip addresses nor hostnames. Might return `nil + error` if the file
--- cannot be read.
+-- Does not check for correctness of ip addresses nor hostnames (hostnames will be forced to lowercase). 
+-- Might return `nil + error` if the file cannot be read.
 -- @param filename (optional) File to parse, defaults to "/etc/hosts" if omitted, or a table with the file contents in lines.
--- @return 1; reverse lookup table, ip addresses indexed by their canonical names and aliases
--- @return 2; list with all entries. Containing fields `ip` and `canonical`, and a list of aliasses
+-- @return 1; reverse lookup table, ip addresses (table with `ipv4` and `ipv6` fields) indexed by their canonical names and aliases
+-- @return 2; list with all entries. Containing fields `ip`, `canonical` and `family`, and a list of aliasses
 _M.parse_hosts = function(filename)
   local lines
   if type(filename) == "table" then
@@ -57,12 +59,18 @@ _M.parse_hosts = function(filename)
       local ip, hosts = data:match(PATT_IP_HOST)
       if ip and hosts then
         hosts = hosts:lower()
-        local entry = { ip = ip }
+        local family = ip:find(":",1, true) and "ipv6" or "ipv4"
+        local entry = { ip = ip, family = family }
         local key = "canonical"
         for host in hosts:gmatch("%S+") do
           entry[key] = host
           key = (tonumber(key) or 0) + 1
-          reverse[host] = reverse[host] or ip -- do not overwrite, first one wins
+          local rev = reverse[host]
+          if not rev then
+            rev = {}
+            reverse[host] = rev
+          end
+          rev[family] = rev[family] or ip -- do not overwrite, first one wins
         end
         tinsert(result, entry)
       end
