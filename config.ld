@@ -1,8 +1,8 @@
-project='dnsutils'
-title='DnsUtils'
-description='Read the DNS configuration from the `hosts` file and `resolv.conf`.'
+project='dns.lua'
+title='DNS'
+description='DNS client and reading the DNS configuration from the `hosts` file and `resolv.conf`.'
 format='discount'
-file='./src/dnsutils.lua'
+file='./src/'
 dir='doc'
 readme='readme.md'
 sort=true

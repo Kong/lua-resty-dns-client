@@ -1,4 +1,4 @@
-local dnsutils = require "dnsutils"
+local dnsutils = require "dns.utils"
 local splitlines = require("pl.stringx").splitlines
 local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname

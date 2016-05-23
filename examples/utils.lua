@@ -1,4 +1,4 @@
-local dnsutils = require "dnsutils"
+local dnsutils = require "dns.utils"
 local pretty = require("pl.pretty").write
 
 print("resolv.conf file;")

@@ -1,13 +1,14 @@
-package = "dnsutils"
+package = "dns"
 version = "0.1-1"
 source = {
-  url = "https://github.com/Mashape/dnsutils.lua/archive/version_1.0.tar.gz",
+  url = "https://github.com/Mashape/dns.lua/archive/version_1.0.tar.gz",
   dir = "dnsutils-v.1"
 }
 description = {
-  summary = "DNS config file parsing library",
+  summary = "DNS library",
   detailed = [[
-    Parsed the `hosts` and `resolv.conf` configuration files and 
+    DNS client library for resolving hostnames. Utilities for 
+    parsing the `hosts` and `resolv.conf` configuration files and 
     optionally the accompanying environment variables.
   ]],
   homepage = "https://github.com/Mashape/dnsutils.lua",
@@ -20,6 +21,7 @@ dependencies = {
 build = {
   type = "builtin",
   modules = {
-    ["dnsutils"] = "src/dnsutils.lua",
+    ["dns.utils"] = "src/dns/utils.lua",
+    ["dns.client"] = "src/dns/client.lua",
   },
 }

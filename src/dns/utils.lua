@@ -2,24 +2,31 @@
 -- DNS utility module to parse the `/etc/hosts` and `/etc/resolv.conf` 
 -- configuration files.
 --
--- Uses LuaSocket if available for the `gettime` function. Or falls back on `os.time` if LuaSocket 
--- is unavailable.
+-- On regular Lua it uses LuaSocket if available for the `gettime` function. Or 
+-- falls back on `os.time` if LuaSocket is unavailable. With OpenResty it uses 
+-- native OpenResty functions.
 -- 
--- _NOTE_: parsing the files is done using blocking i/o file operations, for non-blocking applications
--- parse only at startup.
+-- _NOTE_: parsing the files is done using blocking i/o file operations, for
+-- non-blocking applications parse only at startup.
 --
--- See `./spec/example.lua` for an example and output returned.
+-- See `./examples/` for examples and output returned.
 --
 -- @copyright Thijs Schreijer, Mashape Inc.
--- @license MIT
+-- @license Apache 2.0
 
 
 local _M = {}
 local utils = require("pl.utils")
 local tinsert = table.insert
-local success, socket = pcall(require, "socket")
-local gettime = success and socket.gettime or os.time
 local is_windows = package.config:sub(1,1) == [[\]]
+local gettime
+
+if ngx then
+  gettime = ngx.time
+else
+  local success, socket = pcall(require, "socket")
+  gettime = success and socket.gettime or os.time
+end
 
 -- pattern that will only match data before a # or ; comment
 -- returns nil if there is none before the # or ;
@@ -36,9 +43,12 @@ end
 -- resolv.conf default filename
 local DEFAULT_RESOLV_CONF = "/etc/resolv.conf"
 
+_M.DEFAULT_HOSTS = DEFAULT_HOSTS
+_M.DEFAULT_RESOLV_CONF = DEFAULT_RESOLV_CONF
+
 --- Parses a hosts file.
 -- Does not check for correctness of ip addresses nor hostnames (hostnames will be forced to lowercase). 
--- Might return `nil + error` if the file cannot be read.
+-- Might return `nil + error` if the file cannot be read. NOTE: All hostnames and aliases will be returned in lowercase.
 -- @param filename (optional) File to parse, defaults to "/etc/hosts" if omitted, or a table with the file contents in lines.
 -- @return 1; reverse lookup table, ip addresses (table with `ipv4` and `ipv6` fields) indexed by their canonical names and aliases
 -- @return 2; list with all entries. Containing fields `ip`, `canonical` and `family`, and a list of aliasses
