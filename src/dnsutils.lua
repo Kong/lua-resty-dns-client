@@ -191,7 +191,7 @@ end
 
 if is_windows then
   -- there are no environment variables like this on Windows, so short-circuit it
-  _M.parse_resolv.conf = function(...) return ... end
+  _M.parse_resolv_conf = function(...) return ... end
 end
 
 

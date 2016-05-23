@@ -122,6 +122,7 @@ domain myservice.com
 
 nameserver 8.8.8.8 
 nameserver 8.8.4.4 ; and a comment here
+nameserver 8.8.8.8:1234 ; this one has a port number (limited systems support this)
 
 # search is commented out, test below for a mutually exclusive one
 #search domaina.com domainb.com
@@ -149,7 +150,7 @@ options use-vc
     local resolv, err = dnsutils.parse_resolv_conf(file)
     assert.is.Nil(err)
     assert.is.equal("myservice.com", resolv.domain)
-    assert.is.same({ "8.8.8.8", "8.8.4.4" }, resolv.nameserver)
+    assert.is.same({ "8.8.8.8", "8.8.4.4", "8.8.8.8:1234" }, resolv.nameserver)
     assert.is.same({ "list1", "list2" }, resolv.sortlist)
     assert.is.same({ ndots = 2, timeout = 3, attempts = 4, debug = true, rotate = true, 
         ["no-check-names"] = true, inet6 = true, ["ip6-bytestring"] = true,
