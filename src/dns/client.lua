@@ -6,8 +6,14 @@
 -- Requires the `resolver` module. Either `resty.dns.resolver` when used with OpenResty
 -- or the extracted version of that module for regular Lua.
 -- 
--- _NOTE_: parsing the config files upon initialization uses blocking IO, so use with
--- care.
+-- _NOTES_: 
+-- 
+-- 1. parsing the config files upon initialization uses blocking i/o, so use with
+-- care. See `init()` for details.
+-- 2. All returned records are directly from the cache. So do not modify them! If you
+-- need to, copy them first.
+-- 3. TTL for records is the TTL returned by the server at the time of fetching 
+-- and won't be updated while the client serves the records from its cache.
 --
 -- See `./examples/` for examples and output returned.
 --
@@ -108,7 +114,7 @@ end
 -- restricted fixed set of hostnames you're resolving, you should occasionally 
 -- purge the cache.
 -- @param touched in seconds. Cleanup everything (also non-expired items) not touched in `touched` seconds. If omitted, only expired items (based on ttl) will be removed. 
--- @return # of entries deleted
+-- @return number of entries deleted
 _M.purge_cache = function(touched)
   local f
   if type(touched == nil) then 
@@ -211,9 +217,20 @@ local type_order = {
   srv_opt,
 }
 
---- initialize resolver. Will parse hosts and resolv.conf files.
+--- initialize resolver. Will parse hosts and resolv.conf files/tables.
+-- If the `hosts` and `resolv_conf` fields are not provided, it will fall back on default
+-- filenames (see the `dns.utils` module for details). To prevent any potential 
+-- blocking i/o all together, manually fetch the contents of those files and 
+-- provide them as tables. Or provide both fields as empty tables.
 -- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf` containing the filenames to parse, and `max_resolvers` indicating the maximum number of resolver objects to cache.
 -- @return true on success, nil+error otherwise
+-- @usage -- initialize without any blocking i/o
+-- local client = require("dns.client")
+-- assert(client.init({
+--          hosts = {}, 
+--          resolv_conf = {},
+--        })
+-- )
 _M.init = function(options, secondary)
   if options == _M then options = secondary end -- in case of colon notation call
   
@@ -224,7 +241,8 @@ _M.init = function(options, secondary)
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
   local resolvconffile = options.resolv_conf or utils.DEFAULT_RESOLV_CONF
 
-  if fileexists(hostsfile) then
+  if ((type(hostsfile) == "string") and (fileexists(hostsfile)) or
+     (type(hostsfile) == "table")) then
     hosts, err = utils.parse_hosts(hostsfile)  -- results will be all lowercase!
     if not hosts then return hosts, err end
   else
@@ -256,7 +274,8 @@ _M.init = function(options, secondary)
   end
   
   
-  if fileexists(resolvconffile) then
+  if ((type(resolvconffile) == "string") and (fileexists(resolvconffile)) or
+     (type(resolvconffile) == "table")) then
     resolv, err = utils.apply_env(utils.parse_resolv_conf(options.resolve_conf))
     if not resolv then return resolv, err end
   else
@@ -355,7 +374,7 @@ end
 -- the requested type is CNAME.
 -- @param qname Same as the openresty `query` method
 -- @param r_opts Same as the openresty `query` method (defaults to A type query)
--- @return A list of records. The list can be empty, if the name is present, but as a different record type. Any dns server errors are returned in a hastable (see openresty docs).
+-- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 _M.resolve_type = function(qname, r_opts)
   qname = qname:lower()
   if not r_opts then
@@ -366,11 +385,20 @@ _M.resolve_type = function(qname, r_opts)
   return lookup(qname, r_opts)
 end
 
---- Resolve a name using the following type-order; 1) last succesful lookup type (if any), 
--- 2) A-record, 3) AAAA-record, 4) SRV-record.
--- This will follow CNAME records, but will not resolv any SRV content.
+--- Resolve a name using a generic type-order. It will try to resolve the given
+-- name using the following record types, in the order listed;
+-- 
+-- 1. last succesful lookup type (if any), 
+-- 2. A-record, 
+-- 3. AAAA-record, 
+-- 4. SRV-record.
+--
+-- So requesting `mysrv.domain.com` (assuming to be an SRV record) will try to resolve
+-- it (the first time) as A, then AAAA, then SRV. If succesful, a second lookup 
+-- will now try SRV, A, AAAA, SRV.
+-- This function will dereference CNAME records, but will not resolv any SRV content.
 -- @param qname Name to resolve
--- @return A list of records. The list can be empty, if the name is present, but as a different record type. Any dns server errors are returned in a hastable (see openresty docs).
+-- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 _M.resolve = function(qname)
   qname = qname:lower()
   local last = cache[qname]  -- check if we have a previous succesful one

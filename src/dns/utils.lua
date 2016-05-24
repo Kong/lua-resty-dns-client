@@ -46,7 +46,7 @@ local DEFAULT_RESOLV_CONF = "/etc/resolv.conf"
 _M.DEFAULT_HOSTS = DEFAULT_HOSTS
 _M.DEFAULT_RESOLV_CONF = DEFAULT_RESOLV_CONF
 
---- Parses a hosts file.
+--- Parses a hosts file or table.
 -- Does not check for correctness of ip addresses nor hostnames (hostnames will be forced to lowercase). 
 -- Might return `nil + error` if the file cannot be read. NOTE: All hostnames and aliases will be returned in lowercase.
 -- @param filename (optional) File to parse, defaults to "/etc/hosts" if omitted, or a table with the file contents in lines.
@@ -114,7 +114,7 @@ local parse_option = function(target, details)
   end
 end
 
---- Parses a resolv.conf file.
+--- Parses a resolv.conf file or table.
 -- Does not check for correctness of ip addresses nor hostnames, bad options will be ignored. Might 
 -- return `nil + error` if the file cannot be read.
 -- @param filename (optional) File to parse (defaults to "/etc/resolv.conf" if omitted) or a table with the file contents in lines.

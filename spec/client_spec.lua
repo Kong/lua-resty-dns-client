@@ -202,13 +202,14 @@ describe("Testing the DNS client", function()
     
   end)
 
---[[
-print "From the /etc/hosts file; localhost"
-go "localhost"
-
-print "From the /etc/hosts file; localhost AAAA"
-go ("localhost", "AAAA")
-
---]]
-
+  it("Tests initialization without i/o access", function()
+    local result, err = client:init({
+        hosts = {},  -- empty tables to parse to prevent defaulting to /etc/hosts
+        resolv_conf = {},   -- and resolv.conf files
+      })
+    assert.is.True(result)
+    assert.is.Nil(err)
+    assert.are.equal(#client.__cache, 0) -- no hosts file record should have been imported
+  end)
+  
 end)

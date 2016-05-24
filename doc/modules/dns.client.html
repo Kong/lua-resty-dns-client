@@ -57,8 +57,16 @@
 <p> Requires the <code>resolver</code> module. Either <code>resty.dns.resolver</code> when used with OpenResty
  or the extracted version of that module for regular Lua.</p>
 
-<p> <em>NOTE</em>: parsing the config files upon initialization uses blocking IO, so use with
- care.</p>
+<p> <em>NOTES</em>: </p>
+
+<ol>
+    <li>parsing the config files upon initialization uses blocking i/o, so use with
+    care. See <code>init()</code> for details.</li>
+    <li>All returned records are directly from the cache. So do not modify them! If you
+    need to, copy them first.</li>
+    <li>TTL for records is the TTL returned by the server at the time of fetching
+    and won't be updated while the client serves the records from its cache.</li>
+</ol>
 
 <p> See <code>./examples/</code> for examples and output returned.</p>
     <h3>Info:</h3>
@@ -75,9 +83,12 @@
 	<td class="summary">initialize resolver.</td>
 	</tr>
 	<tr>
+	<td class="name" nowrap><a href="#purge_cache">purge_cache (touched)</a></td>
+	<td class="summary">Cleanup the DNS client cache.</td>
+	</tr>
+	<tr>
 	<td class="name" nowrap><a href="#resolve">resolve (qname)</a></td>
-	<td class="summary">Resolve a name using the following type-order; 1) last succesful lookup type (if any),
- 2) A-record, 3) AAAA-record, 4) SRV-record.</td>
+	<td class="summary">Resolve a name using a generic type-order.</td>
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#resolve_type">resolve_type (qname, r_opts)</a></td>
@@ -97,7 +108,11 @@
     <strong>init (options)</strong>
     </dt>
     <dd>
-    initialize resolver.  Will parse hosts and resolv.conf files.
+    initialize resolver.  Will parse hosts and resolv.conf files/tables.
+ If the <code>hosts</code> and <code>resolv_conf</code> fields are not provided, it will fall back on default
+ filenames (see the <a href="../modules/dns.utils.html#">dns.utils</a> module for details). To prevent any potential
+ blocking i/o all together, manually fetch the contents of those files and
+ provide them as tables. Or provide both fields as empty tables.
 
 
     <h3>Parameters:</h3>
@@ -115,6 +130,45 @@
 
 
 
+    <h3>Usage:</h3>
+    <ul>
+        <pre class="example"> <span class="comment">-- initialize without any blocking i/o
+</span> <span class="keyword">local</span> client = <span class="global">require</span>(<span class="string">"dns.client"</span>)
+ <span class="global">assert</span>(client.init({
+          hosts = {},
+          resolv_conf = {},
+        })
+ )</pre>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "purge_cache"></a>
+    <strong>purge_cache (touched)</strong>
+    </dt>
+    <dd>
+    Cleanup the DNS client cache.  Items will be checked on TTL only upon
+ retrieval from the cache. So items inserted, but never used again will
+ never be removed from the cache automatically. So unless you have a very
+ restricted fixed set of hostnames you're resolving, you should occasionally
+ purge the cache.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">touched</span>
+         in seconds. Cleanup everything (also non-expired items) not touched in <code>touched</code> seconds. If omitted, only expired items (based on ttl) will be removed.
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        number of entries deleted
+    </ol>
+
+
+
 
 </dd>
     <dt>
@@ -122,9 +176,20 @@
     <strong>resolve (qname)</strong>
     </dt>
     <dd>
-    Resolve a name using the following type-order; 1) last succesful lookup type (if any),
- 2) A-record, 3) AAAA-record, 4) SRV-record.
- This will follow CNAME records, but will not resolv any SRV content.
+    Resolve a name using a generic type-order.  It will try to resolve the given
+ name using the following record types, in the order listed;</p>
+
+<ol>
+    <li>last succesful lookup type (if any), </li>
+    <li>A-record, </li>
+    <li>AAAA-record, </li>
+    <li>SRV-record.</li>
+</ol>
+
+<p> So requesting <code>mysrv.domain.com</code> (assuming to be an SRV record) will try to resolve
+ it (the first time) as A, then AAAA, then SRV. If succesful, a second lookup
+ will now try SRV, A, AAAA, SRV.
+ This function will dereference CNAME records, but will not resolv any SRV content.
 
 
     <h3>Parameters:</h3>
@@ -137,7 +202,7 @@
     <h3>Returns:</h3>
     <ol>
 
-        A list of records. The list can be empty, if the name is present, but as a different record type. Any dns server errors are returned in a hastable (see openresty docs).
+        A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
     </ol>
 
 
@@ -166,7 +231,7 @@
     <h3>Returns:</h3>
     <ol>
 
-        A list of records. The list can be empty, if the name is present, but as a different record type. Any dns server errors are returned in a hastable (see openresty docs).
+        A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
     </ol>
 
 
@@ -180,7 +245,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.3</a></i>
-<i style="float:right;">Last updated 2016-05-23 23:14:33 </i>
+<i style="float:right;">Last updated 2016-05-24 16:46:37 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
