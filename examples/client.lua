@@ -17,6 +17,8 @@ local function go(host, typ)
   print(pretty(resp))
 end
 
+print "A TXT record"
+go ("txttest.thijsschreijer.nl", "TXT")
 
 print "Multiple A records"
 go "atest.thijsschreijer.nl"
@@ -38,3 +40,9 @@ go ("srvtest.thijsschreijer.nl", "A") --> not an A but an SRV type
 
 print "Non-existing records (returns server error, in a table)"
 go "IsNotHere.thijsschreijer.nl"
+
+print "From the /etc/hosts file; localhost"
+go "localhost"
+
+print "From the /etc/hosts file; localhost AAAA"
+go ("localhost", "AAAA")

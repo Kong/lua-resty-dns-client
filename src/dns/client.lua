@@ -52,7 +52,7 @@ end
 --    In memory DNS cache
 -- ==============================================
 
--- hostname cache indexed by "hostname:recordtype" returning address list.
+-- hostname cache indexed by "recordtype:hostname" returning address list.
 -- Result is a list with entries. 
 -- Keys only by "hostname" only contain the last succesfull lookup type 
 -- for this name, see `resolve`  function.
@@ -69,6 +69,8 @@ local cachelookup = function(qname, qtype)
       -- the cached entry expired
       cache[key] = nil
       cached = nil
+    else
+      cached.touch = now
     end
   end
   
@@ -95,10 +97,51 @@ local cacheinsert = function(entry)
   
   -- set expire time
   local now = time()
+  entry.touch = now
   entry.expire = now + ttl
   cache[key] = entry
 end
 
+--- Cleanup the DNS client cache. Items will be checked on TTL only upon 
+-- retrieval from the cache. So items inserted, but never used again will 
+-- never be removed from the cache automatically. So unless you have a very 
+-- restricted fixed set of hostnames you're resolving, you should occasionally 
+-- purge the cache.
+-- @param touched in seconds. Cleanup everything (also non-expired items) not touched in `touched` seconds. If omitted, only expired items (based on ttl) will be removed. 
+-- @return # of entries deleted
+_M.purge_cache = function(touched)
+  local f
+  if type(touched == nil) then 
+    f = function(entry, now, count)  -- check ttl only
+      if entry.expire < now then
+        return nil, count + 1, true
+      else
+        return entry, count, false
+      end
+    end
+  elseif type(all) == "number" then
+    f = function(entry, now, count)  -- check ttl and touch
+      if (entry.expire < now) or (entry.touch + touched < now) then
+        return nil, count + 1, true
+      else
+        return entry, count, false
+      end
+    end
+  else
+    error("expected nil or number, got " ..type(touched), 2)
+  end
+  local now = time()
+  local count = 0
+  local deleted
+  for key, entry in pairs(cache) do
+    if type(entry) == "table" then
+      cache[key], count, deleted = f(entry, now, count)
+    else
+      -- TODO: entry for record type, how to purge this???
+    end
+  end
+  return count
+end
 
 -- ==============================================
 --    Cache for re-usable DNS resolver objects
@@ -115,6 +158,8 @@ local res_top = res_max -- we warn, if count exceeds top
 -- @param same parameters as the openresty `query` methods
 -- @return same results as the openresty queries
 local function query(qname, r_opts)
+  assert(opts, "Not initialized, call `init` first")
+  
   local err, result
   -- get resolver from cache
   local r = next(res_avail)
@@ -169,14 +214,16 @@ local type_order = {
 --- initialize resolver. Will parse hosts and resolv.conf files.
 -- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf` containing the filenames to parse, and `max_resolvers` indicating the maximum number of resolver objects to cache.
 -- @return true on success, nil+error otherwise
-_M.init = function(options)
+_M.init = function(options, secondary)
+  if options == _M then options = secondary end -- in case of colon notation call
+  
   local resolv, hosts, err
   options = options or {}
   
   res_max = options.max_resolvers or res_max
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
   local resolvconffile = options.resolv_conf or utils.DEFAULT_RESOLV_CONF
-  
+
   if fileexists(hostsfile) then
     hosts, err = utils.parse_hosts(hostsfile)  -- results will be all lowercase!
     if not hosts then return hosts, err end
@@ -299,7 +346,7 @@ local function lookup(qname, r_opts, count)
     return records, err   -- NOTE: return initial error!
   end
   
-  -- CNAME success, now recurse the lookup
+  -- CNAME success, now recurse the lookup to find the one we're actually looking for
   -- For CNAME we assume only one entry. Correct???
   return lookup(records2[1].cname, r_opts, count)
 end
@@ -343,6 +390,8 @@ _M.resolve = function(qname)
   return records, err
 end
 
-if __TEST then _M.__cache = cache end -- export the local cache in case we're testing
+-- export the local cache in case we're testing
+if _TEST then _M.__cache = cache end 
+
 return _M
 
