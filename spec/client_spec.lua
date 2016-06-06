@@ -1,10 +1,17 @@
-__TEST = true               -- let the module export its internal cache 
 local modname = "dns.client"
-local pretty = require("pl.pretty").write
-local time = require("socket").gettime  -- in seconds
-local sleep = require("socket").sleep   -- in seconds
 local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname
+
+local gettime, sleep
+if ngx then
+  gettime = ngx.now
+  sleep = ngx.sleep
+else
+  local socket = require("socket")
+  gettime = socket.gettime
+  sleep = socket.sleep
+end
+
 
 describe("Testing the DNS client", function()
 
@@ -24,8 +31,8 @@ describe("Testing the DNS client", function()
   it("Tests fetching a TXT record", function()
     client:init()
 
-    host = "txttest.thijsschreijer.nl"
-    typ = client.TYPE_TXT
+    local host = "txttest.thijsschreijer.nl"
+    local typ = client.TYPE_TXT
 
     local answers = client.resolve_type(host, { qtype = typ })
     assert.are.equal(host, answers[1].name)
@@ -36,12 +43,12 @@ describe("Testing the DNS client", function()
   it("Tests expire and touch times", function()
     client:init()
 
-    host = "txttest.thijsschreijer.nl"
-    typ = client.TYPE_TXT
+    local host = "txttest.thijsschreijer.nl"
+    local typ = client.TYPE_TXT
 
     local answers = client.resolve_type(host, { qtype = typ })
 
-    local now = time()
+    local now = gettime()
     local touch_diff = math.abs(now - answers.touch)
     local ttl_diff = math.abs((now + answers[1].ttl) - answers.expire)
     assert(touch_diff < 0.01, "Expected difference to be near 0; "..
@@ -58,9 +65,9 @@ describe("Testing the DNS client", function()
     assert.are.equal(answers, answers2) -- cached table, so must be same
     assert.are.not_equal(oldtouch, answers.touch)    
     
-    local now = time()
-    local touch_diff = math.abs(now - answers.touch)
-    local ttl_diff = math.abs((now + answers[1].ttl) - answers.expire)
+    now = gettime()
+    touch_diff = math.abs(now - answers.touch)
+    ttl_diff = math.abs((now + answers[1].ttl) - answers.expire)
     assert(touch_diff < 0.01, "Expected difference to be near 0; "..
                                 tostring(touch_diff))
     assert((0.990 < ttl_diff) and (ttl_diff < 1.01), 
@@ -71,8 +78,8 @@ describe("Testing the DNS client", function()
   it("Tests fetching multiple A records", function()
     client:init()
 
-    host = "atest.thijsschreijer.nl"
-    typ = client.TYPE_A
+    local host = "atest.thijsschreijer.nl"
+    local typ = client.TYPE_A
 
     local answers = client.resolve_type(host, { qtype = typ })
     assert.are.equal(host, answers[1].name)
@@ -85,8 +92,8 @@ describe("Testing the DNS client", function()
   it("Tests fetching A record redirected through 2 CNAME records", function()
     client:init()
 
-    host = "smtp.thijsschreijer.nl"
-    typ = client.TYPE_A
+    local host = "smtp.thijsschreijer.nl"
+    local typ = client.TYPE_A
     local answers = client.resolve_type(host, { qtype = typ })
 
     assert.are.not_equal(host, answers[1].name)
@@ -112,8 +119,8 @@ describe("Testing the DNS client", function()
   it("Tests fetching multiple SRV records (un-typed)", function()
     client:init()
 
-    host = "srvtest.thijsschreijer.nl"
-    typ = client.TYPE_SRV
+    local host = "srvtest.thijsschreijer.nl"
+    local typ = client.TYPE_SRV
 
     -- un-typed; so fetch using `resolve` method instead of `resolve_type`.
     local answers = client.resolve(host)
@@ -129,8 +136,8 @@ describe("Testing the DNS client", function()
   it("Tests fetching multiple SRV records through CNAME (un-typed)", function()
     client:init()
 
-    host = "cname2srv.thijsschreijer.nl"
-    typ = client.TYPE_SRV
+    local host = "cname2srv.thijsschreijer.nl"
+    local typ = client.TYPE_SRV
 
     -- un-typed; so fetch using `resolve` method instead of `resolve_type`.
     local answers = client.resolve(host)
@@ -154,8 +161,8 @@ describe("Testing the DNS client", function()
   it("Tests fetching non-type-matching records", function()
     client:init()
 
-    host = "srvtest.thijsschreijer.nl"
-    typ = client.TYPE_A   --> the entry is SRV not A
+    local host = "srvtest.thijsschreijer.nl"
+    local typ = client.TYPE_A   --> the entry is SRV not A
 
     local answers = client.resolve_type(host, {qtype = typ})
     assert.are.equal(#answers, 0)  -- returns empty table
@@ -164,7 +171,7 @@ describe("Testing the DNS client", function()
   it("Tests fetching non-existing records", function()
     client:init()
 
-    host = "IsNotHere.thijsschreijer.nl"
+    local host = "IsNotHere.thijsschreijer.nl"
 
     local answers = client.resolve(host)
     assert.are.equal(#answers, 0)  -- returns server error table

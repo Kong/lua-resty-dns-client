@@ -3,6 +3,16 @@ local splitlines = require("pl.stringx").splitlines
 local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname
 
+local gettime, sleep
+if ngx then
+  gettime = ngx.now
+  sleep = ngx.sleep
+else
+  local socket = require("socket")
+  gettime = socket.gettime
+  sleep = socket.sleep
+end
+
 describe("testing parsing 'hosts'", function()
 
   it("tests parsing when the 'hosts' file does not exist", function()
@@ -269,9 +279,8 @@ describe("cached versions", function()
     assert.are.equal(val1r, val2r) -- ttl specified, so same tables
     
     -- wait for cache to expire
-    local waitfor = os.time() + 2
-    while waitfor > os.time() do end
-    
+    sleep(2)
+
     val2r, val2 = dnsutils.gethosts()
     assert.Not.equal(val1, val2) -- ttl timed out, so distinct tables
     assert.Not.equal(val1r, val2r) -- ttl timed out, so distinct tables
@@ -287,11 +296,10 @@ describe("cached versions", function()
     assert.are.equal(val1, val2)   -- ttl specified, so same tables
     
     -- wait for cache to expire
-    local waitfor = os.time() + 2
-    while waitfor > os.time() do end
-    
+    sleep(2)
+
     val2 = dnsutils.getresolv()
-    assert.Not.equal(val1, val2) -- ttl timed out, so distinct tables
+    assert.Not.equal(val1, val2)   -- ttl timed out, so distinct tables
   end)
   
 end)

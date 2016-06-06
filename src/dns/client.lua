@@ -27,7 +27,7 @@ local resolver, time, log, log_WARN
 -- check on nginx/OpenResty and fix some ngx replacements
 if ngx then
   resolver = require("resty.dns.resolver")
-  time = ngx.time
+  time = ngx.now
   log = ngx.log
   log_WARN = ngx.WARN
 else
@@ -366,7 +366,7 @@ local function lookup(qname, r_opts, count)
   end
   
   -- CNAME success, now recurse the lookup to find the one we're actually looking for
-  -- For CNAME we assume only one entry. Correct???
+  -- TODO: For CNAME we assume only one entry. Correct???
   return lookup(records2[1].cname, r_opts, count)
 end
 
@@ -405,12 +405,16 @@ _M.resolve = function(qname)
   local records, err
   for i = (last and 0 or 1), #type_order do
     local type_opt = ((i == 0) and { qtype = last } or type_order[i])
-    records, err = _M.resolve_type(qname, type_opt)
-    -- NOTE: if the name exists, but the type doesn't match, we get 
-    -- an empty table. Hence check the length!
-    if records and #records > 0 then
-      cache[qname] = type_opt.qtype -- set last succesful type resolved
-      return records
+    if (type_opt.qtype == last) and (i ~= 0) then
+      -- already tried this one, based on 'last', no use in trying again
+    else
+      records, err = _M.resolve_type(qname, type_opt)
+      -- NOTE: if the name exists, but the type doesn't match, we get 
+      -- an empty table. Hence check the length!
+      if records and #records > 0 then
+        cache[qname] = type_opt.qtype -- set last succesful type resolved
+        return records
+      end
     end
   end
   -- we failed, clear cache and return last error

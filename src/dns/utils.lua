@@ -22,10 +22,9 @@ local is_windows = package.config:sub(1,1) == [[\]]
 local gettime
 
 if ngx then
-  gettime = ngx.time
+  gettime = ngx.now
 else
-  local success, socket = pcall(require, "socket")
-  gettime = success and socket.gettime or os.time
+  gettime = require("socket").gettime
 end
 
 -- pattern that will only match data before a # or ; comment
