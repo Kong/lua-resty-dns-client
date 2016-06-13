@@ -179,6 +179,40 @@ describe("Testing the DNS client", function()
     assert.is.not_nil(answers.errstr)    
   end)
 
+  it("Tests fetching IPv4 address", function()
+    client:init()
+
+    local host = "1.2.3.4"
+
+    local answers = client.resolve(host)
+    assert.are.equal(#answers, 1)
+    assert.are.equal(client.TYPE_A, answers[1].type)
+    assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
+  end)
+
+  it("Tests fetching IPv6 address", function()
+    client:init()
+
+    local host = "1:2::3:4"
+
+    local answers = client.resolve(host)
+    assert.are.equal(#answers, 1)
+    assert.are.equal(client.TYPE_AAAA, answers[1].type)
+    assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
+  end)
+
+  it("Tests fetching invalid IPv6 address", function()
+    client:init()
+
+    local host = "1::2:3::4"  -- 2x double colons
+
+    local answers = client.resolve(host)
+    assert.are.equal(#answers, 0)  -- returns server error table
+    assert.are.equal(3, answers.errcode)
+    assert.are.equal("name error", answers.errstr)    
+  end)
+
+
   it("Tests resolving from the /etc/hosts file", function()
     local f = tempfilename()
     writefile(f, [[

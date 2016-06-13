@@ -14,6 +14,10 @@
 -- need to, copy them first.
 -- 3. TTL for records is the TTL returned by the server at the time of fetching 
 -- and won't be updated while the client serves the records from its cache.
+-- 4. records with a PRIORITY field (SRV or MX records for example) will be sorted
+-- by priority
+-- 5. resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported.
+-- Their records will be cached with a ttl of 10 years.
 --
 -- See `./examples/` for examples and output returned.
 --
@@ -22,6 +26,7 @@
 
 local utils = require("dns.utils")
 local fileexists = require("pl.path").exists
+local tsort = table.sort
 
 local resolver, time, log, log_WARN
 -- check on nginx/OpenResty and fix some ngx replacements
@@ -311,7 +316,7 @@ _M.init = function(options, secondary)
 end
 
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
--- only looks up the requested type
+-- only looks up the requested type. Will sort results based on priority field.
 local function _lookup(qname, r_opts)
   local qtype = r_opts.qtype
   local record = cachelookup(qname, qtype)
@@ -319,6 +324,46 @@ local function _lookup(qname, r_opts)
   if record then
     -- cache hit
     return record  
+  elseif (qtype == _M.TYPE_AAAA) and qname:find(":") then
+    -- IPv6 or invalid
+    local check = qname
+    if check:sub(1,1) == ":" then check = "0"..check end
+    if check:sub(-1,-1) == ":" then check = check.."0" end
+    if check:find("::") then
+      -- expand double colon
+      local _, count = check:gsub(":","")
+      local ins = ":"..string.rep("0:", 8 - count)
+      check = check:gsub("::", ins, 1)  -- replace only 1 occurence!
+    end
+    if not check:match("^%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?$") then
+      -- not a valid IPv6 address
+      -- return a "server error" as a bad IPv4 would be looked up on 
+      -- the server and return a server error as well, for consistency.
+      return {
+        errcode = 3,
+        errstr = "name error",
+      }
+    end
+    record = {{
+      address = qname,
+      type = _M.TYPE_AAAA,
+      class = 1,
+      name = qname,
+      ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
+    }}
+    cacheinsert(record)
+    return record
+  elseif (qtype == _M.TYPE_A) and qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
+    -- IPv4 address
+    record = {{
+      address = qname,
+      type = _M.TYPE_A,
+      class = 1,
+      name = qname,
+      ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
+    }}
+    cacheinsert(record)
+    return record
   else
     -- not found in our cache, so perform query on dns servers
     local answers, err = query(qname, r_opts)
@@ -335,8 +380,13 @@ local function _lookup(qname, r_opts)
       end
     end
 
-    -- now insert actual target record in cache
     if #answers > 0 then
+      -- if our record has priority settings, then sort by priority first
+      if answers[1].priority then
+        tsort(answers, function(a,b) return a.priority < b.priority end )
+      end
+      
+      -- now insert actual target record in cache
       cacheinsert(answers)
     end
     return answers
@@ -371,7 +421,7 @@ local function lookup(qname, r_opts, count)
 end
 
 --- Resolves a name following CNAME redirects. CNAME will not be followed when
--- the requested type is CNAME.
+-- the requested type is CNAME. 
 -- @param qname Same as the openresty `query` method
 -- @param r_opts Same as the openresty `query` method (defaults to A type query)
 -- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
@@ -395,7 +445,7 @@ end
 --
 -- So requesting `mysrv.domain.com` (assuming to be an SRV record) will try to resolve
 -- it (the first time) as A, then AAAA, then SRV. If succesful, a second lookup 
--- will now try SRV, A, AAAA, SRV.
+-- will now try SRV, A, AAAA.
 -- This function will dereference CNAME records, but will not resolv any SRV content.
 -- @param qname Name to resolve
 -- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).

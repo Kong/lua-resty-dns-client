@@ -15,6 +15,7 @@ local function go(host, typ)
   end
   
   print(pretty(resp))
+  return resp
 end
 
 print "A TXT record"
@@ -30,7 +31,19 @@ print "A record redirected through 2 CNAME records"
 go "smtp.thijsschreijer.nl"
 
 print "Multiple SRV records"
-go "srvtest.thijsschreijer.nl"
+local resp = go "srvtest.thijsschreijer.nl"
+print "Priorities for this SRV record;"
+-- results will be sorted by priority
+print "> PRIMARY SET:"
+local last = resp[1].priority
+local backup = 0
+for i, rec in ipairs(resp) do
+  if last ~= rec.priority then
+    backup = backup + 1
+    print("> BACKUP SET: "..backup)
+  end
+  print("      "..rec.priority, rec.target)
+end
 
 print "CNAME to multiple SRV records"
 go "cname2srv.thijsschreijer.nl"
@@ -46,3 +59,16 @@ go "localhost"
 
 print "From the /etc/hosts file; localhost AAAA"
 go ("localhost", "AAAA")
+
+print "an IPv4 address"
+go ("1.2.3.4")
+
+print "an IPv6 address"
+go ("::1")
+
+print "an IPv4 address, as SRV"
+go ("1.2.3.4", "SRV")
+
+print "an IPv6 address, as SRV"
+go ("::1", "SRV")
+
