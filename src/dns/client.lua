@@ -14,10 +14,9 @@
 -- need to, copy them first.
 -- 3. TTL for records is the TTL returned by the server at the time of fetching 
 -- and won't be updated while the client serves the records from its cache.
--- 4. records with a PRIORITY field (SRV or MX records for example) will be sorted
--- by priority
--- 5. resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported.
--- Their records will be cached with a ttl of 10 years.
+-- 4. resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
+-- the hostname to be resolved is a valid IP address, it will be cached with a ttl of 
+-- 10 years, so the user doesn't have to do this check.
 --
 -- See `./examples/` for examples and output returned.
 --
@@ -26,7 +25,6 @@
 
 local utils = require("dns.utils")
 local fileexists = require("pl.path").exists
-local tsort = table.sort
 
 local resolver, time, log, log_WARN
 -- check on nginx/OpenResty and fix some ngx replacements
@@ -66,7 +64,7 @@ end
 -- hostname cache indexed by "recordtype:hostname" returning address list.
 -- Result is a list with entries. 
 -- Keys only by "hostname" only contain the last succesfull lookup type 
--- for this name, see `resolve`  function.
+-- for this name, see `resolve` function.
 local cache = {}
 
 -- lookup a single entry in the cache. Invalidates the entry if its beyond its ttl
@@ -130,9 +128,9 @@ _M.purge_cache = function(touched)
         return entry, count, false
       end
     end
-  elseif type(all) == "number" then
+  elseif type(touched) == "number" then
     f = function(entry, now, count)  -- check ttl and touch
-      if (entry.expire < now) or (entry.touch + touched < now) then
+      if (entry.expire < now) or (entry.touch + touched <= now) then
         return nil, count + 1, true
       else
         return entry, count, false
@@ -316,7 +314,7 @@ _M.init = function(options, secondary)
 end
 
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
--- only looks up the requested type. Will sort results based on priority field.
+-- only looks up the requested type.
 local function _lookup(qname, r_opts)
   local qtype = r_opts.qtype
   local record = cachelookup(qname, qtype)
@@ -381,11 +379,6 @@ local function _lookup(qname, r_opts)
     end
 
     if #answers > 0 then
-      -- if our record has priority settings, then sort by priority first
-      if answers[1].priority then
-        tsort(answers, function(a,b) return a.priority < b.priority end )
-      end
-      
       -- now insert actual target record in cache
       cacheinsert(answers)
     end
@@ -420,9 +413,9 @@ local function lookup(qname, r_opts, count)
   return lookup(records2[1].cname, r_opts, count)
 end
 
---- Resolves a name following CNAME redirects. CNAME will not be followed when
--- the requested type is CNAME. 
--- @param qname Same as the openresty `query` method
+--- Resolves a name following CNAME redirects. Only resolves the specified record 
+-- type. CNAME will not be followed when the requested type is CNAME. 
+-- @param qname Name to resolve
 -- @param r_opts Same as the openresty `query` method (defaults to A type query)
 -- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 _M.resolve_type = function(qname, r_opts)
@@ -470,6 +463,23 @@ _M.resolve = function(qname)
   -- we failed, clear cache and return last error
   cache[qname] = nil
   return records, err
+end
+
+--- Standardizes the resolve output to more standard Lua errors.
+-- both `nil+error` and succesful lookups are passed through.
+-- A server error table is returned as `nil+error`.
+-- An empty response is returned as `response+error`.
+-- @usage
+-- local result, err = client.stdError(client.resolve("my.hostname.com"))
+-- 
+-- if err then error(err) end         --> only passes if there is at least 1 result returned
+-- if not result then error(err) end  --> does not error on an empty result table
+_M.stdError = function(result, err)
+  if not result then return result, err end
+  assert(type(result) == "table", "Expected table or nil")
+  if result.errcode then return nil, ("dns server error; %s %s"):format(result.errcode, result.errstr) end
+  if #result == 0 then return result, "dns query returned no results" end
+  return result
 end
 
 -- export the local cache in case we're testing

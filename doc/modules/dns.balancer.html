@@ -1,0 +1,501 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<head>
+    <title>DNS</title>
+    <link rel="stylesheet" href="../ldoc.css" type="text/css" />
+</head>
+<body>
+
+<div id="container">
+
+<div id="product">
+	<div id="product_logo"></div>
+	<div id="product_name"><big><b></b></big></div>
+	<div id="product_description"></div>
+</div> <!-- id="product" -->
+
+
+<div id="main">
+
+
+<!-- Menu -->
+
+<div id="navigation">
+<br/>
+<h1>dns.lua</h1>
+
+<ul>
+  <li><a href="../index.html">Index</a></li>
+</ul>
+
+<h2>Contents</h2>
+<ul>
+<li><a href="#Functions">Functions</a></li>
+</ul>
+
+
+<h2>Modules</h2>
+<ul class="$(kind=='Topics' and '' or 'nowrap'">
+  <li><strong>dns.balancer</strong></li>
+  <li><a href="../modules/dns.client.html">dns.client</a></li>
+  <li><a href="../modules/dns.utils.html">dns.utils</a></li>
+</ul>
+<h2>Topics</h2>
+<ul class="$(kind=='Topics' and '' or 'nowrap'">
+  <li><a href="../topics/readme.md.html">readme</a></li>
+</ul>
+
+</div>
+
+<div id="content">
+
+<h1>Module <code>dns.balancer</code></h1>
+<p>DNS based loadbalancer.</p>
+<p> See <code>./examples/</code> for examples and output returned.</p>
+    <h3>Info:</h3>
+    <ul>
+        <li><strong>Copyright</strong>: Mashape Inc. All rights reserved.</li>
+        <li><strong>License</strong>: Apache 2.0</li>
+        <li><strong>Author</strong>: Thijs Schreijer</li>
+    </ul>
+
+
+<h2><a href="#Functions">Functions</a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#mt_addr:addSlots">mt_addr:addSlots (slotList, count)</a></td>
+	<td class="summary">Adds a list of slots to the address.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_addr:delete">mt_addr:delete ()</a></td>
+	<td class="summary">deletes an address object.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_addr:disable">mt_addr:disable ()</a></td>
+	<td class="summary">disables an address object from the balancer.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_addr:dropSlots">mt_addr:dropSlots (slotList, count)</a></td>
+	<td class="summary">Drop an amount of slots and return them to the overall balancer.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_balancer:addHost">mt_balancer:addHost (hostname, port, weight)</a></td>
+	<td class="summary">Adds a host to the balancer.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_balancer:addWeight">mt_balancer:addWeight (delta)</a></td>
+	<td class="summary">Updates the total weight.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_balancer:addressIter">mt_balancer:addressIter ()</a></td>
+	<td class="summary">Address iterator.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_balancer:getPeer">mt_balancer:getPeer ()</a></td>
+	<td class="summary">Gets the next host according to the loadbalancing scheme.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_balancer:redistributeSlots">mt_balancer:redistributeSlots ()</a></td>
+	<td class="summary">Recalculates the weights.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_balancer:removeHost">mt_balancer:removeHost (hostname)</a></td>
+	<td class="summary">Removes a host from a balancer.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_host:addAddress">mt_host:addAddress (entry)</a></td>
+	<td class="summary">Adds an <code>address</code> object to the <code>host</code>.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_host:addWeight">mt_host:addWeight (delta)</a></td>
+	<td class="summary">Changes the host overall weight.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_host:queryDns">mt_host:queryDns ()</a></td>
+	<td class="summary">Queries the DNS for this hostname.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_host:removeAddress">mt_host:removeAddress (entry)</a></td>
+	<td class="summary">Removes an <code>address</code> object from the <code>host</code>.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#new">new (opts)</a></td>
+	<td class="summary">Creates a new balancer.</td>
+	</tr>
+</table>
+
+<br/>
+<br/>
+
+
+    <h2 class="section-header "><a name="Functions"></a>Functions</h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "mt_addr:addSlots"></a>
+    <strong>mt_addr:addSlots (slotList, count)</strong>
+    </dt>
+    <dd>
+    Adds a list of slots to the address.  The slots added to the address will be removed from
+ the provided <code>slotList</code>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">slotList</span>
+         a list of slots to be added
+        </li>
+        <li><span class="parameter">count</span>
+         the number of slots to take from the list provided, defaults to ALL if omitted
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        the address object
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_addr:delete"></a>
+    <strong>mt_addr:delete ()</strong>
+    </dt>
+    <dd>
+    deletes an address object.
+ The address must have been disabled before. Deleting is automatically done after weight recalculation.
+
+
+
+
+
+    <h3>See also:</h3>
+    <ul>
+         <a href="../modules/dns.balancer.html#mt_addr:disable">disable</a>
+    </ul>
+
+
+</dd>
+    <dt>
+    <a name = "mt_addr:disable"></a>
+    <strong>mt_addr:disable ()</strong>
+    </dt>
+    <dd>
+    disables an address object from the balancer.
+ It will set its weight to 0 and the <code>deleteMe</code> flag to <code>true</code>. So the next slot-recalculation
+ will delete the address.
+
+
+
+
+
+    <h3>See also:</h3>
+    <ul>
+         <a href="../modules/dns.balancer.html#mt_addr:delete">delete</a>
+    </ul>
+
+
+</dd>
+    <dt>
+    <a name = "mt_addr:dropSlots"></a>
+    <strong>mt_addr:dropSlots (slotList, count)</strong>
+    </dt>
+    <dd>
+    Drop an amount of slots and return them to the overall balancer.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">slotList</span>
+         The list to add the dropped slots to
+        </li>
+        <li><span class="parameter">count</span>
+         (optional) The number of slots to drop, defaults to ALL if omitted
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        slotList with added to it the slots removed from this address
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_balancer:addHost"></a>
+    <strong>mt_balancer:addHost (hostname, port, weight)</strong>
+    </dt>
+    <dd>
+    Adds a host to the balancer.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">hostname</span>
+         hostname to add
+        </li>
+        <li><span class="parameter">port</span>
+         (optional) the port to use (defaults to 80 if omitted)
+        </li>
+        <li><span class="parameter">weight</span>
+         (optional) relative weight (defaults to 10 if omitted)
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        balancer object, or throw an error if it already is in the list
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_balancer:addWeight"></a>
+    <strong>mt_balancer:addWeight (delta)</strong>
+    </dt>
+    <dd>
+    Updates the total weight.  Will mark the balancer as 'dirty' for recalculation of the slots
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">delta</span>
+         the in/decrease of the overall weight (negative for decrease)
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_balancer:addressIter"></a>
+    <strong>mt_balancer:addressIter ()</strong>
+    </dt>
+    <dd>
+    Address iterator.
+ Iterates over all addresses in the balancer (nested through the hosts)
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+        weight (number), address (address object), host (host object the address belongs to)
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_balancer:getPeer"></a>
+    <strong>mt_balancer:getPeer ()</strong>
+    </dt>
+    <dd>
+    Gets the next host according to the loadbalancing scheme.
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+        hostname/ip and port
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_balancer:redistributeSlots"></a>
+    <strong>mt_balancer:redistributeSlots ()</strong>
+    </dt>
+    <dd>
+    Recalculates the weights.  Updates the slot lists for all hostnames.
+ Must be called whenever a weight might have changed; added/removed hosts.
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+        balancer object
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_balancer:removeHost"></a>
+    <strong>mt_balancer:removeHost (hostname)</strong>
+    </dt>
+    <dd>
+    Removes a host from a balancer.  Will not throw an error if the
+ hostname is not in the current list
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">hostname</span>
+         hostname to remove
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        balancer object
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_host:addAddress"></a>
+    <strong>mt_host:addAddress (entry)</strong>
+    </dt>
+    <dd>
+    Adds an <code>address</code> object to the <code>host</code>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">entry</span>
+
+
+
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_host:addWeight"></a>
+    <strong>mt_host:addWeight (delta)</strong>
+    </dt>
+    <dd>
+    Changes the host overall weight.  It will also update the parent balancer object.
+ To be called whenever an address is added/removed/changed
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">delta</span>
+
+
+
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_host:queryDns"></a>
+    <strong>mt_host:queryDns ()</strong>
+    </dt>
+    <dd>
+    Queries the DNS for this hostname.  Updates the underlying address objects.
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+        <code>true</code> when something changed and a recalculation of the weights is required
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_host:removeAddress"></a>
+    <strong>mt_host:removeAddress (entry)</strong>
+    </dt>
+    <dd>
+    Removes an <code>address</code> object from the <code>host</code>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">entry</span>
+
+
+
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "new"></a>
+    <strong>new (opts)</strong>
+    </dt>
+    <dd>
+
+<p>Creates a new balancer.  The balancer is based on a wheel with slots. The slots will be randomly distributed
+ over the hosts. The number of slots assigned will be relative to the weight.</p>
+
+<p> The options table has the following fields;</p>
+
+<ul>
+    <li><code>hosts</code> (required) containing hostnames and (optional) weights, must have at least one entry.</li>
+    <li><code>wheelsize</code> (required) for total number of slots in the balancer</li>
+    <li><code>dns</code> (required) a configured <a href="../modules/dns.client.html#">dns.client</a> object for querying the dns server</li>
+</ul>
+
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">opts</span>
+         table with options
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        new balancer object or nil+error
+    </ol>
+
+
+
+
+</dd>
+</dl>
+
+
+</div> <!-- id="content" -->
+</div> <!-- id="main" -->
+<div id="about">
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.3</a></i>
+<i style="float:right;">Last updated 2016-07-08 00:30:56 </i>
+</div> <!-- id="about" -->
+</div> <!-- id="container" -->
+</body>
+</html>
