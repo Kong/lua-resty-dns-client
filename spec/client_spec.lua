@@ -252,5 +252,9 @@ describe("Testing the DNS client", function()
     assert.is.Nil(err)
     assert.are.equal(#client.__cache, 0) -- no hosts file record should have been imported
   end)
-  
+
+  pending("verifies ttl and caching of errors and empty responses", function()
+    --empty responses should be cached for a configurable time
+    --error responses should be cached for a configurable time
+  end)  
 end)

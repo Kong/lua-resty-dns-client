@@ -111,6 +111,22 @@ local cacheinsert = function(entry)
   cache[key] = entry
 end
 
+--- Lookup the last succesful query type.
+-- @param qname name to resolve
+-- @return query/record type constant, or ˋnilˋ if not found
+local function cachegetsuccess(qname)
+  return cache[qname]
+end
+
+--- Sets the last succesful query type
+-- @qparam name resolved
+-- @qtype query/record type to set, or ˋnilˋ to clear
+-- @return ˋtrueˋ
+local function cachesetsuccess(qname, qtype)
+  cache[qname] = qtype
+  return true
+end
+
 --- Cleanup the DNS client cache. Items will be checked on TTL only upon 
 -- retrieval from the cache. So items inserted, but never used again will 
 -- never be removed from the cache automatically. So unless you have a very 
@@ -428,6 +444,8 @@ _M.resolve_type = function(qname, r_opts)
   return lookup(qname, r_opts)
 end
 
+
+
 --- Resolve a name using a generic type-order. It will try to resolve the given
 -- name using the following record types, in the order listed;
 -- 
@@ -444,7 +462,7 @@ end
 -- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 _M.resolve = function(qname)
   qname = qname:lower()
-  local last = cache[qname]  -- check if we have a previous succesful one
+  local last = cachegetsucces(qname)  -- check if we have a previous succesful one
   local records, err
   for i = (last and 0 or 1), #type_order do
     local type_opt = ((i == 0) and { qtype = last } or type_order[i])
@@ -455,13 +473,13 @@ _M.resolve = function(qname)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
       if records and #records > 0 then
-        cache[qname] = type_opt.qtype -- set last succesful type resolved
+        cachesetsucces(qname, type_opt.qtype) -- set last succesful type resolved
         return records
       end
     end
   end
   -- we failed, clear cache and return last error
-  cache[qname] = nil
+  cachesetsucces(qname, nil)
   return records, err
 end
 
