@@ -444,6 +444,8 @@ _M.resolve_type = function(qname, r_opts)
   return lookup(qname, r_opts)
 end
 
+
+
 --- Resolve a name using a generic type-order. It will try to resolve the given
 -- name using the following record types, in the order listed;
 -- 
