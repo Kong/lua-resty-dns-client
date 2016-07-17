@@ -19,9 +19,9 @@ local dumptree = function(balancer, marker)
     pref = "   "
     print(string.rep("=",30).."\n"..marker.."\n"..string.rep("=",30))
   end
-  for i, host in ipairs(balancer.hosts) do
+  for _, host in ipairs(balancer.hosts) do
     print(pref..host.hostname)
-    for n, address in ipairs(host.addresses) do
+    for _, address in ipairs(host.addresses) do
       print(pref.."   ",address.ip," with ", #address.slots," slots")
     end
   end
@@ -112,18 +112,20 @@ end
 -- will delete the address.
 -- @see delete
 function mt_addr:disable()
-  self.weight = 0       -- force dropping all slots assigned, before actually removing
-  self.deleteMe = true
+  -- weight to 0; force dropping all slots assigned, before actually removing
+  self.host:addWeight(-self.weight)
+  self.weight = 0       
+--  self.deleteMe = true
 end
 
---- deletes an address object.
+--[[- deletes an address object.
 -- The address must have been disabled before. Deleting is automatically done after weight recalculation.
 -- @see disable
 function mt_addr:delete()
   assert(self.deleteMe, "Cannot delete address that hasn't been disabled first")
   self.host = nil
   -- todo: remove from host as well? any other references to clean up?
-end
+end --]]
 
 --- creates a new address object.
 -- @param ip the upstream ip address
@@ -140,10 +142,11 @@ local newAddress = function(ip, port, weight, host)
     host = host,          -- the host this address belongs to
     slots = {},           -- the slots assigned to this address
     index = nil,          -- reverse index in the ordered part of the containing balancer
-    deleteMe = nil,       -- when `true` a recalculation will remove this address from the balancer
+--    deleteMe = nil,       -- when `true` a recalculation will remove this address from the balancer
   }
   for name, method in pairs(mt_addr) do addr[name] = method end
-
+  
+  host:addWeight(weight) 
   return addr
 end
 
@@ -269,17 +272,19 @@ function mt_host:addWeight(delta)
 end
 
 --- Adds an `address` object to the `host`.
+-- @param entry (table) DNS entry
 function mt_host:addAddress(entry)
   local weight = entry.weight or self.nodeWeight
   local port = entry.port or self.port
   local addr = newAddress(entry.address, port, weight, self)
   local addresses = self.addresses
   addresses[#addresses+1] = addr
-  self:addWeight(addr.weight) 
 end
 
 --- Removes an `address` object from the `host`.
+-- @param entry (table) DNS entry
 function mt_host:removeAddress(entry)
+  error("not implemented")
   self:addWeight(-entry.weight) 
   
   -- TODO: implement
@@ -301,7 +306,6 @@ local newHost = function(hostname, port, weight, balancer)
     weight = 0,           -- overall weight of all addresses within this hostname
     nodeWeight = weight,  -- weight for entries by this host, for A and AAAA records only
     balancer = balancer,  -- the balancer this host belongs to
-    index = nil,          -- reverse index in the ordered part of the containing balancer
     lastQuery = nil,      -- last succesful dns query performed
     lastSorted = nil,     -- last succesful dns query, sorted for comparison
     addresses = {},       -- list of addresses (address objects) this host resolves to
@@ -365,12 +369,16 @@ function mt_balancer:redistributeSlots()
   -- eg. 10 equal systems with 19 slots.
   -- Calculated to get each 1.9 slots => 9 systems would get 1, last system would get 10
   -- by using "remaining" slots, the first would get 1 slot, the other 9 would get 2.
-  
   -- first iteration; reclaim extraneous slots
   local weightLeft = totalWeight
   local slotsLeft = self.wheelSize
   for weight, address, host in self:addressIter() do
-    local count = math.floor(slotsLeft * (weight / weightLeft) + 0.0001) -- 0.0001 to bypass float arithmetic issues
+    local count
+    if weightLeft == 0 then
+      count = 0
+    else
+      count = math.floor(slotsLeft * (weight / weightLeft) + 0.0001) -- 0.0001 to bypass float arithmetic issues
+    end
     address:dropSlots(slotList, #address.slots - count)
     slotsLeft = slotsLeft - count
     weightLeft = weightLeft - weight
@@ -379,12 +387,16 @@ function mt_balancer:redistributeSlots()
   weightLeft = totalWeight
   slotsLeft = self.wheelSize
   for weight, address, host in self:addressIter() do
-    local count = math.floor(slotsLeft * (weight / weightLeft) + 0.0001) -- 0.0001 to bypass float arithmetic issues
+    local count
+    if weightLeft == 0 then
+      count = 0
+    else
+      count = math.floor(slotsLeft * (weight / weightLeft) + 0.0001) -- 0.0001 to bypass float arithmetic issues
+    end
     address:addSlots(slotList, count - #address.slots)
     slotsLeft = slotsLeft - count
     weightLeft = weightLeft - weight
   end
-
   self.dirty = false
   return self
 end
@@ -392,17 +404,17 @@ end
 -- see `addHost`
 local function _addHost(self, hostname, port, weight)
   assert(type(hostname) == "string", "expected a hostname (string), got "..tostring(hostname))
-  assert(not self.hosts[hostname], "duplicate entry, hostname already exists; "..tostring(hostname))
   port = port or DEFAULT_PORT
   weight = weight or DEFAULT_WEIGHT
   assert(weight and math.floor(weight) >= 1, "Expected 'weight' to be a number equal to, or greater than 1")
+
+  for _, host in ipairs(self.hosts) do
+    if host.hostname == hostname and host.port == port then
+      error("duplicate entry, hostname entry already exists; "..tostring(hostname)..", port "..tostring(port))
+    end
+  end
   
-  -- update the references
-  local nh = assert(newHost(hostname, port, weight, self))
-  self.hosts[hostname] = nh                 -- insert hash based reference -- TODO: do we even need a hashbased entry????  
-  nh.index = #self.hosts + 1
-  self.hosts[nh.index] = nh                 -- insert index based reference
-  
+  self.hosts[#self.hosts+1] = assert(newHost(hostname, port, weight, self))
   return self
 end
 
@@ -422,23 +434,27 @@ end
 --- Removes a host from a balancer. Will not throw an error if the
 -- hostname is not in the current list
 -- @param hostname hostname to remove
+-- @param port port to remove (optional, defaults to 80 if omitted)
 -- @return balancer object
-function mt_balancer:removeHost(hostname)
-  assert(type(hostname) ~= "string", "expected a hostname, got "..tostring(hostname))
-  local host = self.hosts[hostname]
-  if host then
-    assert(#self.hosts > 1, "cannot remove the last host, at least one must remain")
-    
-    -- recalculate weights and slot lists
-    self.weight = self.weight - host.weight
-    host.weight = 0  -- set to 0 to force it to drop all slots upon recalculation
-    self:redistributeSlots()
-    
-    -- remove host and update the references
-    host.balancer = nil
-    self.hosts[hostname] = nil             -- drop hashbased reference
-    table.remove(self.hosts, host.index)   -- drop index based reference
-    for n = host.index, #self.hosts do self.hosts[n].index = n end -- shift all other indices down as well
+function mt_balancer:removeHost(hostname, port)
+  assert(type(hostname) == "string", "expected a hostname, got "..tostring(hostname))
+  port = port or DEFAULT_PORT
+  for i, host in ipairs(self.hosts) do
+    if host.hostname == hostname and host.port == port then
+      assert(#self.hosts > 1, "cannot remove the last host, at least one must remain")
+      
+      -- set weights to 0
+      for _, addr in ipairs(host.addresses) do
+        addr:disable()
+      end
+      -- recalculate
+      self:redistributeSlots()
+      
+      -- remove host and update the references
+      host.balancer = nil
+      table.remove(self.hosts, i)
+      break
+    end
   end
   return self
 end
@@ -540,8 +556,7 @@ _M.new = function(opts)
   
   assert(self.weight > 0, "cannot create balancer with weight == 0, invalid hostnames?")
   
-  self.hosts[1].addresses[1]:addSlots(slotList)  -- initially insert all slots into the first address
---  dumptree(self,"initial insert")
+  self.hosts[1].addresses[1]:addSlots(slotList)   -- initially insert all slots into the first address
   self:redistributeSlots()                        -- redistribute the slots to all addresses
 --  dumptree(self,"final recalculation")
   

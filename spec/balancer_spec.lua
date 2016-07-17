@@ -1,6 +1,8 @@
 
 assert:set_parameter("TableFormatLevel", 5) -- when displaying tables, set a bigger default depth
 
+local icopy = require("pl.tablex").icopy
+
 ------------------------
 -- START TEST HELPERS --
 ------------------------
@@ -132,10 +134,6 @@ local check_balancer = function(balancer)
   assert.is.table(balancer)
   -- hosts
   check_list(balancer.hosts)
-  for i, host in ipairs(balancer.hosts) do
-    assert.are.equal(balancer, host.balancer)
-    assert.are.equal(host, balancer.hosts[host.index])
-  end
   -- slots
   local size = check_list(balancer.slots)
   assert.are.equal(balancer.wheelSize, size)
@@ -460,23 +458,98 @@ describe("Loadbalancer", function()
       }
       assert.are.same(expected, count_slots(b))
     end)
-    pending("removing a host", function()
+    it("removing a host, slots staying in place", function()
+      dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.5" },
+      })
+      dnsAAAA({ 
+        { name = "getkong.org", address = "::1" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { { name = "mashape.com", port = 80, weight = 5 } },
+        dns = client,
+        wheelsize = 2000,
+      })
+      b:addHost("getkong.org", 8080, 10)
+      check_balancer(b)
+      
+      -- copy the first 500 slots, they should not move
+      expected1 = {}
+      icopy(expected1, b.hosts[1].addresses[1].slots, 1, 1, 500)
+      expected2 = {}
+      icopy(expected2, b.hosts[1].addresses[2].slots, 1, 1, 500)
+      
+      b:removeHost("getkong.org")
+      check_balancer(b)
+      
+      -- copy the new first 500 slots as well
+      expected1a = {}
+      icopy(expected1a, b.hosts[1].addresses[1].slots, 1, 1, 500)
+      expected2a = {}
+      icopy(expected2a, b.hosts[1].addresses[2].slots, 1, 1, 500)
+
+      -- compare previous copy against current first 500 slots to make sure they are the same
+      for i = 1,500 do
+        assert(expected1[i] == expected1a[i])
+        assert(expected1[i] == expected1a[i])
+      end
     end)
-    pending("removing the last host", function()
+    it("removing the last host", function()
+      dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.5" },
+      })
+      dnsAAAA({ 
+        { name = "getkong.org", address = "::1" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { { name = "mashape.com", port = 80, weight = 5 } },
+        dns = client,
+        wheelsize = 20,
+      })
+      b:addHost("getkong.org", 8080, 10)
+      b:removeHost("getkong.org", 8080)
+      assert.has.error(
+        function() b:removeHost("mashape.com") end,
+        "cannot remove the last host, at least one must remain"
+      )
     end)
-    pending("new DNS A record; no changes", function()
+    pending("renewed DNS A record; no changes", function()
     end)
-    pending("new DNS AAAA record; no changes", function()
+    pending("renewed DNS AAAA record; no changes", function()
     end)
-    pending("new DNS SRV record; no changes", function()
+    pending("renewed DNS SRV record; no changes", function()
     end)
-    pending("new DNS A record; address changes", function()
+    pending("renewed DNS A record; address changes", function()
     end)
-    pending("new DNS AAAA record; address changes", function()
+    pending("renewed DNS AAAA record; address changes", function()
     end)
-    pending("new DNS SRV record; target changes", function()
+    pending("renewed DNS SRV record; target changes", function()
     end)
-    pending("new DNS A record; address changes", function()
+    pending("renewed DNS A record; entry added", function()
+    end)
+    pending("renewed DNS AAAA record; entry added", function()
+    end)
+    pending("renewed DNS SRV record; entry added", function()
+    end)
+    pending("renewed DNS A record; entry removed", function()
+    end)
+    pending("renewed DNS AAAA record; entry removed", function()
+    end)
+    pending("renewed DNS SRV record; entry removed", function()
+    end)
+    pending("renewed DNS A record; record removed", function()
+    end)
+    pending("renewed DNS AAAA record; record removed", function()
+    end)
+    pending("renewed DNS SRV record; record removed", function()
+    end)
+    pending("renewed DNS A record; failed", function()
+    end)
+    pending("renewed DNS AAAA record; failed", function()
+    end)
+    pending("renewed DNS SRV record; failed", function()
     end)
     pending("DNS record failure", function()
     end)
@@ -484,6 +557,7 @@ describe("Loadbalancer", function()
     end)
     pending("low weight with zero-slots assigned", function()
     end)
-
+    pending("ttl of 0 inserts only a single unresolved address", function()
+    end)
   end)
 end)

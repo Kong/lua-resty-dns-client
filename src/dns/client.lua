@@ -466,9 +466,9 @@ _M.resolve = function(qname)
 end
 
 --- Standardizes the resolve output to more standard Lua errors.
--- both `nil+error` and succesful lookups are passed through.
--- A server error table is returned as `nil+error`.
--- An empty response is returned as `response+error`.
+-- Both `nil+error` and succesful lookups are passed through.
+-- A server error table is returned as `nil+error` (where `error` is a string extracted from the server error table).
+-- An empty response is returned as `response+error` (where `error` is 'dns query returned no results').
 -- @usage
 -- local result, err = client.stdError(client.resolve("my.hostname.com"))
 -- 
