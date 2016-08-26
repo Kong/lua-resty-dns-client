@@ -182,7 +182,7 @@ local res_top = res_max -- we warn, if count exceeds top
 -- implements cached resolvers, so we don't create resolvers upon every request
 -- @param same parameters as the openresty `query` methods
 -- @return same results as the openresty queries
-local function query(qname, r_opts)
+local function query(qname, r_opts, retry)
   assert(opts, "Not initialized, call `init` first")
   
   local err, result
@@ -217,6 +217,10 @@ local function query(qname, r_opts)
   else
     -- failed, or too many, so drop the resolver object
     res_count = res_count - 1
+    if (not result) and (not retry) then
+      -- we had a (first) internal error, so recurse to try again
+      return query(qname, r_opts, true)
+    end
   end
   
   return result, err
@@ -514,7 +518,7 @@ end
 -- @return ip address + port, or nil+error
 _M.toip = function(qname, port, dns_cache_only)
   local rec, err = _M.stdError(_M.resolve(qname, dns_cache_only))
-  if not rec then
+  if err then
     return nil, err
   end
 
