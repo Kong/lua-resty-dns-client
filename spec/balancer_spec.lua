@@ -508,6 +508,7 @@ describe("Loadbalancer", function()
         dns = client,
         wheelsize = 20,
       })
+--require("mobdebug").start()
       b:addHost("getkong.org", 8080, 10)
       b:removeHost("getkong.org", 8080)
       assert.has.error(

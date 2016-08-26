@@ -243,6 +243,86 @@ describe("Testing the DNS client", function()
     
   end)
 
+  describe("Testing the toip() function", function()
+    it("A/AAAA-record",function()
+      client:init()
+      local host = "atest.thijsschreijer.nl"
+      local answers = client.resolve(host)
+      answers.last_index = nil -- make sure to clean
+      local ips = {}
+      for _,rec in ipairs(answers) do ips[rec.address] = true end
+      local order = {}
+      for n = 1, #answers do
+        local ip = client.toip(host)
+        ips[ip] = nil
+        order[n] = ip
+      end
+      -- this table should be empty again
+      assert.is_nil(next(ips))
+      -- do again, and check same order
+      for n = 1, #order do
+        local ip = client.toip(host)
+        assert.same(order[n], ip)
+      end
+    end)
+    it("SRV-record",function()
+      client:init()
+      local host = "srvtest.thijsschreijer.nl"
+      local answers = client.resolve(host)
+      local answers2
+      local low_prio = 1
+      local prio2
+      -- there is one non-ip entry, forwarding to www.thijsschreijer.nl, go find it
+      for i, rec in ipairs(answers) do
+        if rec.target:find("thijsschreijer") then
+          answers2 = client.resolve(rec.target)
+          prio2 = i
+        else
+          -- record index of the ip address with the lowest priority
+          if rec.priority <= answers[low_prio].priority then
+            low_prio = i
+          end
+        end
+      end
+      assert(answers[prio2].priority == answers[low_prio].priority)
+      local results = {}
+      for _ = 1,20 do 
+        local ip, port = client.toip(host)
+        results[ip.."+"..port] = (results[ip.."+"..port] or 0) + 1
+      end
+      -- 20 passes, each should get 10
+      assert(results[answers[low_prio].target.."+"..answers[low_prio].port] == 10)
+      assert(results[answers2[1].address.."+"..answers[prio2].port] == 10)
+      
+      -- remove them, and check the results to be empty, as the higher priority field one should not have gotten any calls
+      results[answers[low_prio].target.."+"..answers[low_prio].port] = nil
+      results[answers2[1].address.."+"..answers[prio2].port] = nil
+      assert.is_nil(next(results))
+    end)
+    it("port passing",function()
+      client:init()
+      local ip, port, host 
+      host = "atest.thijsschreijer.nl"
+      ip,port = client.toip(host)
+      assert.is_string(ip)
+      assert.is_nil(port)
+      
+      ip, port = client.toip(host, 1234)
+      assert.is_string(ip)
+      assert.equal(1234, port)
+      
+      host = "srvtest.thijsschreijer.nl"
+      ip, port = client.toip(host)
+      assert.is_string(ip)
+      assert.is_number(port)
+      
+      ip, port = client.toip(host, 0)
+      assert.is_string(ip)
+      assert.is_number(port)
+      assert.is_not.equal(0, port)
+    end)
+  end)
+
   it("Tests initialization without i/o access", function()
     local result, err = client:init({
         hosts = {},  -- empty tables to parse to prevent defaulting to /etc/hosts

@@ -459,10 +459,12 @@ end
 -- will now try SRV, A, AAAA.
 -- This function will dereference CNAME records, but will not resolv any SRV content.
 -- @param qname Name to resolve
+-- @param dns_cache_only Only check the cache, do no server lookups (will not invalidate any ttl expired data and will return expired data)
 -- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
-_M.resolve = function(qname)
+_M.resolve = function(qname, dns_cache_only)
+  assert(not dns_cache_only, "not implemented yet!") -- todo: implement cache only lookups
   qname = qname:lower()
-  local last = cachegetsucces(qname)  -- check if we have a previous succesful one
+  local last = cachegetsuccess(qname)  -- check if we have a previous succesful one
   local records, err
   for i = (last and 0 or 1), #type_order do
     local type_opt = ((i == 0) and { qtype = last } or type_order[i])
@@ -473,13 +475,13 @@ _M.resolve = function(qname)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
       if records and #records > 0 then
-        cachesetsucces(qname, type_opt.qtype) -- set last succesful type resolved
+        cachesetsuccess(qname, type_opt.qtype) -- set last succesful type resolved
         return records
       end
     end
   end
   -- we failed, clear cache and return last error
-  cachesetsucces(qname, nil)
+  cachesetsuccess(qname, nil)
   return records, err
 end
 
@@ -487,6 +489,7 @@ end
 -- Both `nil+error` and succesful lookups are passed through.
 -- A server error table is returned as `nil+error` (where `error` is a string extracted from the server error table).
 -- An empty response is returned as `response+error` (where `error` is 'dns query returned no results').
+-- @return a valid, non-empty, query result, or nil+error
 -- @usage
 -- local result, err = client.stdError(client.resolve("my.hostname.com"))
 -- 
@@ -500,8 +503,67 @@ _M.stdError = function(result, err)
   return result
 end
 
+--- Resolves to an IP and port number.
+-- Does a round-robin over the returned records. Builds on top of `resolve`, but will also further 
+-- dereference SRV type records. Will round-robin on each level individually. Eg.
+-- SRV with 2 entries; a) IPv4 address, b) hostname to an A record with also 2 entries, b1 and b2.
+-- Calling `toip` 4 time will in turn result in; 1) a, 2) b1, 3) a, 4) b2. 
+-- @param qname hostname to resolve
+-- @param port (optional) default port number to return if none was found in the lookup chain
+-- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups.
+-- @return ip address + port, or nil+error
+_M.toip = function(qname, port, dns_cache_only)
+  local rec, err = _M.stdError(_M.resolve(qname, dns_cache_only))
+  if not rec then
+    return nil, err
+  end
+
+  local index = rec.last_index
+  if rec[1].type == _M.TYPE_SRV then
+    -- determine priority; stick to current or lower priority
+    local last_prio
+    if not index then
+      -- new record, find lowest priority
+      last_prio = rec[1].priority
+      for _, r in ipairs(rec) do
+        last_prio = math.min(last_prio, r.priority)
+      end
+      index = 0
+    else
+      last_prio = rec[index].priority
+    end
+    -- find record
+    repeat
+      if index == #rec then
+        index = 1
+      else
+        index = index + 1
+      end
+    until rec[index].priority <= last_prio
+    rec.last_index = index
+    -- our SRV might still contain a hostname, so recurse, with found port number
+    return _M.toip(rec[index].target, rec[index].port, dns_cache_only)
+  else
+    -- must be A or AAAA
+    -- find next-up record
+    if index then
+      if index == #rec then
+        index = 1
+      else
+        index = index + 1
+      end
+    else
+      index = 1
+    end
+    rec.last_index = index
+    return rec[index].address, port
+  end
+end
+
 -- export the local cache in case we're testing
-if _TEST then _M.__cache = cache end 
+if _TEST then 
+  _M.__cache = cache 
+end 
 
 return _M
 

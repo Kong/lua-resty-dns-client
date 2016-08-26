@@ -369,6 +369,7 @@ function mt_balancer:redistributeSlots()
   -- eg. 10 equal systems with 19 slots.
   -- Calculated to get each 1.9 slots => 9 systems would get 1, last system would get 10
   -- by using "remaining" slots, the first would get 1 slot, the other 9 would get 2.
+  
   -- first iteration; reclaim extraneous slots
   local weightLeft = totalWeight
   local slotsLeft = self.wheelSize
