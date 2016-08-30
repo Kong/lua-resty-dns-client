@@ -28,7 +28,8 @@ local fileexists = require("pl.path").exists
 
 local resolver, time, log, log_WARN
 -- check on nginx/OpenResty and fix some ngx replacements
-if ngx then
+local is_nginx = (ngx ~= nil)
+if is_nginx then
   resolver = require("resty.dns.resolver")
   time = ngx.now
   log = ngx.log
@@ -213,7 +214,8 @@ local function query(qname, r_opts, retry)
   res_busy[r] = nil
   if result and res_count <= res_max then
     -- if successful and within maximum number, reuse resolver
-    res_avail[r] = r
+-- TODO: commented out below line, to temporarily disable reusing resolver objects
+--    res_avail[r] = r
   else
     -- failed, or too many, so drop the resolver object
     res_count = res_count - 1
