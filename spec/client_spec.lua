@@ -34,19 +34,31 @@ describe("Testing the DNS client", function()
     local host = "txttest.thijsschreijer.nl"
     local typ = client.TYPE_TXT
 
-    local answers = client.resolve_type(host, { qtype = typ })
+    local answers = client.resolve(host, { qtype = typ })
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
     assert.are.equal(#answers, 1)
   end)
 
+  it("Tests fetching a CNAME record", function()
+    client:init()
+
+    local host = "smtp.thijsschreijer.nl"
+    local typ = client.TYPE_CNAME
+
+    local answers = client.resolve(host, { qtype = typ })
+    assert.are.equal(host, answers[1].name)
+    assert.are.equal(typ, answers[1].type)
+    assert.are.equal(#answers, 1)
+  end)
+  
   it("Tests expire and touch times", function()
     client:init()
 
     local host = "txttest.thijsschreijer.nl"
     local typ = client.TYPE_TXT
 
-    local answers = client.resolve_type(host, { qtype = typ })
+    local answers = client.resolve(host, { qtype = typ })
 
     local now = gettime()
     local touch_diff = math.abs(now - answers.touch)
@@ -60,7 +72,7 @@ describe("Testing the DNS client", function()
 
     -- fetch again, now from cache
     local oldtouch = answers.touch
-    local answers2 = client.resolve_type(host, { qtype = typ })
+    local answers2 = client.resolve(host, { qtype = typ })
     
     assert.are.equal(answers, answers2) -- cached table, so must be same
     assert.are.not_equal(oldtouch, answers.touch)    
@@ -81,7 +93,7 @@ describe("Testing the DNS client", function()
     local host = "atest.thijsschreijer.nl"
     local typ = client.TYPE_A
 
-    local answers = client.resolve_type(host, { qtype = typ })
+    local answers = client.resolve(host, { qtype = typ })
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
     assert.are.equal(host, answers[2].name)
@@ -94,7 +106,7 @@ describe("Testing the DNS client", function()
 
     local host = "smtp.thijsschreijer.nl"
     local typ = client.TYPE_A
-    local answers = client.resolve_type(host, { qtype = typ })
+    local answers = client.resolve(host, { qtype = typ })
 
     assert.are.not_equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
@@ -164,7 +176,7 @@ describe("Testing the DNS client", function()
     local host = "srvtest.thijsschreijer.nl"
     local typ = client.TYPE_A   --> the entry is SRV not A
 
-    local answers = client.resolve_type(host, {qtype = typ})
+    local answers = client.resolve(host, {qtype = typ})
     assert.are.equal(#answers, 0)  -- returns empty table
   end)
 
@@ -211,7 +223,15 @@ describe("Testing the DNS client", function()
     assert.are.equal(3, answers.errcode)
     assert.are.equal("name error", answers.errstr)    
   end)
+  
+  pending("Tests fetching records from cache only",function()
+  end)
 
+  pending("Tests fetching records with ttl=0 from cache only",function()
+  end)
+
+  pending("Tests fetching expired records from cache only",function()
+  end)
 
   it("Tests resolving from the /etc/hosts file", function()
     local f = tempfilename()
@@ -228,23 +248,23 @@ describe("Testing the DNS client", function()
     os.remove(f)
     
     local answers, err
-    answers, err = client.resolve_type("localhost", {qtype = client.TYPE_A})
+    answers, err = client.resolve("localhost", {qtype = client.TYPE_A})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "127.3.2.1")
-    answers, err = client.resolve_type("localhost", {qtype = client.TYPE_AAAA})
+    answers, err = client.resolve("localhost", {qtype = client.TYPE_AAAA})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "1::2")
-    answers, err = client.resolve_type("mashape", {qtype = client.TYPE_A})
+    answers, err = client.resolve("mashape", {qtype = client.TYPE_A})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "123.123.123.123")
-    answers, err = client.resolve_type("kong.for.president", {qtype = client.TYPE_AAAA})
+    answers, err = client.resolve("kong.for.president", {qtype = client.TYPE_AAAA})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "1234::1234")
     
   end)
 
   describe("Testing the toip() function", function()
-    it("A/AAAA-record",function()
+    it("A/AAAA-record, round-robin",function()
       client:init()
       local host = "atest.thijsschreijer.nl"
       local answers = client.resolve(host)
@@ -265,7 +285,7 @@ describe("Testing the DNS client", function()
         assert.same(order[n], ip)
       end
     end)
-    it("SRV-record",function()
+    it("SRV-record, round-robin on lowest prio",function()
       client:init()
       local host = "srvtest.thijsschreijer.nl"
       local answers = client.resolve(host)
@@ -321,6 +341,15 @@ describe("Testing the DNS client", function()
       assert.is_number(port)
       assert.is_not.equal(0, port)
     end)
+    pending("Tests resolving from cache only",function()
+    end)
+
+    pending("Tests resolving with ttl=0 from cache only",function()
+    end)
+
+    pending("Tests resolving expired records from cache only",function()
+    end)
+
   end)
 
   it("Tests initialization without i/o access", function()
@@ -332,7 +361,37 @@ describe("Testing the DNS client", function()
     assert.is.Nil(err)
     assert.are.equal(#client.__cache, 0) -- no hosts file record should have been imported
   end)
-
+  
+  describe("the stdError function", function()
+    it("Tests a valid record passed through", function()
+      local rec = { { address = "1.2.3.4" } }
+      local res, err = client.stdError(rec, nil)
+      assert.are.equal(rec, res)
+      assert.is_nil(err)
+    end)
+    it("Tests a server error returned as Lua error", function()
+      local rec = {
+        errcode = 3,
+        errstr = "name error",
+      }
+      local res, err = client.stdError(rec, nil)
+      assert.are.equal(err, "dns server error; 3 name error")
+      assert.is_nil(res)
+    end)
+    it("Tests a Lua error passed through", function()
+      local rec = "this is an error"
+      local res, err = client.stdError(nil, rec)
+      assert.are.equal(rec, err)
+      assert.is_nil(res)
+    end)
+    it("Tests an empty response returned with message", function()
+      local rec = {}
+      local res, err = client.stdError(rec, nil)
+      assert.are.equal(rec, res)
+      assert.are.equal(err, "dns query returned no results")
+    end)
+  end)
+  
   pending("verifies ttl and caching of errors and empty responses", function()
     --empty responses should be cached for a configurable time
     --error responses should be cached for a configurable time

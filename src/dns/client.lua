@@ -16,7 +16,7 @@
 -- and won't be updated while the client serves the records from its cache.
 -- 4. resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
 -- the hostname to be resolved is a valid IP address, it will be cached with a ttl of 
--- 10 years, so the user doesn't have to do this check.
+-- 10 years. So the user doesn't have to check for ip adresses.
 --
 -- See `./examples/` for examples and output returned.
 --
@@ -69,13 +69,16 @@ end
 local cache = {}
 
 -- lookup a single entry in the cache. Invalidates the entry if its beyond its ttl
-local cachelookup = function(qname, qtype)
+-- @param qname name to lookup
+-- @qtype type number, any of the TYPE_xxx constants
+-- @peek just consult the cache, do not check ttl and expire, just touch it
+local cachelookup = function(qname, qtype, peek)
   local now = time()
   local key = qtype..":"..qname
   local cached = cache[key]
   
   if cached then
-    if cached.expire < now then
+    if (cached.expire < now) and (not peek) then
       -- the cached entry expired
       cache[key] = nil
       cached = nil
@@ -98,13 +101,7 @@ local cacheinsert = function(entry)
   for i = 2, #entry do
     ttl = math.min(ttl, entry[i].ttl)
   end
-  
-  -- special case; 0 ttl is never stored
-  if ttl == 0 then
-    cache[key] = nil
-    return
-  end
-  
+ 
   -- set expire time
   local now = time()
   entry.touch = now
@@ -112,14 +109,14 @@ local cacheinsert = function(entry)
   cache[key] = entry
 end
 
---- Lookup the last succesful query type.
+-- Lookup the last succesful query type.
 -- @param qname name to resolve
 -- @return query/record type constant, or ˋnilˋ if not found
 local function cachegetsuccess(qname)
   return cache[qname]
 end
 
---- Sets the last succesful query type
+-- Sets the last succesful query type.
 -- @qparam name resolved
 -- @qtype query/record type to set, or ˋnilˋ to clear
 -- @return ˋtrueˋ
@@ -232,14 +229,11 @@ end
 --    Main DNS functions for lookup
 -- ==============================================
 
-local cname_opt = { qtype = _M.TYPE_CNAME }
-local a_opt = { qtype = _M.TYPE_A }
-local aaaa_opt = { qtype = _M.TYPE_AAAA }
-local srv_opt = { qtype = _M.TYPE_SRV }
 local type_order = {
-  a_opt,
-  aaaa_opt,
-  srv_opt,
+  _M.TYPE_A,
+  _M.TYPE_AAAA,
+  _M.TYPE_SRV,
+  _M.TYPE_CNAME,
 }
 
 --- initialize resolver. Will parse hosts and resolv.conf files/tables.
@@ -337,13 +331,13 @@ end
 
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
 -- only looks up the requested type.
-local function _lookup(qname, r_opts)
+local function _lookup(qname, r_opts, dns_cache_only)
   local qtype = r_opts.qtype
-  local record = cachelookup(qname, qtype)
+  local record = cachelookup(qname, qtype, dns_cache_only)
   
   if record then
     -- cache hit
-    return record  
+    return record
   elseif (qtype == _M.TYPE_AAAA) and qname:find(":") then
     -- IPv6 or invalid
     local check = qname
@@ -384,6 +378,12 @@ local function _lookup(qname, r_opts)
     }}
     cacheinsert(record)
     return record
+  elseif dns_cache_only then
+    -- no active lookups allowed, so return error
+    return {
+      errcode = 4,                                         -- standard is "server failure"
+      errstr = "server failure, cache only lookup failed", -- extended description
+    }
   else
     -- not found in our cache, so perform query on dns servers
     local answers, err = query(qname, r_opts)
@@ -408,87 +408,80 @@ local function _lookup(qname, r_opts)
   end
 end
 
--- looks up the name, while following CNAME redirects
-local function lookup(qname, r_opts, count)
-  count = (count or 0) + 1
-  if count > max_dns_recursion then
-    return nil, "More than "..max_dns_recursion.." DNS redirects, recursion error?"
+-- resolves a name. If a record type given, then that type will be checked only.
+-- if no type given, then it will try a sequence of types
+local function _resolve(qname, r_opts, dns_cache_only, count)
+  if count and (count > max_dns_recursion) then
+    return nil, "maximum dns recursion level reached"
   end
-  
-  local records, err = _lookup(qname, r_opts)
-  -- NOTE: if the name exists, but the type doesn't match, we get 
-  -- an empty table. Hence check the length!
-  if (records and #records > 0) or r_opts.qtype == _M.TYPE_CNAME then
-    -- return record found, or the error in case it was a CNAME already
-    -- because then there is nothing to follow.
-    return records, err
-  end
-  
-  -- try a CNAME
-  local records2 = _lookup(qname, cname_opt)
-  if (not records2) or (#records2 == 0) then
-    return records, err   -- NOTE: return initial error!
-  end
-  
-  -- CNAME success, now recurse the lookup to find the one we're actually looking for
-  -- TODO: For CNAME we assume only one entry. Correct???
-  return lookup(records2[1].cname, r_opts, count)
-end
-
---- Resolves a name following CNAME redirects. Only resolves the specified record 
--- type. CNAME will not be followed when the requested type is CNAME. 
--- @param qname Name to resolve
--- @param r_opts Same as the openresty `query` method (defaults to A type query)
--- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
-_M.resolve_type = function(qname, r_opts)
   qname = qname:lower()
-  if not r_opts then
-    r_opts = a_opt
+  local opts
+  
+  if r_opts then
+    if r_opts.qtype then
+      -- type was provided, just resolve it and return
+      return _lookup(qname, r_opts, dns_cache_only)
+    end
+    -- options table, but no type, preserve options given
+    opts = {}
+    for k,v in pairs(r_opts) do
+      opts[k] = v
+    end
   else
-    r_opts.qtype = r_opts.qtype or _M.TYPE_A
+    opts = {}
   end
-  return lookup(qname, r_opts)
-end
-
-
-
---- Resolve a name using a generic type-order. It will try to resolve the given
--- name using the following record types, in the order listed;
--- 
--- 1. last succesful lookup type (if any), 
--- 2. A-record, 
--- 3. AAAA-record, 
--- 4. SRV-record.
---
--- So requesting `mysrv.domain.com` (assuming to be an SRV record) will try to resolve
--- it (the first time) as A, then AAAA, then SRV. If succesful, a second lookup 
--- will now try SRV, A, AAAA.
--- This function will dereference CNAME records, but will not resolv any SRV content.
--- @param qname Name to resolve
--- @param dns_cache_only Only check the cache, do no server lookups (will not invalidate any ttl expired data and will return expired data)
--- @return A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
-_M.resolve = function(qname, dns_cache_only)
-  assert(not dns_cache_only, "not implemented yet!") -- todo: implement cache only lookups
-  qname = qname:lower()
+  
+  -- go try a sequence of record types
   local last = cachegetsuccess(qname)  -- check if we have a previous succesful one
   local records, err
   for i = (last and 0 or 1), #type_order do
-    local type_opt = ((i == 0) and { qtype = last } or type_order[i])
-    if (type_opt.qtype == last) and (i ~= 0) then
+    local qtype = (i == 0) and last or type_order[i]
+    if (qtype == last) and (i ~= 0) then
       -- already tried this one, based on 'last', no use in trying again
     else
-      records, err = _M.resolve_type(qname, type_opt)
+      opts.qtype = qtype
+      records, err = _lookup(qname, opts, dns_cache_only)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
-      if records and #records > 0 then
-        cachesetsuccess(qname, type_opt.qtype) -- set last succesful type resolved
-        return records
+      if records and (#records > 0) and (not dns_cache_only) then
+        cachesetsuccess(qname, qtype) -- set last succesful type resolved
+        if qtype ~= _M.TYPE_CNAME then
+          return records
+        else
+          -- dereference CNAME
+          opts.qtype = nil
+          return _resolve(records[1].cname, opts, dns_cache_only, (count and count+1 or 1))
+        end
       end
     end
   end
   -- we failed, clear cache and return last error
-  cachesetsuccess(qname, nil)
+  if not dns_cache_only then
+    cachesetsuccess(qname, nil)
+  end
   return records, err
+end
+
+--- Resolve a name. 
+-- If `r_opts.qtype` is given, then it will fetch that specific type only (if it's a `TYPE_CNAME` then 
+-- it will return the cname record). If `r_opts.qtype` is not provided, then it will try to resolve
+-- the name using the following record types, in the order listed;
+-- 
+-- 1. last succesful lookup type (if any), 
+-- 2. A-record, 
+-- 3. AAAA-record, 
+-- 4. SRV-record,  --> will be returned, if found, will not be dereferenced
+-- 5. CNAME-record --> will not be returned, but dereferenced, so its target will returned
+--
+-- So requesting `mysrv.domain.com` (assuming to be an SRV record) will try to resolve
+-- it (the first time) as A, then AAAA, then SRV, CNAME will not be tried. If succesful, a second lookup 
+-- will now try SRV, A, AAAA, CNAME.
+-- @param qname Name to resolve
+-- @param r_opts Options table
+-- @param dns_cache_only Only check the cache, doesn't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
+-- @return A list of records. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
+_M.resolve = function(qname, r_opts, dns_cache_only)
+  return _resolve(qname, r_opts, dns_cache_only)
 end
 
 --- Standardizes the resolve output to more standard Lua errors.
@@ -519,7 +512,7 @@ end
 -- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups.
 -- @return ip address + port, or nil+error
 _M.toip = function(qname, port, dns_cache_only)
-  local rec, err = _M.stdError(_M.resolve(qname, dns_cache_only))
+  local rec, err = _M.stdError(_resolve(qname, nil, dns_cache_only))
   if err then
     return nil, err
   end
