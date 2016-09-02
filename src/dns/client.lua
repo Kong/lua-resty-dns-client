@@ -1,8 +1,6 @@
 --------------------------------------------------------------------------
 -- DNS client.
 --
--- The DNS client will cache entries and DNS resolver objects.
---
 -- Requires the `resolver` module. Either `resty.dns.resolver` when used with OpenResty
 -- or the extracted version of that module for regular Lua.
 -- 
@@ -20,7 +18,8 @@
 --
 -- See `./examples/` for examples and output returned.
 --
--- @copyright Thijs Schreijer, Mashape Inc.
+-- @copyright 2016 Mashape Inc.
+-- @author Thijs Schreijer
 -- @license Apache 2.0
 
 local utils = require("dns.utils")
@@ -44,7 +43,7 @@ else
 end
 
 -- resolver options
-local opts
+local config
 
 -- recursion level before erroring out
 local max_dns_recursion = 20
@@ -167,65 +166,6 @@ _M.purge_cache = function(touched)
 end
 
 -- ==============================================
---    Cache for re-usable DNS resolver objects
--- ==============================================
-
--- resolver objects cache
-local res_avail = {} -- available resolvers
-local res_busy = {}  -- resolvers now busy
-local res_count = 0  -- total resolver count
-local res_max = 50   -- maximum nr of resolvers to retain
-local res_top = res_max -- we warn, if count exceeds top
-
--- implements cached resolvers, so we don't create resolvers upon every request
--- @param same parameters as the openresty `query` methods
--- @return same results as the openresty queries
-local function query(qname, r_opts, retry)
-  assert(opts, "Not initialized, call `init` first")
-  
-  local err, result
-  -- get resolver from cache
-  local r = next(res_avail)
-  if not r then
-    -- no resolver left in the cache, so create a new one
-    r, err = resolver:new(opts)
-    if not r then
-      return r, err
-    end
-    res_busy[r] = r
-    res_count = res_count + 1
-  else
-    -- found one, move it from avail to busy
-    res_avail[r] = nil
-    res_busy[r] = r
-  end
-  
-  if res_count > res_top then
-    res_top = res_count
-    log(log_WARN, "DNS client: hit a new maximum of resolvers; "..
-      res_top..", whilst cache max size is currently set at; "..res_max)  
-  end
-  
-  result, err = r:query(qname, r_opts)
-
-  res_busy[r] = nil
-  if result and res_count <= res_max then
-    -- if successful and within maximum number, reuse resolver
--- TODO: commented out below line, to temporarily disable reusing resolver objects
---    res_avail[r] = r
-  else
-    -- failed, or too many, so drop the resolver object
-    res_count = res_count - 1
-    if (not result) and (not retry) then
-      -- we had a (first) internal error, so recurse to try again
-      return query(qname, r_opts, true)
-    end
-  end
-  
-  return result, err
-end
-
--- ==============================================
 --    Main DNS functions for lookup
 -- ==============================================
 
@@ -241,7 +181,7 @@ local type_order = {
 -- filenames (see the `dns.utils` module for details). To prevent any potential 
 -- blocking i/o all together, manually fetch the contents of those files and 
 -- provide them as tables. Or provide both fields as empty tables.
--- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf` containing the filenames to parse, and `max_resolvers` indicating the maximum number of resolver objects to cache.
+-- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf` containing the filenames to parse.
 -- @return true on success, nil+error otherwise
 -- @usage -- initialize without any blocking i/o
 -- local client = require("dns.client")
@@ -256,7 +196,6 @@ _M.init = function(options, secondary)
   local resolv, hosts, err
   options = options or {}
   
-  res_max = options.max_resolvers or res_max
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
   local resolvconffile = options.resolv_conf or utils.DEFAULT_RESOLV_CONF
 
@@ -324,14 +263,14 @@ _M.init = function(options, secondary)
   
   -- options.no_recurse = -- not touching this one for now
   
-  opts = options -- store it in our module level global
+  config = options -- store it in our module level global
 
   return true
 end
 
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
 -- only looks up the requested type.
-local function _lookup(qname, r_opts, dns_cache_only)
+local function _lookup(qname, r_opts, dns_cache_only, r)
   local qtype = r_opts.qtype
   local record = cachelookup(qname, qtype, dns_cache_only)
   
@@ -386,7 +325,7 @@ local function _lookup(qname, r_opts, dns_cache_only)
     }
   else
     -- not found in our cache, so perform query on dns servers
-    local answers, err = query(qname, r_opts)
+    local answers, err = r:query(qname, r_opts)
     if not answers then return answers, err end
     
     -- check our answers and store them in the cache
@@ -408,11 +347,36 @@ local function _lookup(qname, r_opts, dns_cache_only)
   end
 end
 
--- resolves a name. If a record type given, then that type will be checked only.
--- if no type given, then it will try a sequence of types
-local function _resolve(qname, r_opts, dns_cache_only, count)
+--- Resolve a name. 
+-- If `r_opts.qtype` is given, then it will fetch that specific type only (if it's a `TYPE_CNAME` then 
+-- it will return the cname record). If `r_opts.qtype` is not provided, then it will try to resolve
+-- the name using the following record types, in the order listed;
+-- 
+-- 1. last succesful lookup type (if any), 
+-- 2. A-record, 
+-- 3. AAAA-record, 
+-- 4. SRV-record,  --> will be returned, if found, will not be dereferenced
+-- 5. CNAME-record --> will not be returned, but dereferenced, so its target will be returned
+--
+-- So requesting `mysrv.domain.com` (assuming to be an SRV record) will try to resolve
+-- it (the first time) as A, then AAAA, then SRV, CNAME will not be tried. If succesful, a second lookup 
+-- will now try SRV, A, AAAA, CNAME.
+-- @function resolve
+-- @param qname Name to resolve
+-- @param r_opts Options table, see remark about the `qtype` field above
+-- @param dns_cache_only Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
+-- @param r (optional) dns resolver object to use
+-- @return A list of records. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
+local function resolve(qname, r_opts, dns_cache_only, r, count)
   if count and (count > max_dns_recursion) then
     return nil, "maximum dns recursion level reached"
+  end
+  if (not dns_cache_only) and (not r) then
+    local err
+    r, err = resolver:new(config)
+    if not r then
+      return r, err
+    end
   end
   qname = qname:lower()
   local opts
@@ -420,7 +384,7 @@ local function _resolve(qname, r_opts, dns_cache_only, count)
   if r_opts then
     if r_opts.qtype then
       -- type was provided, just resolve it and return
-      return _lookup(qname, r_opts, dns_cache_only)
+      return _lookup(qname, r_opts, dns_cache_only, r)
     end
     -- options table, but no type, preserve options given
     opts = {}
@@ -440,7 +404,7 @@ local function _resolve(qname, r_opts, dns_cache_only, count)
       -- already tried this one, based on 'last', no use in trying again
     else
       opts.qtype = qtype
-      records, err = _lookup(qname, opts, dns_cache_only)
+      records, err = _lookup(qname, opts, dns_cache_only, r)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
       if records and (#records > 0) and (not dns_cache_only) then
@@ -450,7 +414,7 @@ local function _resolve(qname, r_opts, dns_cache_only, count)
         else
           -- dereference CNAME
           opts.qtype = nil
-          return _resolve(records[1].cname, opts, dns_cache_only, (count and count+1 or 1))
+          return resolve(records[1].cname, opts, dns_cache_only, r, (count and count+1 or 1))
         end
       end
     end
@@ -462,39 +426,18 @@ local function _resolve(qname, r_opts, dns_cache_only, count)
   return records, err
 end
 
---- Resolve a name. 
--- If `r_opts.qtype` is given, then it will fetch that specific type only (if it's a `TYPE_CNAME` then 
--- it will return the cname record). If `r_opts.qtype` is not provided, then it will try to resolve
--- the name using the following record types, in the order listed;
--- 
--- 1. last succesful lookup type (if any), 
--- 2. A-record, 
--- 3. AAAA-record, 
--- 4. SRV-record,  --> will be returned, if found, will not be dereferenced
--- 5. CNAME-record --> will not be returned, but dereferenced, so its target will returned
---
--- So requesting `mysrv.domain.com` (assuming to be an SRV record) will try to resolve
--- it (the first time) as A, then AAAA, then SRV, CNAME will not be tried. If succesful, a second lookup 
--- will now try SRV, A, AAAA, CNAME.
--- @param qname Name to resolve
--- @param r_opts Options table
--- @param dns_cache_only Only check the cache, doesn't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
--- @return A list of records. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
-_M.resolve = function(qname, r_opts, dns_cache_only)
-  return _resolve(qname, r_opts, dns_cache_only)
-end
-
---- Standardizes the resolve output to more standard Lua errors.
+--- Standardizes the `resolve` output to more standard Lua errors.
 -- Both `nil+error` and succesful lookups are passed through.
 -- A server error table is returned as `nil+error` (where `error` is a string extracted from the server error table).
 -- An empty response is returned as `response+error` (where `error` is 'dns query returned no results').
+-- @function stdError
 -- @return a valid, non-empty, query result, or nil+error
 -- @usage
 -- local result, err = client.stdError(client.resolve("my.hostname.com"))
 -- 
 -- if err then error(err) end         --> only passes if there is at least 1 result returned
 -- if not result then error(err) end  --> does not error on an empty result table
-_M.stdError = function(result, err)
+local function stdError(result, err)
   if not result then return result, err end
   assert(type(result) == "table", "Expected table or nil")
   if result.errcode then return nil, ("dns server error; %s %s"):format(result.errcode, result.errstr) end
@@ -506,13 +449,22 @@ end
 -- Does a round-robin over the returned records. Builds on top of `resolve`, but will also further 
 -- dereference SRV type records. Will round-robin on each level individually. Eg.
 -- SRV with 2 entries; a) IPv4 address, b) hostname to an A record with also 2 entries, b1 and b2.
--- Calling `toip` 4 time will in turn result in; 1) a, 2) b1, 3) a, 4) b2. 
+-- Calling `toip` 4 times will in turn result in; 1) a, 2) b1, 3) a, 4) b2. 
+-- @function toip
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in the lookup chain
--- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups.
+-- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups
+-- @param r (optional) dns resolver object to use
 -- @return ip address + port, or nil+error
-_M.toip = function(qname, port, dns_cache_only)
-  local rec, err = _M.stdError(_resolve(qname, nil, dns_cache_only))
+local function toip(qname, port, dns_cache_only, r)
+  if (not dns_cache_only) and (not r) then
+    local err
+    r, err = resolver:new(config)
+    if not r then
+      return r, err
+    end
+  end
+  local rec, err = stdError(resolve(qname, nil, dns_cache_only, r))
   if err then
     return nil, err
   end
@@ -541,7 +493,7 @@ _M.toip = function(qname, port, dns_cache_only)
     until rec[index].priority <= last_prio
     rec.last_index = index
     -- our SRV might still contain a hostname, so recurse, with found port number
-    return _M.toip(rec[index].target, rec[index].port, dns_cache_only)
+    return toip(rec[index].target, rec[index].port, dns_cache_only, r)
   else
     -- must be A or AAAA
     -- find next-up record
@@ -558,6 +510,31 @@ _M.toip = function(qname, port, dns_cache_only)
     return rec[index].address, port
   end
 end
+
+--- Implements tcp-connect method with dns resolution.
+-- This builds on top of `toip`. If the name resolves to an SRV record, 
+-- the port returned by the DNS server will override the one provided.
+-- @function connect
+-- @param sock the socket to connect
+-- @param host hostname to connect to
+-- @param port port to connect to
+-- @param opts the options table
+-- @return success, or nil + error
+local function connect(sock, host, port, opts)
+  local target_ip, target_port = toip(host, port)
+  
+  if not target_ip then 
+    return nil, target_port 
+  else
+    return sock:connect(target_ip, target_port, opts)
+  end
+end
+
+-- export local functions
+_M.resolve = resolve
+_M.toip = toip
+_M.stdError = stdError
+_M.connect = connect
 
 -- export the local cache in case we're testing
 if _TEST then 

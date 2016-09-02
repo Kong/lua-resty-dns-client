@@ -53,8 +53,6 @@
 
 <h1>Module <code>dns.client</code></h1>
 <p>DNS client.</p>
-<p> The DNS client will cache entries and DNS resolver objects.</p>
-
 <p> Requires the <code>resolver</code> module. Either <code>resty.dns.resolver</code> when used with OpenResty
  or the extracted version of that module for regular Lua.</p>
 
@@ -69,19 +67,24 @@
     and won't be updated while the client serves the records from its cache.</li>
     <li>resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
     the hostname to be resolved is a valid IP address, it will be cached with a ttl of
-    10 years, so the user doesn't have to do this check.</li>
+    10 years. So the user doesn't have to check for ip adresses.</li>
 </ol>
 
 <p> See <code>./examples/</code> for examples and output returned.</p>
     <h3>Info:</h3>
     <ul>
-        <li><strong>Copyright</strong>: Thijs Schreijer, Mashape Inc.</li>
+        <li><strong>Copyright</strong>: 2016 Mashape Inc.</li>
         <li><strong>License</strong>: Apache 2.0</li>
+        <li><strong>Author</strong>: Thijs Schreijer</li>
     </ul>
 
 
 <h2><a href="#Functions">Functions</a></h2>
 <table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#connect">connect (sock, host, port, opts)</a></td>
+	<td class="summary">Implements tcp-connect method with dns resolution.</td>
+	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#init">init (options)</a></td>
 	<td class="summary">initialize resolver.</td>
@@ -91,19 +94,15 @@
 	<td class="summary">Cleanup the DNS client cache.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#resolve">resolve (qname, dns_cache_only)</a></td>
-	<td class="summary">Resolve a name using a generic type-order.</td>
+	<td class="name" nowrap><a href="#resolve">resolve (qname, r_opts, dns_cache_only, r)</a></td>
+	<td class="summary">Resolve a name.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#resolve_type">resolve_type (qname, r_opts)</a></td>
-	<td class="summary">Resolves a name following CNAME redirects.</td>
+	<td class="name" nowrap><a href="#stdError">stdError ()</a></td>
+	<td class="summary">Standardizes the <a href="../modules/dns.client.html#resolve">resolve</a> output to more standard Lua errors.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#stdError">stdError (result, err)</a></td>
-	<td class="summary">Standardizes the resolve output to more standard Lua errors.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#toip">toip (qname, port, dns_cache_only)</a></td>
+	<td class="name" nowrap><a href="#toip">toip (qname, port, dns_cache_only, r)</a></td>
 	<td class="summary">Resolves to an IP and port number.</td>
 	</tr>
 </table>
@@ -115,6 +114,42 @@
     <h2 class="section-header "><a name="Functions"></a>Functions</h2>
 
     <dl class="function">
+    <dt>
+    <a name = "connect"></a>
+    <strong>connect (sock, host, port, opts)</strong>
+    </dt>
+    <dd>
+    Implements tcp-connect method with dns resolution.
+ This builds on top of <a href="../modules/dns.client.html#toip">toip</a>. If the name resolves to an SRV record,
+ the port returned by the DNS server will override the one provided.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">sock</span>
+         the socket to connect
+        </li>
+        <li><span class="parameter">host</span>
+         hostname to connect to
+        </li>
+        <li><span class="parameter">port</span>
+         port to connect to
+        </li>
+        <li><span class="parameter">opts</span>
+         the options table
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        success, or nil + error
+    </ol>
+
+
+
+
+</dd>
     <dt>
     <a name = "init"></a>
     <strong>init (options)</strong>
@@ -130,7 +165,7 @@
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">options</span>
-         Same table as the openresty dns resolver, with extra fields <code>hosts</code>, <code>resolv_conf</code> containing the filenames to parse, and <code>max_resolvers</code> indicating the maximum number of resolver objects to cache.
+         Same table as the openresty dns resolver, with extra fields <code>hosts</code>, <code>resolv_conf</code> containing the filenames to parse.
         </li>
     </ul>
 
@@ -185,52 +220,25 @@
 </dd>
     <dt>
     <a name = "resolve"></a>
-    <strong>resolve (qname, dns_cache_only)</strong>
+    <strong>resolve (qname, r_opts, dns_cache_only, r)</strong>
     </dt>
     <dd>
-    Resolve a name using a generic type-order.  It will try to resolve the given
- name using the following record types, in the order listed;</p>
+    Resolve a name. <br/>
+ If <code>r_opts.qtype</code> is given, then it will fetch that specific type only (if it's a <code>TYPE_CNAME</code> then
+ it will return the cname record). If <code>r_opts.qtype</code> is not provided, then it will try to resolve
+ the name using the following record types, in the order listed;</p>
 
 <ol>
     <li>last succesful lookup type (if any), </li>
     <li>A-record, </li>
     <li>AAAA-record, </li>
-    <li>SRV-record.</li>
+    <li>SRV-record,  --> will be returned, if found, will not be dereferenced</li>
+    <li>CNAME-record --> will not be returned, but dereferenced, so its target will be returned</li>
 </ol>
 
 <p> So requesting <code>mysrv.domain.com</code> (assuming to be an SRV record) will try to resolve
- it (the first time) as A, then AAAA, then SRV. If succesful, a second lookup
- will now try SRV, A, AAAA.
- This function will dereference CNAME records, but will not resolv any SRV content.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">qname</span>
-         Name to resolve
-        </li>
-        <li><span class="parameter">dns_cache_only</span>
-         Only check the cache, do no server lookups (will not invalidate any ttl expired data and will return expired data)
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "resolve_type"></a>
-    <strong>resolve_type (qname, r_opts)</strong>
-    </dt>
-    <dd>
-    Resolves a name following CNAME redirects.  Only resolves the specified record
- type. CNAME will not be followed when the requested type is CNAME.
+ it (the first time) as A, then AAAA, then SRV, CNAME will not be tried. If succesful, a second lookup
+ will now try SRV, A, AAAA, CNAME.
 
 
     <h3>Parameters:</h3>
@@ -239,14 +247,20 @@
          Name to resolve
         </li>
         <li><span class="parameter">r_opts</span>
-         Same as the openresty <code>query</code> method (defaults to A type query)
+         Options table, see remark about the <code>qtype</code> field above
+        </li>
+        <li><span class="parameter">dns_cache_only</span>
+         Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
+        </li>
+        <li><span class="parameter">r</span>
+         (optional) dns resolver object to use
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        A list of records. The list can be empty if the name is present on the server, but as a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
+        A list of records. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
     </ol>
 
 
@@ -255,28 +269,15 @@
 </dd>
     <dt>
     <a name = "stdError"></a>
-    <strong>stdError (result, err)</strong>
+    <strong>stdError ()</strong>
     </dt>
     <dd>
-    Standardizes the resolve output to more standard Lua errors.
+    Standardizes the <a href="../modules/dns.client.html#resolve">resolve</a> output to more standard Lua errors.
  Both <code>nil+error</code> and succesful lookups are passed through.
  A server error table is returned as <code>nil+error</code> (where <code>error</code> is a string extracted from the server error table).
  An empty response is returned as <code>response+error</code> (where <code>error</code> is 'dns query returned no results').
 
 
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">result</span>
-
-
-
-        </li>
-        <li><span class="parameter">err</span>
-
-
-
-        </li>
-    </ul>
 
     <h3>Returns:</h3>
     <ol>
@@ -298,7 +299,7 @@
 </dd>
     <dt>
     <a name = "toip"></a>
-    <strong>toip (qname, port, dns_cache_only)</strong>
+    <strong>toip (qname, port, dns_cache_only, r)</strong>
     </dt>
     <dd>
     Resolves to an IP and port number.
@@ -317,7 +318,10 @@
          (optional) default port number to return if none was found in the lookup chain
         </li>
         <li><span class="parameter">dns_cache_only</span>
-         (optional) if truthy, no dns queries will be performed, only cache lookups.
+         (optional) if truthy, no dns queries will be performed, only cache lookups
+        </li>
+        <li><span class="parameter">r</span>
+         (optional) dns resolver object to use
         </li>
     </ul>
 
@@ -338,7 +342,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.3</a></i>
-<i style="float:right;">Last updated 2016-08-26 15:33:17 </i>
+<i style="float:right;">Last updated 2016-09-02 14:26:28 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
