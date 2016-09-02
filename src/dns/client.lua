@@ -514,19 +514,26 @@ end
 --- Implements tcp-connect method with dns resolution.
 -- This builds on top of `toip`. If the name resolves to an SRV record, 
 -- the port returned by the DNS server will override the one provided.
+-- __NOTE__: can also be used for other connect methods; http/redis as long as
+-- the argument order is the same
 -- @function connect
 -- @param sock the socket to connect
 -- @param host hostname to connect to
 -- @param port port to connect to
 -- @param opts the options table
 -- @return success, or nil + error
-local function connect(sock, host, port, opts)
+local function connect(sock, host, port, sock_opts)
   local target_ip, target_port = toip(host, port)
   
   if not target_ip then 
     return nil, target_port 
   else
-    return sock:connect(target_ip, target_port, opts)
+    -- need to do the extra check here: https://github.com/openresty/lua-nginx-module/issues/860
+    if not sock_opts then
+      return sock:connect(target_ip, target_port)
+    else
+      return sock:connect(target_ip, target_port, sock_opts)
+    end
   end
 end
 
