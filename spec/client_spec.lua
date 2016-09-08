@@ -29,36 +29,36 @@ describe("Testing the DNS client", function()
   end)
 
   it("Tests fetching a TXT record", function()
-    client:init()
+    assert(client:init())
 
     local host = "txttest.thijsschreijer.nl"
     local typ = client.TYPE_TXT
 
-    local answers = client.resolve(host, { qtype = typ })
+    local answers = assert(client.resolve(host, { qtype = typ }))
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
     assert.are.equal(#answers, 1)
   end)
 
   it("Tests fetching a CNAME record", function()
-    client:init()
+    assert(client:init())
 
     local host = "smtp.thijsschreijer.nl"
     local typ = client.TYPE_CNAME
 
-    local answers = client.resolve(host, { qtype = typ })
+    local answers = assert(client.resolve(host, { qtype = typ }))
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
     assert.are.equal(#answers, 1)
   end)
   
   it("Tests expire and touch times", function()
-    client:init()
+    assert(client:init())
 
     local host = "txttest.thijsschreijer.nl"
     local typ = client.TYPE_TXT
 
-    local answers = client.resolve(host, { qtype = typ })
+    local answers = assert(client.resolve(host, { qtype = typ }))
 
     local now = gettime()
     local touch_diff = math.abs(now - answers.touch)
@@ -72,8 +72,8 @@ describe("Testing the DNS client", function()
 
     -- fetch again, now from cache
     local oldtouch = answers.touch
-    local answers2 = client.resolve(host, { qtype = typ })
-    
+    local answers2 = assert(client.resolve(host, { qtype = typ }))
+
     assert.are.equal(answers, answers2) -- cached table, so must be same
     assert.are.not_equal(oldtouch, answers.touch)    
     
@@ -88,12 +88,12 @@ describe("Testing the DNS client", function()
   end)
 
   it("Tests fetching multiple A records", function()
-    client:init()
+    assert(client:init())
 
     local host = "atest.thijsschreijer.nl"
     local typ = client.TYPE_A
 
-    local answers = client.resolve(host, { qtype = typ })
+    local answers = assert(client.resolve(host, { qtype = typ }))
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
     assert.are.equal(host, answers[2].name)
@@ -102,11 +102,11 @@ describe("Testing the DNS client", function()
   end)
 
   it("Tests fetching A record redirected through 2 CNAME records", function()
-    client:init()
+    assert(client:init({no_recurse=true}))
 
     local host = "smtp.thijsschreijer.nl"
-    local typ = client.TYPE_A
-    local answers = client.resolve(host, { qtype = typ })
+    local typ = client.TYPE_A  -- do not specify type on the request to use the lookup chain
+    local answers = assert(client.resolve(host, { qtype = nil }))
 
     assert.are.not_equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
@@ -129,13 +129,13 @@ describe("Testing the DNS client", function()
   end)
 
   it("Tests fetching multiple SRV records (un-typed)", function()
-    client:init()
+    assert(client:init())
 
     local host = "srvtest.thijsschreijer.nl"
     local typ = client.TYPE_SRV
 
     -- un-typed; so fetch using `resolve` method instead of `resolve_type`.
-    local answers = client.resolve(host)
+    local answers = assert(client.resolve(host))
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
     assert.are.equal(host, answers[2].name)
@@ -146,14 +146,14 @@ describe("Testing the DNS client", function()
   end)
 
   it("Tests fetching multiple SRV records through CNAME (un-typed)", function()
-    client:init()
+    assert(client:init())
 
     local host = "cname2srv.thijsschreijer.nl"
     local typ = client.TYPE_SRV
 
     -- un-typed; so fetch using `resolve` method instead of `resolve_type`.
-    local answers = client.resolve(host)
-    
+    local answers = assert(client.resolve(host))
+
     -- first check CNAME
     local key = client.TYPE_CNAME..":"..host
     local entry = client.__cache[key]
@@ -171,54 +171,54 @@ describe("Testing the DNS client", function()
   end)
 
   it("Tests fetching non-type-matching records", function()
-    client:init()
+    assert(client:init())
 
     local host = "srvtest.thijsschreijer.nl"
     local typ = client.TYPE_A   --> the entry is SRV not A
 
-    local answers = client.resolve(host, {qtype = typ})
+    local answers = assert(client.resolve(host, {qtype = typ}))
     assert.are.equal(#answers, 0)  -- returns empty table
   end)
 
   it("Tests fetching non-existing records", function()
-    client:init()
+    assert(client:init())
 
     local host = "IsNotHere.thijsschreijer.nl"
 
-    local answers = client.resolve(host)
+    local answers = assert(client.resolve(host))
     assert.are.equal(#answers, 0)  -- returns server error table
     assert.is.not_nil(answers.errcode)
     assert.is.not_nil(answers.errstr)    
   end)
 
   it("Tests fetching IPv4 address", function()
-    client:init()
+    assert(client:init())
 
     local host = "1.2.3.4"
 
-    local answers = client.resolve(host)
+    local answers = assert(client.resolve(host))
     assert.are.equal(#answers, 1)
     assert.are.equal(client.TYPE_A, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
   end)
 
   it("Tests fetching IPv6 address", function()
-    client:init()
+    assert(client:init())
 
     local host = "1:2::3:4"
 
-    local answers = client.resolve(host)
+    local answers = assert(client.resolve(host))
     assert.are.equal(#answers, 1)
     assert.are.equal(client.TYPE_AAAA, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
   end)
 
   it("Tests fetching invalid IPv6 address", function()
-    client:init()
+    assert(client:init())
 
     local host = "1::2:3::4"  -- 2x double colons
 
-    local answers = client.resolve(host)
+    local answers = assert(client.resolve(host))
     assert.are.equal(#answers, 0)  -- returns server error table
     assert.are.equal(3, answers.errcode)
     assert.are.equal("name error", answers.errstr)    
@@ -244,7 +244,7 @@ describe("Testing the DNS client", function()
 1234::1234 kong.for.president
       
 ]])
-    client:init({hosts = f})
+    assert(client:init({hosts = f}))
     os.remove(f)
     
     local answers, err
@@ -265,9 +265,9 @@ describe("Testing the DNS client", function()
 
   describe("Testing the toip() function", function()
     it("A/AAAA-record, round-robin",function()
-      client:init()
+      assert(client:init())
       local host = "atest.thijsschreijer.nl"
-      local answers = client.resolve(host)
+      local answers = assert(client.resolve(host))
       answers.last_index = nil -- make sure to clean
       local ips = {}
       for _,rec in ipairs(answers) do ips[rec.address] = true end
@@ -286,16 +286,16 @@ describe("Testing the DNS client", function()
       end
     end)
     it("SRV-record, round-robin on lowest prio",function()
-      client:init()
+      assert(client:init())
       local host = "srvtest.thijsschreijer.nl"
-      local answers = client.resolve(host)
+      local answers = assert(client.resolve(host))
       local answers2
       local low_prio = 1
       local prio2
       -- there is one non-ip entry, forwarding to www.thijsschreijer.nl, go find it
       for i, rec in ipairs(answers) do
         if rec.target:find("thijsschreijer") then
-          answers2 = client.resolve(rec.target)
+          answers2 = assert(client.resolve(rec.target))
           prio2 = i
         else
           -- record index of the ip address with the lowest priority
@@ -320,7 +320,7 @@ describe("Testing the DNS client", function()
       assert.is_nil(next(results))
     end)
     it("port passing",function()
-      client:init()
+      assert(client:init())
       local ip, port, host 
       host = "atest.thijsschreijer.nl"
       ip,port = client.toip(host)
@@ -353,10 +353,10 @@ describe("Testing the DNS client", function()
   end)
 
   it("Tests initialization without i/o access", function()
-    local result, err = client:init({
+    local result, err = assert(client:init({
         hosts = {},  -- empty tables to parse to prevent defaulting to /etc/hosts
         resolv_conf = {},   -- and resolv.conf files
-      })
+      }))
     assert.is.True(result)
     assert.is.Nil(err)
     assert.are.equal(#client.__cache, 0) -- no hosts file record should have been imported
@@ -395,5 +395,9 @@ describe("Testing the DNS client", function()
   pending("verifies ttl and caching of errors and empty responses", function()
     --empty responses should be cached for a configurable time
     --error responses should be cached for a configurable time
-  end)  
+  end)
+
+  pending("verifies the polling of dns queries, retries, and wait times", function()
+    -- basically the local function _synchronized_query
+  end)
 end)

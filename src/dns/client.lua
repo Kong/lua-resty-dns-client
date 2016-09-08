@@ -24,6 +24,7 @@
 
 local utils = require("dns.utils")
 local fileexists = require("pl.path").exists
+local semaphore = require("ngx.semaphore").new
 
 local resolver, time, log, log_WARN
 -- check on nginx/OpenResty and fix some ngx replacements
@@ -175,6 +176,8 @@ local type_order = {
   _M.TYPE_SRV,
   _M.TYPE_CNAME,
 }
+local pool_max_wait
+local pool_max_retry
 
 --- initialize resolver. Will parse hosts and resolv.conf files/tables.
 -- If the `hosts` and `resolv_conf` fields are not provided, it will fall back on default
@@ -255,17 +258,76 @@ _M.init = function(options, secondary)
     end
   end
   
-  options.retrans = options.retrans or resolv.attempts
+  options.retrans = options.retrans or resolv.attempts or 5 -- 5 is openresty default
   
-  if not options.timeout and resolv.timeout then
-    options.timeout = resolv.timeout * 1000
+  if not options.timeout then
+    if resolv.timeout then
+      options.timeout = resolv.timeout * 1000
+    else
+      options.timeout = 2000  -- 2000 is openresty default
+    end
   end
   
   -- options.no_recurse = -- not touching this one for now
   
   config = options -- store it in our module level global
-
+  
+  pool_max_retry = 1  -- do one retry, dns resolver is already doing 'retrans' number of retries on top
+  pool_max_wait = options.timeout / 1000 * options.retrans 
+  
   return true
+end
+
+local _queue = setmetatable({}, {__mode = "v"})
+-- Performs a query, but only one at a time. While the query is waiting for a response, all
+-- other queries for the same name+type combo will be yielded until the first one 
+-- returns. All calls will then return the same response.
+-- Reason; prevent a dog-pile effect when a dns record expires. Especially under load many dns 
+-- queries would be fired at the dns server if we wouldn't do this.
+-- The `max_wait` is how long a thread waits for another to complete the query, after the timeout it will
+-- clear the token in the cache and retry (all others will become in line after this new one)
+-- The `max_retry` is how often we wait for another query to complete, after this number it will return
+-- an error. A retry will be performed when a) waiting for the other thread times out, or b) when the
+-- query by the other thread returns an error.
+-- The maximum delay would be `max_wait * max_retry`.
+local function _synchronized_query(qname, r_opts, r, count)
+  local key = qname..":"..r_opts.qtype
+  local item = _queue[key]
+  if not item then
+    -- no lookup being done so far
+    item = {
+      semaphore = semaphore(),
+    }
+    _queue[key] = item
+    item.result, item.err = r:query(qname, r_opts)
+if _M.__DEBUG then
+  print(require("pl.pretty").write(item))
+end
+    -- query done, but by now many others might be waiting for our result.
+    -- 1) stop new ones from adding to our lock/semaphore
+    _queue[key] = nil
+    -- 2) release all waiting threads
+    item.semaphore:post(math.max(item.semaphore:count() * -1, 1))
+    return item.result, item.err
+  else
+    -- lookup is on its way, wait for it
+    local ok, err = item.semaphore:wait(pool_max_wait)
+    if ok and item.result then
+      -- we were released, and have a query result from the
+      -- other thread, so all is well, return it
+      return item.result, item.err
+    else
+      -- there was an error, either a semaphore timeout, or 
+      -- a lookup error, so retry (retry actually means; do 
+      -- our own lookup instead of waiting for another lookup).
+      count = count or 1
+      if count > pool_max_retry then
+        return nil, "dns lookup pool exceeded retries ("..tostring(pool_max_retry).."): "..(item.error or err or "unknown")
+      end
+      _queue[key] = nil  -- don't block on the same thread again
+      return _synchronized_query(qname, r_opts, r, count + 1)
+    end
+  end
 end
 
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
@@ -325,7 +387,7 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
     }
   else
     -- not found in our cache, so perform query on dns servers
-    local answers, err = r:query(qname, r_opts)
+    local answers, err = _synchronized_query(qname, r_opts, r)
     if not answers then return answers, err end
     
     -- check our answers and store them in the cache
