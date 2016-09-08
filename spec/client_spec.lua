@@ -1,6 +1,7 @@
 local modname = "dns.client"
 local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname
+local pretty = require("pl.pretty").write
 
 local gettime, sleep
 if ngx then
@@ -12,6 +13,10 @@ else
   sleep = socket.sleep
 end
 
+-- simple debug function
+local debug = function(...)
+  print(pretty({...}))
+end
 
 describe("Testing the DNS client", function()
 
@@ -101,12 +106,26 @@ describe("Testing the DNS client", function()
     assert.are.equal(#answers, 2)
   end)
 
-  it("Tests fetching A record redirected through 2 CNAME records", function()
-    assert(client:init({no_recurse=true}))
+  it("Tests fetching A record redirected through 2 CNAME records (un-typed)", function()
+    assert(client:init())
+
+--[[
+This test might fail. Recurse flag is on by default. This means that the first return
+includes the cname records, but the second one (within the ttl) will only include the
+A-record.
+Note that this is not up to the client code, but it's done out of our control by the 
+dns server.
+If we turn on the 'no_recurse = true' option, then the dns server might refuse the request
+(error nr 5).
+So effectively the first time the test runs, it's ok. Immediately running it again will
+make it fail.
+
+This does not affect client side code, as the result is always the final A record.
+--]]
 
     local host = "smtp.thijsschreijer.nl"
-    local typ = client.TYPE_A  -- do not specify type on the request to use the lookup chain
-    local answers = assert(client.resolve(host, { qtype = nil }))
+    local typ = client.TYPE_A
+    local answers = assert(client.resolve(host))
 
     assert.are.not_equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
