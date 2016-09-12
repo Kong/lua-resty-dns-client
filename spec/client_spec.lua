@@ -118,7 +118,7 @@ dns server.
 If we turn on the 'no_recurse = true' option, then the dns server might refuse the request
 (error nr 5).
 So effectively the first time the test runs, it's ok. Immediately running it again will
-make it fail.
+make it fail. Wait for the ttl to expire, then it will work again.
 
 This does not affect client side code, as the result is always the final A record.
 --]]
