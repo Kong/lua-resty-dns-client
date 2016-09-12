@@ -33,6 +33,10 @@ describe("Testing the DNS client", function()
     _G._TEST = nil
   end)
 
+  it("Tests failing initialization with no nameservers", function()
+    assert.has.error(function() client:init( {nameservers = {} } ) end)    
+  end)
+
   it("Tests fetching a TXT record", function()
     assert(client:init())
 

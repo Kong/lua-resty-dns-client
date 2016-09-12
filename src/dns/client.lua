@@ -255,6 +255,7 @@ _M.init = function(options, secondary)
       end
     end
   end
+  assert(#options.nameservers > 0, "Invalid configuration, no dns servers found")
   
   options.retrans = options.retrans or resolv.attempts or 5 -- 5 is openresty default
   
