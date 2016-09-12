@@ -1,8 +1,7 @@
 --------------------------------------------------------------------------
 -- DNS client.
 --
--- Requires the `resolver` module. Either `resty.dns.resolver` when used with OpenResty
--- or the extracted version of that module for regular Lua.
+-- Works with OpenResty only. Requires the `resty.dns.resolver` module.
 -- 
 -- _NOTES_: 
 -- 
@@ -26,22 +25,10 @@ local utils = require("dns.utils")
 local fileexists = require("pl.path").exists
 local semaphore = require("ngx.semaphore").new
 
-local resolver, time, log, log_WARN
--- check on nginx/OpenResty and fix some ngx replacements
-local is_nginx = (ngx ~= nil)
-if is_nginx then
-  resolver = require("resty.dns.resolver")
-  time = ngx.now
-  log = ngx.log
-  log_WARN = ngx.WARN
-else
-  resolver = require("dns.resolver")
-  time = require("socket").gettime
-  log_WARN = "WARNING"
-  log = function(...) 
-    --print(...)
-  end
-end
+local resolver = require("resty.dns.resolver")
+local time = ngx.now
+local log = ngx.log
+local log_WARN = ngx.WARN
 
 -- resolver options
 local config
@@ -440,7 +427,7 @@ end
 -- @param qname Name to resolve
 -- @param r_opts Options table, see remark about the `qtype` field above
 -- @param dns_cache_only Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
--- @param r (optional) dns resolver object to use (use discouraged; for internal recursive usage)
+-- @param r (optional) dns resolver object to use (usage discouraged; for internal recursive use)
 -- @return A list of records. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 local function resolve(qname, r_opts, dns_cache_only, r, count)
   if count and (count > max_dns_recursion) then
@@ -531,7 +518,7 @@ end
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in the lookup chain
 -- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups
--- @param r (optional) dns resolver object to use (use discouraged; for internal recursive usage)
+-- @param r (optional) dns resolver object to use (usage discouraged; for internal recursive use)
 -- @return ip address + port, or nil+error
 local function toip(qname, port, dns_cache_only, r)
   if not (dns_cache_only or r) then
@@ -546,45 +533,45 @@ local function toip(qname, port, dns_cache_only, r)
     return nil, err
   end
 
-  local index = rec.last_index
+  local cursor = rec.last_cursor
   if rec[1].type == _M.TYPE_SRV then
     -- determine priority; stick to current or lower priority
     local last_prio
-    if not index then
+    if not cursor then
       -- new record, find lowest priority
       last_prio = rec[1].priority
       for _, r in ipairs(rec) do
         last_prio = math.min(last_prio, r.priority)
       end
-      index = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
+      cursor = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
     else
-      last_prio = rec[index].priority
+      last_prio = rec[cursor].priority
     end
     -- find record
     repeat
-      if index == #rec then
-        index = 1
+      if cursor == #rec then
+        cursor = 1
       else
-        index = index + 1
+        cursor = cursor + 1
       end
-    until rec[index].priority <= last_prio
-    rec.last_index = index
+    until rec[cursor].priority <= last_prio
+    rec.last_cursor = cursor
     -- our SRV might still contain a hostname, so recurse, with found port number
-    return toip(rec[index].target, rec[index].port, dns_cache_only, r)
+    return toip(rec[cursor].target, rec[cursor].port, dns_cache_only, r)
   else
     -- must be A or AAAA
     -- find next-up record
-    if index then
-      if index == #rec then
-        index = 1
+    if cursor then
+      if cursor == #rec then
+        cursor = 1
       else
-        index = index + 1
+        cursor = cursor + 1
       end
     else
-      index = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
+      cursor = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
     end
-    rec.last_index = index
-    return rec[index].address, port
+    rec.last_cursor = cursor
+    return rec[cursor].address, port
   end
 end
 

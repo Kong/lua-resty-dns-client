@@ -11,7 +11,8 @@
 --
 -- See `./examples/` for examples and output returned.
 --
--- @copyright Thijs Schreijer, Mashape Inc.
+-- @copyright 2016 Mashape Inc.
+-- @author Thijs Schreijer
 -- @license Apache 2.0
 
 
@@ -166,7 +167,7 @@ end
 -- NOTE: if the input is `nil+error` it will return the input, to allow for pass-through error handling
 -- @param config Options table, as parsed by `parse_resolv_conf()`, or an empty table to get only the environment options
 -- @return modified table
--- @usage local dnsutils = require("dnsutils")
+-- @usage local dnsutils = require("dns.utils")
 --
 -- -- errors are passed through, so this;
 -- local config, err = dnsutils.parse_resolf_conf()
