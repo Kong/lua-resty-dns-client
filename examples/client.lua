@@ -5,7 +5,7 @@ client.init()
 local function go(host, typ)
   local resp, err
   if typ then 
-    resp, err = client.resolve_type(host, {qtype = client["TYPE_"..typ]})
+    resp, err = client.resolve(host, {qtype = client["TYPE_"..typ]})
   else
     resp, err = client.resolve(host)
   end

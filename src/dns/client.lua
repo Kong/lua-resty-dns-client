@@ -48,6 +48,8 @@ local config
 
 -- recursion level before erroring out
 local max_dns_recursion = 20
+-- ttl (in seconds) for an empty dns result
+local empty_ttl = 1
 
 -- create module table
 local _M = {}
@@ -90,16 +92,25 @@ local cachelookup = function(qname, qtype, peek)
   return cached
 end
 
--- inserts an entry in the cache, except if the ttl=0, then it deletes it from the cache
-local cacheinsert = function(entry)
+-- inserts an entry in the cache
+-- Note: if the ttl=0, then it is also stored to enable 'cache-only' lookups
+-- params qname, qtype, qttl are IGNORED unless `entry` is an empty list
+local cacheinsert = function(entry, qname, qtype)
 
+  local ttl, key
   local e1 = entry[1]
-  local key = e1.type..":"..e1.name
-  
-  -- determine minimum ttl of all answer records
-  local ttl = e1.ttl
-  for i = 2, #entry do
-    ttl = math.min(ttl, entry[i].ttl)
+  if e1 then
+    key = e1.type..":"..e1.name
+    
+    -- determine minimum ttl of all answer records
+    ttl = e1.ttl
+    for i = 2, #entry do
+      ttl = math.min(ttl, entry[i].ttl)
+    end
+  else
+    -- list is empty, so no entries to grab data from
+    ttl = empty_ttl
+    key = qtype..":"..qname
   end
  
   -- set expire time
@@ -330,55 +341,59 @@ end
   end
 end
 
+local function check_ipv6(qname)
+  local check = qname
+  if check:sub(1,1) == ":" then check = "0"..check end
+  if check:sub(-1,-1) == ":" then check = check.."0" end
+  if check:find("::") then
+    -- expand double colon
+    local _, count = check:gsub(":","")
+    local ins = ":"..string.rep("0:", 8 - count)
+    check = check:gsub("::", ins, 1)  -- replace only 1 occurence!
+  end
+  if not check:match("^%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?$") then
+    -- not a valid IPv6 address
+    -- return a "server error" as a bad IPv4 would be looked up on 
+    -- the server and return a server error as well, for consistency.
+    return {
+      errcode = 3,
+      errstr = "name error",
+    }
+  end
+  local record = {{
+    address = qname,
+    type = _M.TYPE_AAAA,
+    class = 1,
+    name = qname,
+    ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
+  }}
+  cacheinsert(record)
+  return record
+end
+
+local function check_ipv4(qname)
+  local record = {{
+    address = qname,
+    type = _M.TYPE_A,
+    class = 1,
+    name = qname,
+    ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
+  }}
+  cacheinsert(record)
+  return record
+end
+
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
 -- only looks up the requested type.
 local function _lookup(qname, r_opts, dns_cache_only, r)
   local qtype = r_opts.qtype
   local record = cachelookup(qname, qtype, dns_cache_only)
-  
   if record then
-    -- cache hit
-    return record
+    return record                  -- cache hit
   elseif (qtype == _M.TYPE_AAAA) and qname:find(":") then
-    -- IPv6 or invalid
-    local check = qname
-    if check:sub(1,1) == ":" then check = "0"..check end
-    if check:sub(-1,-1) == ":" then check = check.."0" end
-    if check:find("::") then
-      -- expand double colon
-      local _, count = check:gsub(":","")
-      local ins = ":"..string.rep("0:", 8 - count)
-      check = check:gsub("::", ins, 1)  -- replace only 1 occurence!
-    end
-    if not check:match("^%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?$") then
-      -- not a valid IPv6 address
-      -- return a "server error" as a bad IPv4 would be looked up on 
-      -- the server and return a server error as well, for consistency.
-      return {
-        errcode = 3,
-        errstr = "name error",
-      }
-    end
-    record = {{
-      address = qname,
-      type = _M.TYPE_AAAA,
-      class = 1,
-      name = qname,
-      ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
-    }}
-    cacheinsert(record)
-    return record
+    return check_ipv6(qname)       -- IPv6 or invalid
   elseif (qtype == _M.TYPE_A) and qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
-    -- IPv4 address
-    record = {{
-      address = qname,
-      type = _M.TYPE_A,
-      class = 1,
-      name = qname,
-      ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
-    }}
-    cacheinsert(record)
-    return record
+    return check_ipv4(qname)       -- IPv4 address
   elseif dns_cache_only then
     -- no active lookups allowed, so return error
     return {
@@ -401,10 +416,8 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
       end
     end
 
-    if #answers > 0 then
-      -- now insert actual target record in cache
-      cacheinsert(answers)
-    end
+    -- now insert actual target record in cache
+    cacheinsert(answers, qname, qtype)
     return answers
   end
 end
@@ -427,13 +440,13 @@ end
 -- @param qname Name to resolve
 -- @param r_opts Options table, see remark about the `qtype` field above
 -- @param dns_cache_only Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
--- @param r (optional) dns resolver object to use
+-- @param r (optional) dns resolver object to use (use discouraged; for internal recursive usage)
 -- @return A list of records. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 local function resolve(qname, r_opts, dns_cache_only, r, count)
   if count and (count > max_dns_recursion) then
     return nil, "maximum dns recursion level reached"
   end
-  if (not dns_cache_only) and (not r) then
+  if not (dns_cache_only or r) then
     local err
     r, err = resolver:new(config)
     if not r then
@@ -469,8 +482,10 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
       records, err = _lookup(qname, opts, dns_cache_only, r)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
-      if records and (#records > 0) and (not dns_cache_only) then
-        cachesetsuccess(qname, qtype) -- set last succesful type resolved
+      if records and (#records > 0) then
+        if not dns_cache_only then 
+          cachesetsuccess(qname, qtype) -- set last succesful type resolved
+        end
         if qtype ~= _M.TYPE_CNAME then
           return records
         else
@@ -516,10 +531,10 @@ end
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in the lookup chain
 -- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups
--- @param r (optional) dns resolver object to use
+-- @param r (optional) dns resolver object to use (use discouraged; for internal recursive usage)
 -- @return ip address + port, or nil+error
 local function toip(qname, port, dns_cache_only, r)
-  if (not dns_cache_only) and (not r) then
+  if not (dns_cache_only or r) then
     local err
     r, err = resolver:new(config)
     if not r then
@@ -541,7 +556,7 @@ local function toip(qname, port, dns_cache_only, r)
       for _, r in ipairs(rec) do
         last_prio = math.min(last_prio, r.priority)
       end
-      index = 0
+      index = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
     else
       last_prio = rec[index].priority
     end
@@ -566,7 +581,7 @@ local function toip(qname, port, dns_cache_only, r)
         index = index + 1
       end
     else
-      index = 1
+      index = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
     end
     rec.last_index = index
     return rec[index].address, port

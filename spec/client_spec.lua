@@ -109,19 +109,19 @@ describe("Testing the DNS client", function()
   it("Tests fetching A record redirected through 2 CNAME records (un-typed)", function()
     assert(client:init())
 
---[[
-This test might fail. Recurse flag is on by default. This means that the first return
-includes the cname records, but the second one (within the ttl) will only include the
-A-record.
-Note that this is not up to the client code, but it's done out of our control by the 
-dns server.
-If we turn on the 'no_recurse = true' option, then the dns server might refuse the request
-(error nr 5).
-So effectively the first time the test runs, it's ok. Immediately running it again will
-make it fail. Wait for the ttl to expire, then it will work again.
+    --[[
+    This test might fail. Recurse flag is on by default. This means that the first return
+    includes the cname records, but the second one (within the ttl) will only include the
+    A-record.
+    Note that this is not up to the client code, but it's done out of our control by the 
+    dns server.
+    If we turn on the 'no_recurse = true' option, then the dns server might refuse the request
+    (error nr 5).
+    So effectively the first time the test runs, it's ok. Immediately running it again will
+    make it fail. Wait for the ttl to expire, then it will work again.
 
-This does not affect client side code, as the result is always the final A record.
---]]
+    This does not affect client side code, as the result is always the final A record.
+    --]]
 
     local host = "smtp.thijsschreijer.nl"
     local typ = client.TYPE_A
@@ -243,13 +243,61 @@ This does not affect client side code, as the result is always the final A recor
     assert.are.equal("name error", answers.errstr)    
   end)
   
-  pending("Tests fetching records from cache only",function()
+  it("Tests fetching records from cache only, expired and ttl = 0",function()
+    local expired_entry = {
+      {
+        type = client.TYPE_A,
+        address = "1.2.3.4",
+        class = 1,
+        name = "1.2.3.4",
+        ttl = 0, 
+      },
+      touch = 0,
+      expire = 0,  -- definitely expired
+    }
+    -- insert in the cache
+    client.__cache[expired_entry[1].type..":"..expired_entry[1].name] = expired_entry
+    local cache_count = #client.__cache
+
+    -- resolve this, cache only
+    local result = client.resolve("1.2.3.4", {qtype = expired_entry[1].type}, true)
+    
+    assert.are.equal(expired_entry, result)
+    assert.are.equal(cache_count, #client.__cache)  -- should not be deleted
+    assert.are.equal(expired_entry, client.__cache[expired_entry[1].type..":"..expired_entry[1].name])
   end)
 
-  pending("Tests fetching records with ttl=0 from cache only",function()
-  end)
+  it("Tests recursive lookups failure", function()
+    local entry1 = {
+      {
+        type = client.TYPE_CNAME,
+        cname = "bye.bye.world",
+        class = 1,
+        name = "hello.world",
+        ttl = 0, 
+      },
+      touch = 0,
+      expire = 0,
+    }
+    local entry2 = {
+      {
+        type = client.TYPE_CNAME,
+        cname = "hello.world",
+        class = 1,
+        name = "bye.bye.world",
+        ttl = 0, 
+      },
+      touch = 0,
+      expire = 0,
+    }
+    -- insert in the cache
+    client.__cache[entry1[1].type..":"..entry1[1].name] = entry1
+    client.__cache[entry2[1].type..":"..entry2[1].name] = entry2
 
-  pending("Tests fetching expired records from cache only",function()
+    -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
+    local result, err = client.resolve("hello.world", nil, true)
+    assert.is_nil(result)
+    assert.are.equal("maximum dns recursion level reached", err)
   end)
 
   it("Tests resolving from the /etc/hosts file", function()
@@ -360,15 +408,76 @@ This does not affect client side code, as the result is always the final A recor
       assert.is_number(port)
       assert.is_not.equal(0, port)
     end)
-    pending("Tests resolving from cache only",function()
-    end)
+    it("Tests resolving from cache only, expired and ttl = 0",function()
+      local expired_entry = {
+        {
+          type = client.TYPE_A,
+          address = "5.6.7.8",
+          class = 1,
+          name = "hello.world",
+          ttl = 0, 
+        },
+        touch = 0,
+        expire = 0,  -- definitely expired
+      }
+      -- insert in the cache
+      client.__cache[expired_entry[1].type..":"..expired_entry[1].name] = expired_entry
+      local cache_count = #client.__cache
 
-    pending("Tests resolving with ttl=0 from cache only",function()
-    end)
+      -- resolve this, cache only
+      local result, port = assert(client.toip("hello.world", 9876, true))
 
-    pending("Tests resolving expired records from cache only",function()
+      assert.are.equal(expired_entry[1].address, result)
+      assert.are.equal(9876, port)
+      assert.are.equal(cache_count, #client.__cache)  -- should not be deleted
+      assert.are.equal(expired_entry, client.__cache[expired_entry[1].type..":"..expired_entry[1].name])
     end)
+    it("Tests handling of empty responses", function()
+      local empty_entry = {
+        touch = 0,
+        expire = 0,
+      }
+      -- insert in the cache
+      client.__cache[client.TYPE_A..":".."hello.world"] = empty_entry
 
+      -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
+      local ip, port = client.toip("hello.world", 123, true)
+      assert.is_nil(ip)
+      assert.is.string(port)  -- error message
+    end)
+    it("Tests recursive lookups failure", function()
+      local entry1 = {
+        {
+          type = client.TYPE_CNAME,
+          cname = "bye.bye.world",
+          class = 1,
+          name = "hello.world",
+          ttl = 0, 
+        },
+        touch = 0,
+        expire = 0,
+      }
+      local entry2 = {
+        {
+          type = client.TYPE_CNAME,
+          cname = "hello.world",
+          class = 1,
+          name = "bye.bye.world",
+          ttl = 0, 
+        },
+        touch = 0,
+        expire = 0,
+      }
+      -- insert in the cache
+      client.__cache[entry1[1].type..":"..entry1[1].name] = entry1
+      client.__cache[entry2[1].type..":"..entry2[1].name] = entry2
+
+      -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
+      local ip, port = client.toip("hello.world", 123, true)
+      assert.is_nil(ip)
+      assert.are.equal("maximum dns recursion level reached", port)
+    end)
+    
   end)
 
   it("Tests initialization without i/o access", function()
