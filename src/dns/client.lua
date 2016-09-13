@@ -177,7 +177,8 @@ local type_order = {
 local pool_max_wait
 local pool_max_retry
 
---- initialize resolver. Will parse hosts and resolv.conf files/tables.
+--- initialize resolver. When called multiple times, it will clear the cache.
+-- Will parse hosts and resolv.conf files/tables.
 -- If the `hosts` and `resolv_conf` fields are not provided, it will fall back on default
 -- filenames (see the `dns.utils` module for details). To prevent any potential 
 -- blocking i/o all together, manually fetch the contents of those files and 
@@ -196,6 +197,7 @@ _M.init = function(options, secondary)
   
   local resolv, hosts, err
   options = options or {}
+  cache = {}  -- clear cache on re-initialization
   
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
   local resolvconffile = options.resolv_conf or utils.DEFAULT_RESOLV_CONF
