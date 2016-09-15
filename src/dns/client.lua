@@ -244,7 +244,7 @@ _M.init = function(options, secondary)
     resolv = {}
   end
   
-  if not options.nameservers and resolv.nameserver then
+  if #(options.nameservers or {}) == 0 and resolv.nameserver then
     options.nameservers = {}
     -- some systems support port numbers in nameserver entries, so must parse those
     for i, address in ipairs(resolv.nameserver) do
