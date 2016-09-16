@@ -16,12 +16,12 @@ description = {
 }
 dependencies = {
   "lua >= 5.1, < 5.4",
-  "penlight > 1.1, < 2.0",
+  "penlight > 1.1, < 2.0"
 }
 build = {
   type = "builtin",
   modules = {
     ["dns.utils"] = "src/dns/utils.lua",
-    ["dns.client"] = "src/dns/client.lua",
-  },
+    ["dns.client"] = "src/dns/client.lua"
+  }
 }
