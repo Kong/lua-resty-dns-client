@@ -1,8 +1,8 @@
 package = "dns"
 version = "0.1.0-1"
 source = {
-  url = "git://github.com/Mashape/dns.lua",
-  tag = "0.1.0"
+  url = "https://github.com/Mashape/dns.lua/archive/0.1.0.tar.gz",
+  dir = "dns.lua-0.1.0"
 }
 description = {
   summary = "DNS library",
