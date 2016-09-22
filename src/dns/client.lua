@@ -233,17 +233,16 @@ _M.init = function(options, secondary)
         }})
     end
   end
-  
-  
+
   if ((type(resolvconffile) == "string") and (fileexists(resolvconffile)) or
      (type(resolvconffile) == "table")) then
-    resolv, err = utils.apply_env(utils.parse_resolv_conf(options.resolve_conf))
+    resolv, err = utils.apply_env(utils.parse_resolv_conf(resolvconffile))
     if not resolv then return resolv, err end
   else
     log(log_WARN, "Resolv.conf file not found: "..tostring(resolvconffile))  
     resolv = {}
   end
-  
+
   if #(options.nameservers or {}) == 0 and resolv.nameserver then
     options.nameservers = {}
     -- some systems support port numbers in nameserver entries, so must parse those
@@ -257,7 +256,7 @@ _M.init = function(options, secondary)
       end
     end
   end
-  assert(#options.nameservers > 0, "Invalid configuration, no dns servers found")
+  assert(#(options.nameservers or {}) > 0, "Invalid configuration, no dns servers found")
   
   options.retrans = options.retrans or resolv.attempts or 5 -- 5 is openresty default
   
@@ -301,9 +300,6 @@ local function _synchronized_query(qname, r_opts, r, count)
     }
     _queue[key] = item
     item.result, item.err = r:query(qname, r_opts)
-if _M.__DEBUG then
-  print(require("pl.pretty").write(item))
-end
     -- query done, but by now many others might be waiting for our result.
     -- 1) stop new ones from adding to our lock/semaphore
     _queue[key] = nil
@@ -612,7 +608,7 @@ _M.connect = connect
 
 -- export the local cache in case we're testing
 if _TEST then 
-  _M.__cache = cache 
+  _M.getcache = function() return cache end 
 end 
 
 return _M

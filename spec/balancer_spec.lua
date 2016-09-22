@@ -200,22 +200,16 @@ describe("Loadbalancer", function()
     _G._TEST = true  -- expose internals for test purposes
     balancer = require "dns.balancer"
     client = require "dns.client"
-    dnscache = client.__cache
-    
+  end)
+  
+  before_each(function()
     assert(client:init {
       hosts = {}, 
       resolv_conf = {
         "nameserver 8.8.8.8"
       },
     })
-  end)
-
-  teardown(function()
-    client.purge_cache(0)
-  end)
-  
-  before_each(function()
-    client.purge_cache(0)
+    dnscache = client.getcache()  -- must be after 'init' call because it is replaced
   end)
   
   describe("unit tests", function()

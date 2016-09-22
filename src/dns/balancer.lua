@@ -494,6 +494,12 @@ end
 -- - `dns` (required) a configured `dns.client` object for querying the dns server
 -- @param opts table with options
 -- @return new balancer object or nil+error
+-- @usage -- hosts
+-- local hosts = {
+--   "mashape.com",                                     -- name only, as string
+--   { name = "gelato.io" },                            -- name only, as table
+--   { name = "getkong.org", port = 80, weight = 25 },  -- fully specified, as table
+-- }
 _M.new = function(opts)
   assert(type(opts) == "table", "Expected an options table, but got; "..type(opts))
   assert(type(opts.hosts) == "table", "expected option 'hosts' to be a table")
@@ -549,7 +555,7 @@ _M.new = function(opts)
       hosts[i] = { name = host }
     end
   end
-  table.sort(hosts, function(a,b) return a.name < b.name end)
+  table.sort(hosts, function(a,b) return (a.name..":"..(a.port or "") < b.name..":"..(b.port or "")) end)
   -- Insert the hosts
   for _, host in ipairs(hosts) do
     _addHost(self, host.name, host.port, host.weight)

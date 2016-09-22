@@ -34,7 +34,10 @@ describe("Testing the DNS client", function()
   end)
 
   it("Tests failing initialization with no nameservers", function()
-    assert.has.error(function() client:init( {nameservers = {} } ) end)    
+    -- empty list fallsback on resolv.conf
+    assert.has.no.error(function() client:init( {nameservers = {} } ) end)
+
+    assert.has.error(function() client:init( {nameservers = {}, resolv_conf = {} } ) end)    
   end)
 
   it("Tests fetching a TXT record", function()
@@ -137,13 +140,13 @@ describe("Testing the DNS client", function()
     
     -- check first CNAME
     local key1 = client.TYPE_CNAME..":"..host
-    local entry1 = client.__cache[key1]
+    local entry1 = client.getcache()[key1]
     assert.are.equal(host, entry1[1].name)
     assert.are.equal(client.TYPE_CNAME, entry1[1].type)
   
     -- check second CNAME
     local key2 = client.TYPE_CNAME..":"..entry1[1].cname
-    local entry2 = client.__cache[key2]
+    local entry2 = client.getcache()[key2]
     assert.are.equal(entry1[1].cname, entry2[1].name)
     assert.are.equal(client.TYPE_CNAME, entry2[1].type)
     
@@ -179,7 +182,7 @@ describe("Testing the DNS client", function()
 
     -- first check CNAME
     local key = client.TYPE_CNAME..":"..host
-    local entry = client.__cache[key]
+    local entry = client.getcache()[key]
     assert.are.equal(host, entry[1].name)
     assert.are.equal(client.TYPE_CNAME, entry[1].type)
     
@@ -209,6 +212,7 @@ describe("Testing the DNS client", function()
     local host = "IsNotHere.thijsschreijer.nl"
 
     local answers = assert(client.resolve(host))
+--    assert.equal({}, answers)
     assert.are.equal(#answers, 0)  -- returns server error table
     assert.is.not_nil(answers.errcode)
     assert.is.not_nil(answers.errstr)    
@@ -260,15 +264,15 @@ describe("Testing the DNS client", function()
       expire = 0,  -- definitely expired
     }
     -- insert in the cache
-    client.__cache[expired_entry[1].type..":"..expired_entry[1].name] = expired_entry
-    local cache_count = #client.__cache
+    client.getcache()[expired_entry[1].type..":"..expired_entry[1].name] = expired_entry
+    local cache_count = #client.getcache()
 
     -- resolve this, cache only
     local result = client.resolve("1.2.3.4", {qtype = expired_entry[1].type}, true)
     
     assert.are.equal(expired_entry, result)
-    assert.are.equal(cache_count, #client.__cache)  -- should not be deleted
-    assert.are.equal(expired_entry, client.__cache[expired_entry[1].type..":"..expired_entry[1].name])
+    assert.are.equal(cache_count, #client.getcache())  -- should not be deleted
+    assert.are.equal(expired_entry, client.getcache()[expired_entry[1].type..":"..expired_entry[1].name])
   end)
 
   it("Tests recursive lookups failure", function()
@@ -295,8 +299,8 @@ describe("Testing the DNS client", function()
       expire = 0,
     }
     -- insert in the cache
-    client.__cache[entry1[1].type..":"..entry1[1].name] = entry1
-    client.__cache[entry2[1].type..":"..entry2[1].name] = entry2
+    client.getcache()[entry1[1].type..":"..entry1[1].name] = entry1
+    client.getcache()[entry2[1].type..":"..entry2[1].name] = entry2
 
     -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
     local result, err = client.resolve("hello.world", nil, true)
@@ -425,16 +429,16 @@ describe("Testing the DNS client", function()
         expire = 0,  -- definitely expired
       }
       -- insert in the cache
-      client.__cache[expired_entry[1].type..":"..expired_entry[1].name] = expired_entry
-      local cache_count = #client.__cache
+      client.getcache()[expired_entry[1].type..":"..expired_entry[1].name] = expired_entry
+      local cache_count = #client.getcache()
 
       -- resolve this, cache only
       local result, port = assert(client.toip("hello.world", 9876, true))
 
       assert.are.equal(expired_entry[1].address, result)
       assert.are.equal(9876, port)
-      assert.are.equal(cache_count, #client.__cache)  -- should not be deleted
-      assert.are.equal(expired_entry, client.__cache[expired_entry[1].type..":"..expired_entry[1].name])
+      assert.are.equal(cache_count, #client.getcache())  -- should not be deleted
+      assert.are.equal(expired_entry, client.getcache()[expired_entry[1].type..":"..expired_entry[1].name])
     end)
     it("Tests handling of empty responses", function()
       local empty_entry = {
@@ -442,7 +446,7 @@ describe("Testing the DNS client", function()
         expire = 0,
       }
       -- insert in the cache
-      client.__cache[client.TYPE_A..":".."hello.world"] = empty_entry
+      client.getcache()[client.TYPE_A..":".."hello.world"] = empty_entry
 
       -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
       local ip, port = client.toip("hello.world", 123, true)
@@ -473,8 +477,8 @@ describe("Testing the DNS client", function()
         expire = 0,
       }
       -- insert in the cache
-      client.__cache[entry1[1].type..":"..entry1[1].name] = entry1
-      client.__cache[entry2[1].type..":"..entry2[1].name] = entry2
+      client.getcache()[entry1[1].type..":"..entry1[1].name] = entry1
+      client.getcache()[entry2[1].type..":"..entry2[1].name] = entry2
 
       -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
       local ip, port = client.toip("hello.world", 123, true)
@@ -486,12 +490,13 @@ describe("Testing the DNS client", function()
 
   it("Tests initialization without i/o access", function()
     local result, err = assert(client:init({
+        nameservers = { "8.8.8.8:53" },
         hosts = {},  -- empty tables to parse to prevent defaulting to /etc/hosts
         resolv_conf = {},   -- and resolv.conf files
       }))
     assert.is.True(result)
     assert.is.Nil(err)
-    assert.are.equal(#client.__cache, 0) -- no hosts file record should have been imported
+    assert.are.equal(#client.getcache(), 0) -- no hosts file record should have been imported
   end)
   
   describe("the stdError function", function()

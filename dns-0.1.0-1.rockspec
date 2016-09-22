@@ -23,5 +23,6 @@ build = {
   modules = {
     ["dns.utils"] = "src/dns/utils.lua",
     ["dns.client"] = "src/dns/client.lua",
+    ["dns.balancer"] = "src/dns/balancer.lua",
   },
 }
