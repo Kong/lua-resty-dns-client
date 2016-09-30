@@ -522,6 +522,9 @@ end
 local function toip(qname, port, dns_cache_only, r)
   if not (dns_cache_only or r) then
     local err
+-- TODO: do not create resolver objects unless necessary
+-- so add a third return value to each call, the `r` used as resolver
+-- also to be fixed in other places!!!
     r, err = resolver:new(config)
     if not r then
       return r, err

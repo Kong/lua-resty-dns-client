@@ -298,7 +298,53 @@ describe("Loadbalancer", function()
     end)
   end)
   
-  
+  describe("getting targets", function()
+    it("gets an IP address and port number round-robin", function()
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          {name = "1.1.1.1", port = 123, weight = 100},
+          {name = "2.2.2.2", port = 321, weight = 50},
+        },
+        dns = client,
+        wheelsize = 15,
+      })
+      -- run down the wheel twice
+      local res = {}
+      for n = 1, 15*2 do
+        local addr, port = b:getPeer()
+        res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
+      end
+      assert.equal(20, res["1.1.1.1:123"])
+      assert.equal(10, res["2.2.2.2:321"])
+    end)
+    it("gets an IP address and port number; consistent hashing", function()
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          {name = "1.1.1.1", port = 123, weight = 100},
+          {name = "2.2.2.2", port = 321, weight = 50},
+        },
+        dns = client,
+        wheelsize = 15,
+      })
+      -- run down the wheel, hitting all slots once
+      local res = {}
+      for n = 1, 15 do
+        local addr, port = b:getPeer(n)
+        res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
+      end
+      assert.equal(10, res["1.1.1.1:123"])
+      assert.equal(5, res["2.2.2.2:321"])
+      -- hit one slot 15 times
+      local res = {}
+      local hash = 6  -- just pick one
+      for n = 1, 15 do
+        local addr, port = b:getPeer(hash)
+        res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
+      end
+      assert(15 == res["1.1.1.1:123"] or nil == res["1.1.1.1:123"], "mismatch")
+      assert(15 == res["2.2.2.2:321"] or nil == res["2.2.2.2:321"], "mismatch")
+    end)
+  end)
 
   describe("slot manipulation", function()
     it("equal weights and 'fitting' slots", function()
@@ -502,7 +548,6 @@ describe("Loadbalancer", function()
         dns = client,
         wheelsize = 20,
       })
---require("mobdebug").start()
       b:addHost("getkong.org", 8080, 10)
       b:removeHost("getkong.org", 8080)
       assert.has.error(

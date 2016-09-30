@@ -8,10 +8,22 @@
 -- @copyright Mashape Inc. All rights reserved.
 -- @license Apache 2.0
 
+
+-- Recalculating is done on 2 occasions;
+-- 1) when removing a host, weight  will be set to 0, recalculated, and erased.
+-- 2) when updating dns records. Which happens in 2 places;
+--    A - when adding a new host, dns is queried and addresses added
+--    B - when getting a peer. ttl is checked, and dns requeried. Addresses
+--        will be added/updated/deleted
+-- 
+-- Only dns is non-deterministic as it might occur when a peer is requested.
+-- Adding/deleting hosts, etc (as long as done in the same order) is always deterministic.
+
 local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
 
 local dns = require "dns.client"
+local time = ngx.now
 
 local dumptree = function(balancer, marker)
   local pref = ""
@@ -60,7 +72,7 @@ function mt_addr:addSlots(slotList, count)
     local size = #slots
     if count > #slotList then 
       error("more slots requested to be added ("..count..") than provided ("..#slotList..
-            ") for host '"..self.host.hostname..":"..self.port.."' ("..self.ip..")") 
+            ") for host '"..self.host.hostname..":"..self.port.."' ("..tostring(self.ip)..")") 
     end
     
     local lsize = #slotList + 1
@@ -70,9 +82,7 @@ function mt_addr:addSlots(slotList, count)
       slotList[idx] = nil
       slots[size + i] = slot
       
-      -- TODO: implement whatever needs to be done with the added slot...
       slot.address = self
-    
     end
   end
   return self
@@ -99,33 +109,29 @@ function mt_addr:dropSlots(slotList, count)
       slots[idx] = nil
       slotList[lsize + i] = slot
       
-      -- TODO: implement whatever needs to be done with the removed slot...
       slot.address = nil
-    
     end
   end
   return slotList
 end
 
 --- disables an address object from the balancer.
--- It will set its weight to 0 and the `deleteMe` flag to `true`. So the next slot-recalculation
--- will delete the address.
+-- It will set its weight to 0, so the next slot-recalculation
+-- can delete the address by calling `delete`.
 -- @see delete
 function mt_addr:disable()
   -- weight to 0; force dropping all slots assigned, before actually removing
   self.host:addWeight(-self.weight)
-  self.weight = 0       
---  self.deleteMe = true
+  self.weight = 0
 end
 
---[[- deletes an address object.
--- The address must have been disabled before. Deleting is automatically done after weight recalculation.
+-- cleans up an address object.
+-- The address must have been disabled before.
 -- @see disable
 function mt_addr:delete()
-  assert(self.deleteMe, "Cannot delete address that hasn't been disabled first")
+  assert(#self.slots == 0, "Cannot delete address while it contains slots")
   self.host = nil
-  -- todo: remove from host as well? any other references to clean up?
-end --]]
+end
 
 --- creates a new address object.
 -- @param ip the upstream ip address
@@ -142,7 +148,6 @@ local newAddress = function(ip, port, weight, host)
     host = host,          -- the host this address belongs to
     slots = {},           -- the slots assigned to this address
     index = nil,          -- reverse index in the ordered part of the containing balancer
---    deleteMe = nil,       -- when `true` a recalculation will remove this address from the balancer
   }
   for name, method in pairs(mt_addr) do addr[name] = method end
   
@@ -197,13 +202,13 @@ sorts = setmetatable(sorts,{
   })
 
 --- Queries the DNS for this hostname. Updates the underlying address objects.
--- @return `true` when something changed and a recalculation of the weights is required
-function mt_host:queryDns()
+-- @return `true` or nil+error
+function mt_host:queryDns(cache_only)
   local dns = self.balancer.dns
   local oldQuery = self.lastQuery or {}
   local oldSorted = self.lastSorted or {}
   
-  local newQuery, err = dns.stdError(dns.resolve(self.hostname))
+  local newQuery, err = dns.stdError(dns.resolve(self.hostname, nil, cache_only))
   if err then
     -- TODO: dns lookup failed... what TODO, set weight to 0? after how much time to retry? keep failure count, with a max before failing?
     return nil, err
@@ -211,24 +216,27 @@ function mt_host:queryDns()
   
   -- we're using the dns' own cache to check for changes.
   -- if our previous result is the same table as the current result, then nothing changed
-  if oldQuery == newQuery then return false end  -- exit, nothing changed
+  if oldQuery == newQuery then return true end  -- exit, nothing changed
   
   -- a new dns record, was returned, but contents could still be the same, so check for changes
   -- sort table in unique order
   local rtype = newQuery[1].type
   local newSorted = sorts[rtype](newQuery)
-  local changed = false
+  local dirty
+  local delete = {}
+  self.expire = newQuery.expire
   
   if rtype ~= (oldSorted[1] or {}).type then
     -- DNS recordtype changed; recycle everything
     for i = #oldSorted, 1, -1 do  -- reverse order because we're deleting items
-      self:removeAddress(oldSorted[i])
+      delete[#delete+1] = self:removeAddress(oldSorted[i])
     end
     for _, entry in ipairs(newSorted) do -- use sorted table for deterministic order
       self:addAddress(entry)
     end
-    changed = true
+    dirty = true
   else
+    -- new record, but the same type
     local topPriority = newSorted[1].priority
     local done = {}
     local dCount = 0
@@ -240,9 +248,9 @@ function mt_host:queryDns()
       if not oldEntry then
         -- it's a new entry
         self:addAddress(newEntry)
-        changed = true
+        dirty = true
       else
-        -- it already existed
+        -- it already existed (same ip, port and weight)
         done[key] = true
         dCount = dCount + 1
       end
@@ -252,16 +260,25 @@ function mt_host:queryDns()
       -- new query result
       for _, entry in ipairs(oldSorted) do
         if not done[entry._balancer_sortkey] then
-          self:removeAddress(entry)
+          delete[#delete+1] = self:removeAddress(entry)
         end
       end
-      changed = true
+      dirty = true
     end
   end
-  
+    
   self.lastQuery = newQuery
   self.lastSorted = newSorted
-  return changed
+  
+  if dirty then -- changes imply we need to redistribute slots
+    self.balancer:redistributeSlots()
+    
+    -- delete addresses that we've disabled before (can only be done after redistribution)
+    for _, addr in ipairs(delete) do
+      addr:delete()
+    end
+  end
+  return true
 end
 
 --- Changes the host overall weight. It will also update the parent balancer object.
@@ -281,14 +298,65 @@ function mt_host:addAddress(entry)
   addresses[#addresses+1] = addr
 end
 
---- Removes an `address` object from the `host`.
+--- Looks up and disables an `address` object from the `host`.
 -- @param entry (table) DNS entry
+-- @return address object that was disabled
 function mt_host:removeAddress(entry)
-  error("not implemented")
-  self:addWeight(-entry.weight) 
+  -- first lookup address object
+  for _, addr in ipairs(self.addresses) do
+    if addr.ip == entry.address and addr.port == (entry.port or self.port) then
+      -- found it
+      addr:disable()
+      return addr
+    end
+  end
+end
+
+-- disables a host, by setting all adressess to 0
+-- Host can only be deleted after recalculating the slots!
+-- @return true
+function mt_host:disable()
+  -- set weights to 0
+  for _, addr in ipairs(self.addresses) do
+    addr:disable()
+  end
   
-  -- TODO: implement
+  return true
+end
+
+-- Cleans up a host. Only when its weight is 0.
+-- Should only be called AFTER recalculating slots
+-- @return true or throws an error if weight is non-0
+function mt_host:delete()
+  assert(self.weight == 0, "Cannot delete a host with a non-0 weight")
   
+  for i = #self.addresses, 1, -1 do  -- reverse traversal as we're deleting
+    self.addresses[i]:delete()
+  end
+  
+  self.balancer = nil
+end
+ 
+--- Gets address and port number from a specific slot owned by the host.
+-- The slot MUST be owned by the host. Call balancer:getPeer, never this one.
+-- access: balancer:getpeer->slot->address->host->returns addr+port
+function mt_host:getPeer(hashvalue, cache_only, slot)
+  
+  if self.expire and self.expire >= time() then
+    return slot.address.ip, slot.address.port
+  end
+
+  -- ttl expired, so must renew
+  local ok, err = self:queryDns(cache_only)
+  if not ok then
+    return nil, "failed to get peer for '"..self.hostname.."', due to dns failure: "..tostring(err)
+  end
+  if slot.address.host ~= self then
+    -- our slot has been reallocated to another host, so recurse to start over
+    return self.balancer:getPeer(hashvalue, cache_only)
+  end
+  -- nothing changed, return slot contents
+  return slot.address.ip, slot.address.port
 end
 
 --- creates a new host object.
@@ -309,8 +377,12 @@ local newHost = function(hostname, port, weight, balancer)
     lastQuery = nil,      -- last succesful dns query performed
     lastSorted = nil,     -- last succesful dns query, sorted for comparison
     addresses = {},       -- list of addresses (address objects) this host resolves to
+    expire = nil,         -- time when the dns query this host is based upon expires
   }
   for name, method in pairs(mt_host) do host[name] = method end
+
+  -- insert into our parent balancer before recalculating (in queryDns)
+  balancer.hosts[#balancer.hosts+1] = host
 
   local _, err = host:queryDns()
   if err then
@@ -359,11 +431,16 @@ function mt_balancer:addressIter()
 end
 
 --- Recalculates the weights. Updates the slot lists for all hostnames.
--- Must be called whenever a weight might have changed; added/removed hosts. 
+-- Must be called whenever a weight might have changed; added/removed hosts.
+-- @param slotList initial slotlist, to be used only upon creation of a balancer!
 -- @return balancer object
 function mt_balancer:redistributeSlots()
   local totalWeight = self.weight
   local slotList = {}
+  if self.__initSlotList then
+    slotList = self.__initSlotList
+    self.__initSlotList = nil
+  end
   
   -- NOTE: calculations are based on the "remaining" slots and weights, to prevent issues due to rounding;
   -- eg. 10 equal systems with 19 slots.
@@ -374,6 +451,7 @@ function mt_balancer:redistributeSlots()
   local weightLeft = totalWeight
   local slotsLeft = self.wheelSize
   for weight, address, host in self:addressIter() do
+
     local count
     if weightLeft == 0 then
       count = 0
@@ -398,12 +476,15 @@ function mt_balancer:redistributeSlots()
     slotsLeft = slotsLeft - count
     weightLeft = weightLeft - weight
   end
-  self.dirty = false
   return self
 end
 
--- see `addHost`
-local function _addHost(self, hostname, port, weight)
+--- Adds a host to the balancer.
+-- @param hostname hostname to add
+-- @param port (optional) the port to use (defaults to 80 if omitted)
+-- @param weight (optional) relative weight (defaults to 10 if omitted)
+-- @return balancer object, or throw an error if it already is in the list
+function mt_balancer:addHost(hostname, port, weight)
   assert(type(hostname) == "string", "expected a hostname (string), got "..tostring(hostname))
   port = port or DEFAULT_PORT
   weight = weight or DEFAULT_WEIGHT
@@ -415,21 +496,8 @@ local function _addHost(self, hostname, port, weight)
     end
   end
   
-  self.hosts[#self.hosts+1] = assert(newHost(hostname, port, weight, self))
+  assert(newHost(hostname, port, weight, self))
   return self
-end
-
---- Adds a host to the balancer.
--- @param hostname hostname to add
--- @param port (optional) the port to use (defaults to 80 if omitted)
--- @param weight (optional) relative weight (defaults to 10 if omitted)
--- @return balancer object, or throw an error if it already is in the list
-function mt_balancer:addHost(hostname, port, weight)
-  local result, err = _addHost(self, hostname, port, weight)
-  if self.dirty then
-    self:redistributeSlots()
-  end
-  return result, err
 end
 
 --- Removes a host from a balancer. Will not throw an error if the
@@ -445,14 +513,14 @@ function mt_balancer:removeHost(hostname, port)
       assert(#self.hosts > 1, "cannot remove the last host, at least one must remain")
       
       -- set weights to 0
-      for _, addr in ipairs(host.addresses) do
-        addr:disable()
-      end
-      -- recalculate
+      host:disable()
+  
+      -- removing hosts must always be recalculated to make sure
+      -- it's order is deterministic (only dns updates are not)
       self:redistributeSlots()
-      
-      -- remove host and update the references
-      host.balancer = nil
+
+      -- remove host
+      host:delete()
       table.remove(self.hosts, i)
       break
     end
@@ -460,28 +528,33 @@ function mt_balancer:removeHost(hostname, port)
   return self
 end
 
---- Updates the total weight. Will mark the balancer as 'dirty' for recalculation of the slots
+--- Updates the total weight.
 -- @param delta the in/decrease of the overall weight (negative for decrease)
 function mt_balancer:addWeight(delta)
   self.weight = self.weight + delta
-  self.dirty = true
 end
 
 --- Gets the next host according to the loadbalancing scheme.
+-- Hashvalue can be an integer from 1 to `wheelSize`, or a float from 0 up to but not including 1.
+-- @param hashvalue (optional) number for consistent hashing, round-robins if omitted
+-- @param cache_only If thruthy, no dns lookups will be done, only cache.
 -- @return hostname/ip and port
-function mt_balancer:getPeer()
-  -- get the next one
-  local pointer = (self.pointer or 0) + 1
-  if pointer > self.wheelSize then pointer = 1 end
-  self.pointer = pointer
+function mt_balancer:getPeer(hashvalue, cache_only)
+  local pointer
+  if not hashvalue then
+    -- get the next one
+    pointer = (self.pointer or 0) + 1
+    if pointer > self.wheelSize then pointer = 1 end
+    self.pointer = pointer
+  elseif hashvalue < 1 then
+    pointer = math.floor(self.wheelSize * hashvalue)
+  else
+    pointer = hashvalue
+  end
+  
   local slot = self.wheel[pointer]
   
-  local hostname, port = slot.host:getPeer(slot)
-  if not hostname then
-    -- Host could not deliver a name/ip, so something changed in the setup, try again
-    return self:getPeer()
-  end
-  return hostname, port
+  return slot.address.host:getPeer(hashvalue, cache_only, slot)
 end
 
 --- Creates a new balancer. The balancer is based on a wheel with slots. The slots will be randomly distributed
@@ -491,6 +564,7 @@ end
 --
 -- - `hosts` (required) containing hostnames and (optional) weights, must have at least one entry.
 -- - `wheelsize` (required) for total number of slots in the balancer
+-- - `order` (optional) if given, a list of random numbers, size `wheelsize`, used to randomize the wheel
 -- - `dns` (required) a configured `dns.client` object for querying the dns server
 -- @param opts table with options
 -- @return new balancer object or nil+error
@@ -505,12 +579,12 @@ _M.new = function(opts)
   assert(type(opts.hosts) == "table", "expected option 'hosts' to be a table")
   assert(#opts.hosts > 0, "at least one host entry is required in the 'hosts' option")
   assert(opts.dns, "expected option `dns` to be a configured dns client")
+  assert(not opts.order, "order argument is not implemented yet")
   
   local self = {
     -- properties
     hosts = {},    -- a table, index by both the hostname and index, the value being a host object
     weight = 0  ,  -- total weight of all hosts
-    dirty = false, -- if true, the slots need to be recalculated
     wheel = {},    -- wheel with entries (fully randomized)
     slots = {},    -- list of slots in no particular order
     wheelSize = opts.wheelsize or 1000, -- number of entries in the wheel
@@ -556,15 +630,20 @@ _M.new = function(opts)
     end
   end
   table.sort(hosts, function(a,b) return (a.name..":"..(a.port or "") < b.name..":"..(b.port or "")) end)
+  -- setup initial slotlist
+  self.__initSlotList = slotList  -- will be picked up by first call to redistributeSlots
   -- Insert the hosts
   for _, host in ipairs(hosts) do
-    _addHost(self, host.name, host.port, host.weight)
+    local ok, err = self:addHost(host.name, host.port, host.weight)
+    if not ok then
+      return ok, "Failed creating a balancer: "..tostring(err)
+    end
   end
   
-  assert(self.weight > 0, "cannot create balancer with weight == 0, invalid hostnames?")
+--  assert(self.weight > 0, "cannot create balancer with weight == 0, invalid hostnames?")
   
-  self.hosts[1].addresses[1]:addSlots(slotList)   -- initially insert all slots into the first address
-  self:redistributeSlots()                        -- redistribute the slots to all addresses
+--  self.hosts[1].addresses[1]:addSlots(slotList)   -- initially insert all slots into the first address
+--  self:redistributeSlots()                        -- redistribute the slots to all addresses
 --  dumptree(self,"final recalculation")
   
   return self

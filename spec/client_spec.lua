@@ -212,7 +212,6 @@ describe("Testing the DNS client", function()
     local host = "IsNotHere.thijsschreijer.nl"
 
     local answers = assert(client.resolve(host))
---    assert.equal({}, answers)
     assert.are.equal(#answers, 0)  -- returns server error table
     assert.is.not_nil(answers.errcode)
     assert.is.not_nil(answers.errstr)    
