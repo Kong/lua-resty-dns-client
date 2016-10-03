@@ -150,25 +150,33 @@ local check_balancer = function(balancer)
     templist[slot] = nil
   end
   assert.are.equal(0, table_size(templist))
-  -- addresses
-  local addrlist = {}
-  for i, slot in ipairs(balancer.wheel) do -- calculate slots per address based on the wheel
-    addrlist[slot.address] = (addrlist[slot.address] or 0) + 1
-  end
-  for addr, count in pairs(addrlist) do
-    assert.are.equal(#addr.slots, count)
-  end
-  for i, host in ipairs(balancer.hosts) do -- remove slots per address based on hosts (results in 0)
-    for n, addr in ipairs(host.addresses) do
-      if addr.weight > 0 then
-        for j, slot in ipairs(addr.slots) do
-          addrlist[addr] = addrlist[addr] - 1
+  if balancer.weight == 0 then
+    -- all hosts failed, so the balancer slots have no content
+    assert.are.equal(balancer.wheelSize, #balancer.unassignedSlots)
+    for i, slot in ipairs(balancer.wheel) do
+      assert.is_nil(slot.address)
+    end
+  else
+    -- addresses
+    local addrlist = {}
+    for i, slot in ipairs(balancer.wheel) do -- calculate slots per address based on the wheel
+      addrlist[slot.address] = (addrlist[slot.address] or 0) + 1
+    end
+    for addr, count in pairs(addrlist) do
+      assert.are.equal(#addr.slots, count)
+    end
+    for i, host in ipairs(balancer.hosts) do -- remove slots per address based on hosts (results in 0)
+      for n, addr in ipairs(host.addresses) do
+        if addr.weight > 0 then
+          for j, slot in ipairs(addr.slots) do
+            addrlist[addr] = addrlist[addr] - 1
+          end
         end
       end
     end
-  end
-  for addr, count in pairs(addrlist) do
-    assert.are.equal(0, count)
+    for addr, count in pairs(addrlist) do
+      assert.are.equal(0, count)
+    end
   end
   return balancer
 end
@@ -247,20 +255,6 @@ describe("Loadbalancer", function()
           "Expected an options table, but got; string"
         )
       end)
-      it("fails without proper 'hosts' option", function()
-        assert.has.error(
-          function() balancer.new({}) end,
-          "expected option 'hosts' to be a table"
-        )
-        assert.has.error(
-          function() balancer.new({ hosts = 1 }) end, 
-          "expected option 'hosts' to be a table"
-        )
-        assert.has.error(
-          function() balancer.new({ hosts = {} }) end, 
-          "at least one host entry is required in the 'hosts' option"
-        )
-      end)
       it("fails without proper 'dns' option", function()
         assert.has.error(
           function() balancer.new({ hosts = {"mashape.com"} }) end,
@@ -327,6 +321,19 @@ describe("Loadbalancer", function()
         })
         assert.are.equal(4, b.wheelSize)
       end)
+      it("succeeds without 'hosts' option", function()
+        local b = check_balancer(balancer.new { 
+          dns = client,
+          wheelsize = 10,
+        })
+        assert.are.equal(10, #b.unassignedSlots)
+        local b = check_balancer(balancer.new { 
+          dns = client,
+          wheelsize = 10,
+          hosts = {},  -- empty hosts table hould work too
+        })
+        assert.are.equal(10, #b.unassignedSlots)
+      end)
       it("succeeds with multiple hosts", function()
         dnsA({ 
           { name = "mashape.com", address = "1.2.3.4" },
@@ -392,6 +399,22 @@ describe("Loadbalancer", function()
       end
       assert(15 == res["1.1.1.1:123"] or nil == res["1.1.1.1:123"], "mismatch")
       assert(15 == res["2.2.2.2:321"] or nil == res["2.2.2.2:321"], "mismatch")
+    end)
+    it("fails if the balancer is 'empty'", function()
+      local b = check_balancer(balancer.new { 
+        hosts = {},  -- no hosts, so balancer is empty
+        dns = client,
+        wheelsize = 10,
+      })
+      local ip, port, host = b:getPeer()
+      assert.is_nil(ip)
+      assert.equals("No peers are available", port)
+      assert.is_nil(host)
+      
+      local ip, port, host = b:getPeer(6) -- just pick a hash
+      assert.is_nil(ip)
+      assert.equals("No peers are available", port)
+      assert.is_nil(host)
     end)
   end)
 
@@ -593,16 +616,13 @@ describe("Loadbalancer", function()
         { name = "getkong.org", address = "::1" },
       })
       local b = check_balancer(balancer.new { 
-        hosts = { { name = "mashape.com", port = 80, weight = 5 } },
         dns = client,
         wheelsize = 20,
       })
+      b:addHost("mashape.com", 80, 5)
       b:addHost("getkong.org", 8080, 10)
       b:removeHost("getkong.org", 8080)
-      assert.has.error(
-        function() b:removeHost("mashape.com") end,
-        "cannot remove the last host, at least one must remain"
-      )
+      b:removeHost("mashape.com", 80)
     end)
     pending("renewed DNS A record; no changes", function()
     end)

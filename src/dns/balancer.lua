@@ -436,16 +436,19 @@ end
 -- @return balancer object
 function mt_balancer:redistributeSlots()
   local totalWeight = self.weight
-  local slotList = self.__unassignedSlots
+  local slotList = self.unassignedSlots
   
   -- NOTE: calculations are based on the "remaining" slots and weights, to prevent issues due to rounding;
   -- eg. 10 equal systems with 19 slots.
   -- Calculated to get each 1.9 slots => 9 systems would get 1, last system would get 10
   -- by using "remaining" slots, the first would get 1 slot, the other 9 would get 2.
   
-  -- first iteration; reclaim extraneous slots
+  -- first; reclaim extraneous slots
   local weightLeft = totalWeight
   local slotsLeft = self.wheelSize
+  local addlist = {}      -- addresses that next additional slots
+  local addlistcount = {} -- how many extra slots the address needs
+  local addcount = 0
   for weight, address, host in self:addressIter() do
 
     local count
@@ -454,24 +457,26 @@ function mt_balancer:redistributeSlots()
     else
       count = math.floor(slotsLeft * (weight / weightLeft) + 0.0001) -- 0.0001 to bypass float arithmetic issues
     end
-    address:dropSlots(slotList, #address.slots - count)
+    local slots = #address.slots
+    local drop = slots - count
+    if drop > 0 then
+      -- we need to reclaim some slots
+      address:dropSlots(slotList, drop)
+    elseif drop < 0 then
+      -- this one needs extra slots, so record the changes needed
+      addcount = addcount + 1
+      addlist[addcount] = address
+      addlistcount[addcount] = -drop  -- negate because we need to add them
+    end
     slotsLeft = slotsLeft - count
     weightLeft = weightLeft - weight
   end 
-  -- second iteration; add the slots freed up to the hosts that are short in slots
-  weightLeft = totalWeight
-  slotsLeft = self.wheelSize
-  for weight, address, host in self:addressIter() do
-    local count
-    if weightLeft == 0 then
-      count = 0
-    else
-      count = math.floor(slotsLeft * (weight / weightLeft) + 0.0001) -- 0.0001 to bypass float arithmetic issues
-    end
-    address:addSlots(slotList, count - #address.slots)
-    slotsLeft = slotsLeft - count
-    weightLeft = weightLeft - weight
+
+  -- second: add freed slots to the recorded addresses that were short of them
+  for i, address in ipairs(addlist) do
+    address:addSlots(slotList, addlistcount[i])
   end
+
   return self
 end
 
@@ -506,7 +511,6 @@ function mt_balancer:removeHost(hostname, port)
   port = port or DEFAULT_PORT
   for i, host in ipairs(self.hosts) do
     if host.hostname == hostname and host.port == port then
-      assert(#self.hosts > 1, "cannot remove the last host, at least one must remain")
       
       -- set weights to 0
       host:disable()
@@ -534,9 +538,13 @@ end
 -- Hashvalue can be an integer from 1 to `wheelSize`, or a float from 0 up to but not including 1.
 -- @param hashvalue (optional) number for consistent hashing, round-robins if omitted
 -- @param cache_only If thruthy, no dns lookups will be done, only cache.
--- @return ip, port, hostname
+-- @return ip, port, hostname, or nil+error
 function mt_balancer:getPeer(hashvalue, cache_only)
   local pointer
+  if self.weight == 0 then
+    return nil, "No peers are available"
+  end
+  
   if not hashvalue then
     -- get the next one
     pointer = (self.pointer or 0) + 1
@@ -572,8 +580,8 @@ end
 -- }
 _M.new = function(opts)
   assert(type(opts) == "table", "Expected an options table, but got; "..type(opts))
-  assert(type(opts.hosts) == "table", "expected option 'hosts' to be a table")
-  assert(#opts.hosts > 0, "at least one host entry is required in the 'hosts' option")
+  --assert(type(opts.hosts) == "table", "expected option 'hosts' to be a table")
+  --assert(#opts.hosts > 0, "at least one host entry is required in the 'hosts' option")
   assert(opts.dns, "expected option `dns` to be a configured dns client")
   if (not opts.wheelsize) and opts.order then
     opts.wheelsize = #opts.order
@@ -590,7 +598,7 @@ _M.new = function(opts)
     slots = {},    -- list of slots in no particular order
     wheelSize = opts.wheelsize or 1000, -- number of entries in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
-    __unassignedSlots = {}, -- list to hold unassigned slots (initially, and when all hosts fail)
+    unassignedSlots = {}, -- list to hold unassigned slots (initially, and when all hosts fail)
   }
   for name, method in pairs(mt_balancer) do self[name] = method end
 
@@ -600,7 +608,7 @@ _M.new = function(opts)
   -- Create the wheel
   local wheel = self.wheel
   local slots = self.slots
-  local slotList = self.__unassignedSlots
+  local slotList = self.unassignedSlots
   local duplicate_check = {}
   local empty = {}
   for i = 1, self.wheelSize do
@@ -629,7 +637,7 @@ _M.new = function(opts)
   
   -- Sort the hosts, to make order deterministic
   local hosts = {}
-  for i, host in ipairs(opts.hosts) do
+  for i, host in ipairs(opts.hosts or {}) do
     if type(host) == "table" then
       hosts[i] = host
     else
@@ -638,7 +646,7 @@ _M.new = function(opts)
   end
   table.sort(hosts, function(a,b) return (a.name..":"..(a.port or "") < b.name..":"..(b.port or "")) end)
   -- setup initial slotlist
-  self.__unassignedSlots = slotList  -- will be picked up by first call to redistributeSlots
+  self.unassignedSlots = slotList  -- will be picked up by first call to redistributeSlots
   -- Insert the hosts
   for _, host in ipairs(hosts) do
     local ok, err = self:addHost(host.name, host.port, host.weight)
