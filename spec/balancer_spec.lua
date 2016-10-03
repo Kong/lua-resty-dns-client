@@ -267,6 +267,27 @@ describe("Loadbalancer", function()
           "expected option `dns` to be a configured dns client"
         )
       end)
+      it("fails with inconsistent wheel and order sizes", function()
+        assert.has.error(
+          function() balancer.new({
+              dns = client,
+              hosts = {"mashape.com"},
+              wheelsize = 10,
+              order = {1,2,3},
+            }) end,
+          "mismatch between size of 'order' and 'wheelsize'"
+        )
+      end)
+      it("fails with a bad order list", function()
+        assert.has.error(
+          function() balancer.new({
+              dns = client,
+              hosts = {"mashape.com"},
+              order = {1,2,3,3}, --duplicate
+            }) end,
+          "the 'order' list contains duplicates"
+        )
+      end)
       it("succeeds with proper options", function()
         dnsA({ 
           { name = "mashape.com", address = "1.2.3.4" },
@@ -276,7 +297,35 @@ describe("Loadbalancer", function()
           hosts = {"mashape.com"},
           dns = client,
           wheelsize = 10,
+          order = {1,2,3,4,5,6,7,8,9,10},
         })
+      end)
+      it("succeeds with the right sizes", function()
+        dnsA({ 
+          { name = "mashape.com", address = "1.2.3.4" },
+        })
+        -- based on a given wheelsize
+        local b = check_balancer(balancer.new { 
+          hosts = {"mashape.com"},
+          dns = client,
+          wheelsize = 10,
+        })
+        assert.are.equal(10, b.wheelSize)
+        -- based on the order list size
+        local b = check_balancer(balancer.new { 
+          hosts = {"mashape.com"},
+          dns = client,
+          order = { 1,2,3 },
+        })
+        assert.are.equal(3, b.wheelSize)
+        -- based on the order list size and wheel size
+        local b = check_balancer(balancer.new { 
+          hosts = {"mashape.com"},
+          dns = client,
+          wheelsize = 4,
+          order = { 1,2,3,4 },
+        })
+        assert.are.equal(4, b.wheelSize)
       end)
       it("succeeds with multiple hosts", function()
         dnsA({ 

@@ -343,7 +343,7 @@ end
 function mt_host:getPeer(hashvalue, cache_only, slot)
   
   if self.expire and self.expire >= time() then
-    return slot.address.ip, slot.address.port
+    return slot.address.ip, slot.address.port, self.hostname
   end
 
   -- ttl expired, so must renew
@@ -356,7 +356,7 @@ function mt_host:getPeer(hashvalue, cache_only, slot)
     return self.balancer:getPeer(hashvalue, cache_only)
   end
   -- nothing changed, return slot contents
-  return slot.address.ip, slot.address.port
+  return slot.address.ip, slot.address.port, self.hostname
 end
 
 --- creates a new host object.
@@ -436,11 +436,7 @@ end
 -- @return balancer object
 function mt_balancer:redistributeSlots()
   local totalWeight = self.weight
-  local slotList = {}
-  if self.__initSlotList then
-    slotList = self.__initSlotList
-    self.__initSlotList = nil
-  end
+  local slotList = self.__unassignedSlots
   
   -- NOTE: calculations are based on the "remaining" slots and weights, to prevent issues due to rounding;
   -- eg. 10 equal systems with 19 slots.
@@ -538,7 +534,7 @@ end
 -- Hashvalue can be an integer from 1 to `wheelSize`, or a float from 0 up to but not including 1.
 -- @param hashvalue (optional) number for consistent hashing, round-robins if omitted
 -- @param cache_only If thruthy, no dns lookups will be done, only cache.
--- @return hostname/ip and port
+-- @return ip, port, hostname
 function mt_balancer:getPeer(hashvalue, cache_only)
   local pointer
   if not hashvalue then
@@ -563,7 +559,7 @@ end
 -- The options table has the following fields;
 --
 -- - `hosts` (required) containing hostnames and (optional) weights, must have at least one entry.
--- - `wheelsize` (required) for total number of slots in the balancer
+-- - `wheelsize` (optional) for total number of slots in the balancer, if mitted the size of `order` is used, or 1000
 -- - `order` (optional) if given, a list of random numbers, size `wheelsize`, used to randomize the wheel
 -- - `dns` (required) a configured `dns.client` object for querying the dns server
 -- @param opts table with options
@@ -579,7 +575,12 @@ _M.new = function(opts)
   assert(type(opts.hosts) == "table", "expected option 'hosts' to be a table")
   assert(#opts.hosts > 0, "at least one host entry is required in the 'hosts' option")
   assert(opts.dns, "expected option `dns` to be a configured dns client")
-  assert(not opts.order, "order argument is not implemented yet")
+  if (not opts.wheelsize) and opts.order then
+    opts.wheelsize = #opts.order
+  end
+  if opts.order then
+    assert(opts.order and (opts.wheelsize == #opts.order), "mismatch between size of 'order' and 'wheelsize'")
+  end
   
   local self = {
     -- properties
@@ -588,7 +589,8 @@ _M.new = function(opts)
     wheel = {},    -- wheel with entries (fully randomized)
     slots = {},    -- list of slots in no particular order
     wheelSize = opts.wheelsize or 1000, -- number of entries in the wheel
-    dns = opts.dns,
+    dns = opts.dns,  -- the configured dns client to use for resolving
+    __unassignedSlots = {}, -- list to hold unassigned slots (initially, and when all hosts fail)
   }
   for name, method in pairs(mt_balancer) do self[name] = method end
 
@@ -598,15 +600,20 @@ _M.new = function(opts)
   -- Create the wheel
   local wheel = self.wheel
   local slots = self.slots
-  local slotList = {}
+  local slotList = self.__unassignedSlots
   local duplicate_check = {}
+  local empty = {}
   for i = 1, self.wheelSize do
     
     local slot = {}
-    local order = math.random()
+    local order = (opts.order or empty)[i] or math.random()
     while duplicate_check[order] do  -- no duplicates allowed! order must be deterministic!
+      if (opts.order or empty)[i] then -- it was a user provided value, so error out
+        error("the 'order' list contains duplicates")
+      end
       order = math.random()
     end
+    duplicate_check[order] = true
     slot.order = order           -- the order in the slot wheel
     slot.address = nil           -- the address this slot belongs to (set by `addSlots` and `dropSlots` methods)
     
@@ -631,7 +638,7 @@ _M.new = function(opts)
   end
   table.sort(hosts, function(a,b) return (a.name..":"..(a.port or "") < b.name..":"..(b.port or "")) end)
   -- setup initial slotlist
-  self.__initSlotList = slotList  -- will be picked up by first call to redistributeSlots
+  self.__unassignedSlots = slotList  -- will be picked up by first call to redistributeSlots
   -- Insert the hosts
   for _, host in ipairs(hosts) do
     local ok, err = self:addHost(host.name, host.port, host.weight)
@@ -641,9 +648,6 @@ _M.new = function(opts)
   end
   
 --  assert(self.weight > 0, "cannot create balancer with weight == 0, invalid hostnames?")
-  
---  self.hosts[1].addresses[1]:addSlots(slotList)   -- initially insert all slots into the first address
---  self:redistributeSlots()                        -- redistribute the slots to all addresses
 --  dumptree(self,"final recalculation")
   
   return self
