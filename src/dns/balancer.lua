@@ -224,7 +224,6 @@ function mt_host:queryDns(cache_only)
   local newSorted = sorts[rtype](newQuery)
   local dirty
   local delete = {}
-  self.expire = newQuery.expire
   
   if rtype ~= (oldSorted[1] or {}).type then
     -- DNS recordtype changed; recycle everything
@@ -342,10 +341,11 @@ end
 -- access: balancer:getpeer->slot->address->host->returns addr+port
 function mt_host:getPeer(hashvalue, cache_only, slot)
   
-  if self.expire and self.expire >= time() then
+  if (self.lastQuery.expire and self.lastQuery.expire >= time()) or
+     cache_only then
     return slot.address.ip, slot.address.port, self.hostname
   end
-
+  
   -- ttl expired, so must renew
   local ok, err = self:queryDns(cache_only)
   if not ok then
