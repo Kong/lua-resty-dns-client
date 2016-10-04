@@ -371,12 +371,104 @@ describe("Loadbalancer", function()
     end)
   
     describe("adding hosts", function()
-      pending("tests go here...", function()
+      it("fails if hostname is not a string", function()
+        -- throws an error
+        local b = check_balancer(balancer.new { 
+          dns = client,
+          wheelsize = 15,
+        })
+        local not_a_string = 10
+        assert.has.error(
+          function()
+            b:addHost(not_a_string)
+          end, 
+          "expected a hostname (string), got "..tostring(not_a_string)
+        )
+        check_balancer(b)
+      end)
+      it("fails if weight is not a positive integer value", function()
+        -- throws an error
+        local b = check_balancer(balancer.new { 
+          dns = client,
+          wheelsize = 15,
+        })
+        local bad_weights = { -1, 0 ,0.5, 1.5, 100.4 }
+        for _, weight in ipairs(bad_weights) do 
+          assert.has.error(
+            function()
+              b:addHost("just_a_name", nil, weight)
+            end, 
+            "Expected 'weight' to be an integer >= 1; got "..tostring(weight)
+          )
+        end
+        check_balancer(b)
+      end)
+      it("accepts a hostname that does not resolve", function()
+        -- weight should be 0, with no addresses
+        local b = check_balancer(balancer.new { 
+          dns = client,
+          wheelsize = 15,
+        })
+        ok, err = b:addHost("really.really.does.not.exist.mashape.com", 80, 10)
+        assert.are.equal(b, ok)
+        assert.is_nil(err)
+        check_balancer(b)
+        assert.equals(0, b.weight) -- has one failed host, so weight must be 0
+        dnsA({ 
+          { name = "mashape.com", address = "1.2.3.4" },
+        })
+        check_balancer(b:addHost("mashape.com", 80, 10))
+        assert.equals(10, b.weight) -- has one succesful host, so weight must equal that one
+      end)
+      it("fails if the 'hostname:port' combo already exists", function()
+        -- returns nil + error
+        local b = check_balancer(balancer.new { 
+          dns = client,
+          wheelsize = 15,
+        })
+        ok, err = b:addHost("just_a_name", 80)
+        assert.are.equal(b, ok)
+        assert.is_nil(err)
+        check_balancer(b)
+        
+        ok, err = b:addHost("just_a_name", 81)  -- different port is ok
+        assert.are.equal(b, ok)
+        assert.is_nil(err)
+        check_balancer(b)
+        
+        ok, err = b:addHost("just_a_name", 80)
+        assert.is_nil(ok)
+        assert.are.equal("duplicate entry, hostname entry already exists; 'just_a_name', port 80", err)
+        check_balancer(b)
       end)
     end)
   
     describe("removing hosts", function()
-      pending("tests go here...", function()
+      it("hostname must be a string", function()
+        -- throws an error
+        local b = check_balancer(balancer.new { 
+          dns = client,
+          wheelsize = 15,
+        })
+        local not_a_string = 10
+        assert.has.error(
+          function()
+            b:removeHost(not_a_string)
+          end, 
+          "expected a hostname (string), got "..tostring(not_a_string)
+        )
+        check_balancer(b)
+      end)
+      it("does not throw an error if it doesn't exist", function()
+        -- throws an error
+        local b = check_balancer(balancer.new { 
+          dns = client,
+          wheelsize = 15,
+        })
+        local ok, err = b:removeHost("not in there")
+        assert.equal(b, ok)
+        assert.is_nil(err)
+        check_balancer(b)
       end)
     end)
   end)
@@ -729,6 +821,11 @@ describe("Loadbalancer", function()
     pending("renewed DNS SRV record; no changes", function()
     end)
     pending("renewed DNS A record; address changes", function()
+        -- previously successful query, fails to resolve, and then succeeds again
+        -- record type changed
+        -- targets changed 
+        -- fewer entries in dns record --> less addresses
+        -- empty dns record --> all addresses gone, host weight = 0
     end)
     pending("renewed DNS AAAA record; address changes", function()
     end)
@@ -757,10 +854,6 @@ describe("Loadbalancer", function()
     pending("renewed DNS AAAA record; failed", function()
     end)
     pending("renewed DNS SRV record; failed", function()
-    end)
-    pending("DNS record failure", function()
-    end)
-    pending("DNS record failure, last host", function()
     end)
     pending("low weight with zero-slots assigned", function()
     end)
