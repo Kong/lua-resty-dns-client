@@ -206,6 +206,12 @@ local copyWheel = function(b)
   return copy
 end
 
+local updateWheelState = function(state, patt, repl)
+  for i, entry in ipairs(state) do
+    state[i] = entry:gsub(patt, repl, 1)
+  end
+  return state
+end
 ----------------------
 -- END TEST HELPERS --
 ----------------------
@@ -816,44 +822,202 @@ describe("Loadbalancer", function()
       assert.same(state, copyWheel(b))
     end)
   
-    pending("renewed DNS AAAA record; no changes", function()
+    it("renewed DNS AAAA record; no changes", function()
+      local record = dnsAAAA({ 
+        { name = "mashape.com", address = "::1" },
+        { name = "mashape.com", address = "::2" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 5 }, 
+          { name = "getkong.org", port = 123, weight = 10 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      local state = copyWheel(b)
+      record.expire = gettime() -1 -- expire current dns cache record
+      local rec_new = dnsAAAA({   -- create a new record (identical)
+        { name = "mashape.com", address = "::1" },
+        { name = "mashape.com", address = "::2" },
+      })
+      -- create a spy to check whether dns was queried
+      local s = spy.on(client, "resolve")
+      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+        b:getPeer()  -- invoke balancer, to expire record and re-query dns
+      end
+      assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
+      assert.same(state, copyWheel(b))
     end)
     pending("renewed DNS SRV record; no changes", function()
     end)
+    it("renewed DNS record; different record type", function()
+      local record = dnsAAAA({ 
+        { name = "mashape.com", address = "::1" },
+        { name = "mashape.com", address = "::2" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 5 }, 
+          { name = "getkong.org", port = 123, weight = 10 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      local state = copyWheel(b)
+      record.expire = gettime() -1 -- expire current dns cache record
+      local rec_new = dnsA({   -- create a new record, different type
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.5" },
+      })
+      -- create a spy to check whether dns was queried
+      local s = spy.on(client, "resolve")
+      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+        b:getPeer()  -- invoke balancer, to expire record and re-query dns
+      end
+      assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
+      -- update 'state' to match the changes, slots should remain the same
+      -- only the content has changed.
+      -- Note: when the record changes, all addresses are deleted, in reverse
+      -- order. So the slots from '::2' are freed first, followed by '::1'.
+      -- So when 1.2.3.5 is added, it gets the ones last freed from '::1'
+      -- So order is DETERMINISTIC!
+      updateWheelState(state, " %- ::1 @ ", " - 1.2.3.5 @ ")
+      updateWheelState(state, " %- ::2 @ ", " - 1.2.3.4 @ ")
+      assert.same(state, copyWheel(b))
+    end)
+    it("renewed DNS record; targets changed", function()
+      local record = dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.5" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 5 }, 
+          { name = "getkong.org", port = 123, weight = 10 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      local state = copyWheel(b)
+      record.expire = gettime() -1 -- expire current dns cache record
+      local rec_new = dnsA({   -- create a new record, different type
+        { name = "mashape.com", address = "1.2.3.6" },
+        { name = "mashape.com", address = "1.2.3.7" },
+      })
+      -- create a spy to check whether dns was queried
+      local s = spy.on(client, "resolve")
+      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+        b:getPeer()  -- invoke balancer, to expire record and re-query dns
+      end
+      assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
+      -- update 'state' to match the changes, slots should remain the same
+      -- only the content has changed.
+      -- Note: when the record changes, the addresses are deleted in order
+      -- so 1.2.3.4 goes first, followed by 1.2.3.5. Adding is also in order
+      -- so 1.2.3.6 gets the ones last released by 1.2.3.5
+      -- So order is DETERMINISTIC!
+      updateWheelState(state, " %- 1%.2%.3%.5 @ ", " - 1.2.3.6 @ ")
+      updateWheelState(state, " %- 1%.2%.3%.4 @ ", " - 1.2.3.7 @ ")
+      assert.same(state, copyWheel(b))
+    end)
+    it("renewed DNS record; 1 target changed", function()
+      local record = dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.5" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 5 }, 
+          { name = "getkong.org", port = 123, weight = 10 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      local state = copyWheel(b)
+      record.expire = gettime() -1 -- expire current dns cache record
+      local rec_new = dnsA({   -- create a new record, different type
+        { name = "mashape.com", address = "1.2.3.5" },
+        { name = "mashape.com", address = "1.2.3.6" },
+      })
+      -- create a spy to check whether dns was queried
+      local s = spy.on(client, "resolve")
+      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+        b:getPeer()  -- invoke balancer, to expire record and re-query dns
+      end
+      assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
+      -- update 'state' to match the changes, slots should remain the same
+      -- only the content has changed.
+      --
+      -- Note: order was changed, 1.2.3.5 moved from 2nd to 1st position
+      --
+      -- One address is replaced by another.
+      -- So order is DETERMINISTIC!
+      updateWheelState(state, " %- 1%.2%.3%.4 @ ", " - 1.2.3.6 @ ")
+      assert.same(state, copyWheel(b))
+    end)
     pending("renewed DNS A record; address changes", function()
-        -- previously successful query, fails to resolve, and then succeeds again
-        -- record type changed
-        -- targets changed 
-        -- fewer entries in dns record --> less addresses
-        -- empty dns record --> all addresses gone, host weight = 0
-    end)
-    pending("renewed DNS AAAA record; address changes", function()
-    end)
-    pending("renewed DNS SRV record; target changes", function()
-    end)
-    pending("renewed DNS A record; entry added", function()
-    end)
-    pending("renewed DNS AAAA record; entry added", function()
-    end)
-    pending("renewed DNS SRV record; entry added", function()
-    end)
-    pending("renewed DNS A record; entry removed", function()
-    end)
-    pending("renewed DNS AAAA record; entry removed", function()
-    end)
-    pending("renewed DNS SRV record; entry removed", function()
-    end)
-    pending("renewed DNS A record; record removed", function()
-    end)
-    pending("renewed DNS AAAA record; record removed", function()
-    end)
-    pending("renewed DNS SRV record; record removed", function()
+      local record = dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 10 }, 
+          { name = "getkong.org", port = 123, weight = 10 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      local state1 = copyWheel(b)
+      local state2 = copyWheel(b)
+      -- reconfigure the dns client to make sure next query fails
+      assert(client:init {
+        hosts = {}, 
+        resolv_conf = {
+          "nameserver 127.0.0.1:22000" -- make sure dns query fails
+        },
+      })
+      dnscache = client.getcache()  -- must be after 'init' call because it is replaced
+      record.expire = gettime() -1 -- expire current dns cache record
+      -- run entire wheel to make sure the expired one is requested
+      for i = 1, b.wheelSize do b:getPeer() end 
+      -- all slots are now getkong.org
+      updateWheelState(state1, " %- 1%.2%.3%.4 @ ", " - 9.9.9.9 @ ")
+      assert.same(state1, copyWheel(b))
+      -- reconfigure the dns client to make sure next query works again
+      assert(client:init {
+        hosts = {}, 
+        resolv_conf = {
+          "nameserver 8.8.8.8" 
+        },
+      })
+      dnscache = client.getcache()  -- must be after 'init' call because it is replaced
+
+-- TODO: force the requery of the failed `getkong.org` domain...
+
+      -- wheel should be back in original state
+      assert.same(state2, copyWheel(b))
+      
     end)
     pending("renewed DNS A record; failed", function()
+        -- empty dns record --> all addresses gone, host weight = 0
     end)
-    pending("renewed DNS AAAA record; failed", function()
-    end)
-    pending("renewed DNS SRV record; failed", function()
+    pending("renewed DNS A record; failed", function()
     end)
     pending("low weight with zero-slots assigned", function()
     end)
