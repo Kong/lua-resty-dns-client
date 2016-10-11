@@ -303,6 +303,7 @@ local function _synchronized_query(qname, r_opts, r, count)
       if not r then
         return r, err, nil
       end
+
     end
     item = {
       semaphore = semaphore(),
@@ -437,8 +438,8 @@ end
 -- @param qname Name to resolve
 -- @param r_opts Options table, see remark about the `qtype` field above
 -- @param dns_cache_only Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
--- @param r (optional) dns resolver object to use (usage discouraged; for internal recursive use)
--- @return A list of records + nil + r, or nil + err + r. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
+-- @param r (optional) dns resolver object to use
+-- @return `list of records + nil + r`, or `nil + err + r`. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 local function resolve(qname, r_opts, dns_cache_only, r, count)
   if count and (count > max_dns_recursion) then
     return nil, "maximum dns recursion level reached", r
@@ -477,7 +478,7 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
           cachesetsuccess(qname, qtype) -- set last succesful type resolved
         end
         if qtype ~= _M.TYPE_CNAME then
-          return records
+          return records, nil, r
         else
           -- dereference CNAME
           opts.qtype = nil
@@ -521,8 +522,8 @@ end
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in the lookup chain
 -- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups
--- @param r (optional) dns resolver object to use (usage discouraged; for internal recursive use)
--- @return ip address + port + r, or nil + error + r
+-- @param r (optional) dns resolver object to use
+-- @return `ip address + port + r`, or `nil + error + r`
 local function toip(qname, port, dns_cache_only, r)
   local rec, err
   rec, err, r = stdError(resolve(qname, nil, dns_cache_only, r))
