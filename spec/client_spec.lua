@@ -481,7 +481,17 @@ describe("Testing the DNS client", function()
       assert.is_nil(ip)
       assert.are.equal("maximum dns recursion level reached", port)
     end)
-    
+    it("Tests passing through the resolver-object", function()
+      assert(client:init())
+
+      local q1, err1, r1 = client.toip("google.com", 123, false)
+      local q2, err2, r2 = client.toip("google.nl",  123, false, r1)
+      assert.are.equal(123, err1)
+      assert.are.equal(123, err2)
+      assert.is.table(r1)
+      assert.is.table(r2)
+      assert.equal(r1, r2)
+    end)
   end)
 
   it("Tests initialization without i/o access", function()
