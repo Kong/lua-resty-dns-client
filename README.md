@@ -1,7 +1,9 @@
 Overview
 ========
 
-Lua library containing a dns client and utilities to parse dns configuration files; `resolv.conf` and `/etc/hosts`
+Lua library containing a dns client and utilities to parse dns configuration files; `resolv.conf` and `/etc/hosts`.
+
+The module is currently OpenResty only.
 
 Features
 ========
