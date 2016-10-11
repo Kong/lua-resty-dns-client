@@ -290,36 +290,45 @@ local _queue = setmetatable({}, {__mode = "v"})
 -- an error. A retry will be performed when a) waiting for the other thread times out, or b) when the
 -- query by the other thread returns an error.
 -- The maximum delay would be `max_wait * max_retry`.
+-- @return query result + nil + r, or nil + error + r
 local function _synchronized_query(qname, r_opts, r, count)
   local key = qname..":"..r_opts.qtype
   local item = _queue[key]
   if not item then
     -- no lookup being done so far
+    if not r then
+      local err
+      r, err = resolver:new(config)
+      if not r then
+        return r, err, nil
+      end
+
+    end
     item = {
       semaphore = semaphore(),
     }
-    _queue[key] = item
+    _queue[key] = item  -- insertion in _queue; this is where the synchronization starts
     item.result, item.err = r:query(qname, r_opts)
     -- query done, but by now many others might be waiting for our result.
     -- 1) stop new ones from adding to our lock/semaphore
     _queue[key] = nil
     -- 2) release all waiting threads
     item.semaphore:post(math.max(item.semaphore:count() * -1, 1))
-    return item.result, item.err
+    return item.result, item.err, r
   else
     -- lookup is on its way, wait for it
     local ok, err = item.semaphore:wait(pool_max_wait)
     if ok and item.result then
       -- we were released, and have a query result from the
       -- other thread, so all is well, return it
-      return item.result, item.err
+      return item.result, item.err, r
     else
       -- there was an error, either a semaphore timeout, or 
       -- a lookup error, so retry (retry actually means; do 
       -- our own lookup instead of waiting for another lookup).
       count = count or 1
       if count > pool_max_retry then
-        return nil, "dns lookup pool exceeded retries ("..tostring(pool_max_retry).."): "..(item.error or err or "unknown")
+        return r, nil, "dns lookup pool exceeded retries ("..tostring(pool_max_retry).."): "..(item.error or err or "unknown")
       end
       _queue[key] = nil  -- don't block on the same thread again
       return _synchronized_query(qname, r_opts, r, count + 1)
@@ -371,6 +380,7 @@ end
 
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
 -- only looks up the requested type.
+-- @return query result + nil + r, or r + nil + error
 local function _lookup(qname, r_opts, dns_cache_only, r)
   local qtype = r_opts.qtype
   local record = cachelookup(qname, qtype, dns_cache_only)
@@ -385,11 +395,12 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
     return {
       errcode = 4,                                         -- standard is "server failure"
       errstr = "server failure, cache only lookup failed", -- extended description
-    }
+    }, nil, r
   else
     -- not found in our cache, so perform query on dns servers
-    local answers, err = _synchronized_query(qname, r_opts, r)
-    if not answers then return answers, err end
+    local answers, err
+    answers, err, r = _synchronized_query(qname, r_opts, r)
+    if not answers then return answers, err, r end
     
     -- check our answers and store them in the cache
     -- A, AAAA, SRV records may be accompanied by CNAME records
@@ -404,7 +415,7 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
 
     -- now insert actual target record in cache
     cacheinsert(answers, qname, qtype)
-    return answers
+    return answers, nil, r
   end
 end
 
@@ -426,18 +437,11 @@ end
 -- @param qname Name to resolve
 -- @param r_opts Options table, see remark about the `qtype` field above
 -- @param dns_cache_only Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
--- @param r (optional) dns resolver object to use (usage discouraged; for internal recursive use)
--- @return A list of records. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
+-- @param r (optional) dns resolver object to use
+-- @return `list of records + nil + r`, or `nil + err + r`. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 local function resolve(qname, r_opts, dns_cache_only, r, count)
   if count and (count > max_dns_recursion) then
-    return nil, "maximum dns recursion level reached"
-  end
-  if not (dns_cache_only or r) then
-    local err
-    r, err = resolver:new(config)
-    if not r then
-      return r, err
-    end
+    return nil, "maximum dns recursion level reached", r
   end
   qname = qname:lower()
   local opts
@@ -465,7 +469,7 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
       -- already tried this one, based on 'last', no use in trying again
     else
       opts.qtype = qtype
-      records, err = _lookup(qname, opts, dns_cache_only, r)
+      records, err, r = _lookup(qname, opts, dns_cache_only, r)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
       if records and (#records > 0) then
@@ -473,7 +477,7 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
           cachesetsuccess(qname, qtype) -- set last succesful type resolved
         end
         if qtype ~= _M.TYPE_CNAME then
-          return records
+          return records, nil, r
         else
           -- dereference CNAME
           opts.qtype = nil
@@ -486,26 +490,26 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
   if not dns_cache_only then
     cachesetsuccess(qname, nil)
   end
-  return records, err
+  return records, err, r
 end
 
 --- Standardizes the `resolve` output to more standard Lua errors.
--- Both `nil+error` and succesful lookups are passed through.
--- A server error table is returned as `nil+error` (where `error` is a string extracted from the server error table).
--- An empty response is returned as `response+error` (where `error` is 'dns query returned no results').
+-- Both `nil+error+r` and succesful lookups are passed through.
+-- A server error table is returned as `nil+error+r` (where `error` is a string extracted from the server error table).
+-- An empty response is returned as `response+error+r` (where `error` is 'dns query returned no results').
 -- @function stdError
--- @return a valid, non-empty, query result, or nil+error
+-- @return a valid (non-empty) query result + nil + r, or nil + error + r
 -- @usage
--- local result, err = client.stdError(client.resolve("my.hostname.com"))
+-- local result, err, r = client.stdError(client.resolve("my.hostname.com"))
 -- 
 -- if err then error(err) end         --> only passes if there is at least 1 result returned
 -- if not result then error(err) end  --> does not error on an empty result table
-local function stdError(result, err)
-  if not result then return result, err end
+local function stdError(result, err, r)
+  if not result then return result, err, r end
   assert(type(result) == "table", "Expected table or nil")
-  if result.errcode then return nil, ("dns server error; %s %s"):format(result.errcode, result.errstr) end
-  if #result == 0 then return result, "dns query returned no results" end
-  return result
+  if result.errcode then return nil, ("dns server error; %s %s"):format(result.errcode, result.errstr), r end
+  if #result == 0 then return result, "dns query returned no results", r end
+  return result, nil, r
 end
 
 --- Resolves to an IP and port number.
@@ -517,22 +521,13 @@ end
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in the lookup chain
 -- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups
--- @param r (optional) dns resolver object to use (usage discouraged; for internal recursive use)
--- @return ip address + port, or nil+error
+-- @param r (optional) dns resolver object to use
+-- @return `ip address + port + r`, or `nil + error + r`
 local function toip(qname, port, dns_cache_only, r)
-  if not (dns_cache_only or r) then
-    local err
--- TODO: do not create resolver objects unless necessary
--- so add a third return value to each call, the `r` used as resolver
--- also to be fixed in other places!!!
-    r, err = resolver:new(config)
-    if not r then
-      return r, err
-    end
-  end
-  local rec, err = stdError(resolve(qname, nil, dns_cache_only, r))
+  local rec, err
+  rec, err, r = stdError(resolve(qname, nil, dns_cache_only, r))
   if err then
-    return nil, err
+    return nil, err, r
   end
 
   local cursor = rec.last_cursor
@@ -573,7 +568,7 @@ local function toip(qname, port, dns_cache_only, r)
       cursor = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
     end
     rec.last_cursor = cursor
-    return rec[cursor].address, port
+    return rec[cursor].address, port, r
   end
 end
 
