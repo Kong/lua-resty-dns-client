@@ -35,8 +35,8 @@ local config
 
 -- recursion level before erroring out
 local max_dns_recursion = 20
--- ttl (in seconds) for an empty dns result
-local empty_ttl = 1
+-- ttl (in seconds) for an empty/error dns result
+local bad_ttl = 1
 
 -- create module table
 local _M = {}
@@ -81,7 +81,7 @@ end
 
 -- inserts an entry in the cache
 -- Note: if the ttl=0, then it is also stored to enable 'cache-only' lookups
--- params qname, qtype, qttl are IGNORED unless `entry` is an empty list
+-- params qname, qtype are IGNORED unless `entry` has an empty list part.
 local cacheinsert = function(entry, qname, qtype)
 
   local ttl, key
@@ -95,8 +95,9 @@ local cacheinsert = function(entry, qname, qtype)
       ttl = math.min(ttl, entry[i].ttl)
     end
   else
-    -- list is empty, so no entries to grab data from
-    ttl = empty_ttl
+    -- list-part is empty, so no entries to grab data from
+    -- (this is an empty response, or an error response)
+    ttl = bad_ttl
     key = qtype..":"..qname
   end
  
@@ -178,12 +179,13 @@ local pool_max_wait
 local pool_max_retry
 
 --- initialize resolver. When called multiple times, it will clear the cache.
--- Will parse hosts and resolv.conf files/tables.
+-- Will parse hosts and resolv.conf files/tables. The `bad_ttl` options sets the ttl 
+-- (in seconds, default 1) for bad query results (empty or errors).
 -- If the `hosts` and `resolv_conf` fields are not provided, it will fall back on default
 -- filenames (see the `dns.utils` module for details). To prevent any potential 
 -- blocking i/o all together, manually fetch the contents of those files and 
 -- provide them as tables. Or provide both fields as empty tables.
--- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf` containing the filenames to parse.
+-- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf` and `bad_ttl`.
 -- @return true on success, nil+error otherwise
 -- @usage -- initialize without any blocking i/o
 -- local client = require("dns.client")
@@ -268,6 +270,8 @@ _M.init = function(options, secondary)
     end
   end
   
+  bad_ttl = options.bad_ttl or 1
+  
   -- options.no_recurse = -- not touching this one for now
   
   config = options -- store it in our module level global
@@ -336,7 +340,7 @@ local function _synchronized_query(qname, r_opts, r, count)
   end
 end
 
-local function check_ipv6(qname)
+local function check_ipv6(qname, r)
   local check = qname
   if check:sub(1,1) == ":" then check = "0"..check end
   if check:sub(-1,-1) == ":" then check = check.."0" end
@@ -346,27 +350,29 @@ local function check_ipv6(qname)
     local ins = ":"..string.rep("0:", 8 - count)
     check = check:gsub("::", ins, 1)  -- replace only 1 occurence!
   end
+  local record
   if not check:match("^%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?$") then
     -- not a valid IPv6 address
     -- return a "server error" as a bad IPv4 would be looked up on 
     -- the server and return a server error as well, for consistency.
-    return {
+    record = {
       errcode = 3,
       errstr = "name error",
     }
+  else
+    record = {{
+      address = qname,
+      type = _M.TYPE_AAAA,
+      class = 1,
+      name = qname,
+      ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
+    }}
   end
-  local record = {{
-    address = qname,
-    type = _M.TYPE_AAAA,
-    class = 1,
-    name = qname,
-    ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
-  }}
-  cacheinsert(record)
-  return record
+  cacheinsert(record, qname, _M.TYPE_AAAA)
+  return record, nil, r
 end
 
-local function check_ipv4(qname)
+local function check_ipv4(qname, r)
   local record = {{
     address = qname,
     type = _M.TYPE_A,
@@ -374,8 +380,8 @@ local function check_ipv4(qname)
     name = qname,
     ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
   }}
-  cacheinsert(record)
-  return record
+  cacheinsert(record, qname, _M.TYPE_A)
+  return record, nil, r
 end
 
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
@@ -385,17 +391,17 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
   local qtype = r_opts.qtype
   local record = cachelookup(qname, qtype, dns_cache_only)
   if record then
-    return record                  -- cache hit
+    return record, nil, r          -- cache hit
   elseif (qtype == _M.TYPE_AAAA) and qname:find(":") then
-    return check_ipv6(qname)       -- IPv6 or invalid
+    return check_ipv6(qname, r)    -- IPv6 or invalid
   elseif (qtype == _M.TYPE_A) and qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
-    return check_ipv4(qname)       -- IPv4 address
+    return check_ipv4(qname, r)    -- IPv4 address
   elseif dns_cache_only then
     -- no active lookups allowed, so return error
     return {
       errcode = 4,                                         -- standard is "server failure"
       errstr = "server failure, cache only lookup failed", -- extended description
-    }, nil, r
+    }, nil, r   -- NOTE: this error response should never cached
   else
     -- not found in our cache, so perform query on dns servers
     local answers, err

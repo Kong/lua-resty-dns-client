@@ -494,6 +494,22 @@ describe("Testing the DNS client", function()
       assert.is.table(r1)
       assert.is.table(r2)
       assert.equal(r1, r2)
+      
+      -- when fetching from cache
+      q2, err2, r2 = client.toip("google.nl",  123, false, r1)
+      assert.equal(r1, r2)
+      
+      -- when its an IPv4 address
+      q2, err2, r2 = client.toip("1.2.3.4",  123, false, r1)
+      assert.equal(r1, r2)
+      
+      -- when its an IPv6 address
+      q2, err2, r2 = client.toip("::1",  123, false, r1)
+      assert.equal(r1, r2)
+      
+      -- when its a bad IPv6 address (ipv6 == more than 1 colon)
+      q2, err2, r2 = client.toip("::1gdhgasga",  123, false, r1)
+      assert.equal(r1, r2)
     end)
   end)
 
@@ -538,9 +554,39 @@ describe("Testing the DNS client", function()
     end)
   end)
   
-  pending("verifies ttl and caching of errors and empty responses", function()
-    --empty responses should be cached for a configurable time
-    --error responses should be cached for a configurable time
+  it("verifies ttl and caching of errors and empty responses", function()
+    --empty/error responses should be cached for a configurable time
+    local bad_ttl = 0.1
+    assert(client:init({bad_ttl = bad_ttl}))
+
+    -- do a query so we get a resolver object to spy on
+    local _, _, r = client.toip("google.com", 123, false)
+    local s = spy.on(r, "query")
+    
+    local res1, res2, err1, err2
+    res1, err1, r = client.resolve(
+      "really.reall.really.does.not.exist.mashape.com", 
+      { qtype = client.TYPE_A }, 
+      false, r)
+    assert.spy(r.query).was.called(1)
+    assert.equal(3, res1.errcode)
+    
+    res2, err2, r = client.resolve(
+      "really.reall.really.does.not.exist.mashape.com", 
+      { qtype = client.TYPE_A }, 
+      false, r)
+    assert.are.equal(res1, res2)
+    assert.spy(r.query).was.called(1)
+    
+    -- wait for expiry of ttl and retry
+    sleep(bad_ttl+0.1)
+    res2, err2, r = client.resolve(
+      "really.reall.really.does.not.exist.mashape.com", 
+      { qtype = client.TYPE_A }, 
+      false, r)
+    assert.are.Not.equal(res1, res2)
+    assert.spy(r.query).was.called(2) 
+  
   end)
 
   pending("verifies the polling of dns queries, retries, and wait times", function()
