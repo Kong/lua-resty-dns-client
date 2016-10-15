@@ -33,11 +33,35 @@ describe("Testing the DNS client", function()
     _G._TEST = nil
   end)
 
-  it("Tests failing initialization with no nameservers", function()
-    -- empty list fallsback on resolv.conf
-    assert.has.no.error(function() client:init( {nameservers = {} } ) end)
+  describe("initialization", function()
 
-    assert.has.error(function() client:init( {nameservers = {}, resolv_conf = {} } ) end)    
+    it("fails with no nameservers", function()
+      -- empty list fallsback on resolv.conf
+      assert.has.no.error(function() client:init( {nameservers = {} } ) end)
+
+      assert.has.error(function() client:init( {nameservers = {}, resolv_conf = {} } ) end)    
+    end)
+
+    it("fails with order being empty", function()
+      -- fails with an empty one
+      assert.has.error(
+        function() client:init({order = {}}) end,
+        "Invalid order list; cannot be empty"
+      )
+    end)
+    
+    it("fails with order containing an unknown type", function()
+      -- fails with an unknown one
+      assert.has.error(
+        function() client:init({order = {"LAST", "a", "aa"}}) end,
+        "Invalid dns record type in order array; aa"
+      )
+    end)
+  
+    it("succeeds with order unset", function()
+      assert.is.True(client:init({order = nil}))
+    end)
+
   end)
 
   it("Tests fetching a TXT record", function()

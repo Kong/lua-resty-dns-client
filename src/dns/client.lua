@@ -46,6 +46,8 @@ for k,v in pairs(resolver) do
     _M[k] = v
   end
 end
+-- insert our own special value for "last success"
+_M.TYPE_LAST = -1
 
 -- ==============================================
 --    In memory DNS cache
@@ -169,12 +171,7 @@ end
 --    Main DNS functions for lookup
 -- ==============================================
 
-local type_order = {
-  _M.TYPE_A,
-  _M.TYPE_AAAA,
-  _M.TYPE_SRV,
-  _M.TYPE_CNAME,
-}
+local type_order
 local pool_max_wait
 local pool_max_retry
 
@@ -185,13 +182,22 @@ local pool_max_retry
 -- filenames (see the `dns.utils` module for details). To prevent any potential 
 -- blocking i/o all together, manually fetch the contents of those files and 
 -- provide them as tables. Or provide both fields as empty tables.
--- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf` and `bad_ttl`.
+-- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf`, `order` and `bad_ttl`.
 -- @return true on success, nil+error otherwise
--- @usage -- initialize without any blocking i/o
+-- @usage -- config files to parse
+-- local hosts = {}  -- initialize without any blocking i/o
+-- local resolv_conf = {}  -- initialize without any blocking i/o
+--
+-- -- Order in which to try different dns record types when resolving
+-- -- 'last'; will try the last previously succesful type for a hostname.
+-- local order = { "last", "SRV", "A", "AAAA", "CNAME" }
+--
 -- local client = require("dns.client")
 -- assert(client.init({
---          hosts = {}, 
---          resolv_conf = {},
+--          hosts = hosts, 
+--          resolv_conf = resolv_conf,
+--          order = order,
+--          bad_ttl = bad_ttl,
 --        })
 -- )
 _M.init = function(options, secondary)
@@ -200,6 +206,17 @@ _M.init = function(options, secondary)
   local resolv, hosts, err
   options = options or {}
   cache = {}  -- clear cache on re-initialization
+  
+  local order_valids = {"LAST", "A", "AAAA", "SRV", "CNAME"}
+  for _,v in ipairs(order_valids) do order_valids[v:upper()] = v end
+  local order = options.order or order_valids
+  type_order = {} -- clear existing upvalue
+  for i,v in ipairs(order) do 
+    local t = v:upper()
+    assert(order_valids[t], "Invalid dns record type in order array; "..tostring(v))
+    type_order[i] = _M["TYPE_"..t]
+  end
+  assert(#type_order > 0, "Invalid order list; cannot be empty")
   
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
   local resolvconffile = options.resolv_conf or utils.DEFAULT_RESOLV_CONF
