@@ -207,7 +207,7 @@ _M.init = function(options, secondary)
   options = options or {}
   cache = {}  -- clear cache on re-initialization
   
-  local order_valids = {"LAST", "A", "AAAA", "SRV", "CNAME"}
+  local order_valids = {"LAST", "SRV", "A", "AAAA", "CNAME"}
   for _,v in ipairs(order_valids) do order_valids[v:upper()] = v end
   local order = options.order or order_valids
   type_order = {} -- clear existing upvalue
