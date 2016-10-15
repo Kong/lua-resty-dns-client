@@ -61,10 +61,21 @@ describe("Testing the DNS client", function()
     it("succeeds with order unset", function()
       assert.is.True(client:init({order = nil}))
     end)
+  
+    it("succeeds without i/o access", function()
+      local result, err = assert(client:init({
+          nameservers = { "8.8.8.8:53" },
+          hosts = {},  -- empty tables to parse to prevent defaulting to /etc/hosts
+          resolv_conf = {},   -- and resolv.conf files
+        }))
+      assert.is.True(result)
+      assert.is.Nil(err)
+      assert.are.equal(#client.getcache(), 0) -- no hosts file record should have been imported
+    end)
 
   end)
 
-  it("Tests fetching a TXT record", function()
+  it("fetching a TXT record", function()
     assert(client:init())
 
     local host = "txttest.thijsschreijer.nl"
@@ -76,7 +87,7 @@ describe("Testing the DNS client", function()
     assert.are.equal(#answers, 1)
   end)
 
-  it("Tests fetching a CNAME record", function()
+  it("fetching a CNAME record", function()
     assert(client:init())
 
     local host = "smtp.thijsschreijer.nl"
@@ -88,7 +99,7 @@ describe("Testing the DNS client", function()
     assert.are.equal(#answers, 1)
   end)
   
-  it("Tests expire and touch times", function()
+  it("expire and touch times", function()
     assert(client:init())
 
     local host = "txttest.thijsschreijer.nl"
@@ -123,21 +134,21 @@ describe("Testing the DNS client", function()
 
   end)
 
-  it("Tests fetching multiple A records", function()
+  it("fetching multiple A records", function()
     assert(client:init())
 
     local host = "atest.thijsschreijer.nl"
     local typ = client.TYPE_A
 
     local answers = assert(client.resolve(host, { qtype = typ }))
+    assert.are.equal(#answers, 2)
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
     assert.are.equal(host, answers[2].name)
     assert.are.equal(typ, answers[2].type)
-    assert.are.equal(#answers, 2)
   end)
 
-  it("Tests fetching A record redirected through 2 CNAME records (un-typed)", function()
+  it("fetching A record redirected through 2 CNAME records (un-typed)", function()
     assert(client:init())
 
     --[[
@@ -178,7 +189,7 @@ describe("Testing the DNS client", function()
     assert.are.equal(entry2[1].cname, answers[1].name)
   end)
 
-  it("Tests fetching multiple SRV records (un-typed)", function()
+  it("fetching multiple SRV records (un-typed)", function()
     assert(client:init())
 
     local host = "srvtest.thijsschreijer.nl"
@@ -195,7 +206,7 @@ describe("Testing the DNS client", function()
     assert.are.equal(#answers, 3)
   end)
 
-  it("Tests fetching multiple SRV records through CNAME (un-typed)", function()
+  it("fetching multiple SRV records through CNAME (un-typed)", function()
     assert(client:init())
 
     local host = "cname2srv.thijsschreijer.nl"
@@ -220,7 +231,7 @@ describe("Testing the DNS client", function()
     assert.are.equal(#answers, 3)
   end)
 
-  it("Tests fetching non-type-matching records", function()
+  it("fetching non-type-matching records", function()
     assert(client:init())
 
     local host = "srvtest.thijsschreijer.nl"
@@ -230,7 +241,7 @@ describe("Testing the DNS client", function()
     assert.are.equal(#answers, 0)  -- returns empty table
   end)
 
-  it("Tests fetching non-existing records", function()
+  it("fetching non-existing records", function()
     assert(client:init())
 
     local host = "IsNotHere.thijsschreijer.nl"
@@ -241,7 +252,7 @@ describe("Testing the DNS client", function()
     assert.is.not_nil(answers.errstr)    
   end)
 
-  it("Tests fetching IPv4 address", function()
+  it("fetching IPv4 address", function()
     assert(client:init())
 
     local host = "1.2.3.4"
@@ -252,7 +263,7 @@ describe("Testing the DNS client", function()
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
   end)
 
-  it("Tests fetching IPv6 address", function()
+  it("fetching IPv6 address", function()
     assert(client:init())
 
     local host = "1:2::3:4"
@@ -263,7 +274,7 @@ describe("Testing the DNS client", function()
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
   end)
 
-  it("Tests fetching invalid IPv6 address", function()
+  it("fetching invalid IPv6 address", function()
     assert(client:init())
 
     local host = "1::2:3::4"  -- 2x double colons
@@ -274,7 +285,7 @@ describe("Testing the DNS client", function()
     assert.are.equal("name error", answers.errstr)    
   end)
   
-  it("Tests fetching records from cache only, expired and ttl = 0",function()
+  it("fetching records from cache only, expired and ttl = 0",function()
     local expired_entry = {
       {
         type = client.TYPE_A,
@@ -298,7 +309,8 @@ describe("Testing the DNS client", function()
     assert.are.equal(expired_entry, client.getcache()[expired_entry[1].type..":"..expired_entry[1].name])
   end)
 
-  it("Tests recursive lookups failure", function()
+  it("recursive lookups failure", function()
+    assert(client:init())
     local entry1 = {
       {
         type = client.TYPE_CNAME,
@@ -331,7 +343,7 @@ describe("Testing the DNS client", function()
     assert.are.equal("maximum dns recursion level reached", err)
   end)
 
-  it("Tests resolving from the /etc/hosts file", function()
+  it("resolving from the /etc/hosts file", function()
     local f = tempfilename()
     writefile(f, [[
 
@@ -361,7 +373,7 @@ describe("Testing the DNS client", function()
     
   end)
 
-  describe("Testing the toip() function", function()
+  describe("toip() function", function()
     it("A/AAAA-record, round-robin",function()
       assert(client:init())
       local host = "atest.thijsschreijer.nl"
@@ -439,7 +451,47 @@ describe("Testing the DNS client", function()
       assert.is_number(port)
       assert.is_not.equal(0, port)
     end)
-    it("Tests resolving from cache only, expired and ttl = 0",function()
+    it("resolving in correct record-type order",function()
+      local function config()
+        -- function to insert 2 records in the cache
+        local A_entry = {
+          {
+            type = client.TYPE_A,
+            address = "5.6.7.8",
+            class = 1,
+            name = "hello.world",
+            ttl = 10, 
+          },
+          touch = 0,
+          expire = gettime()+10,  -- active
+        }
+        local AAAA_entry = {
+          {
+            type = client.TYPE_AAAA,
+            address = "::1",
+            class = 1,
+            name = "hello.world",
+            ttl = 10, 
+          },
+          touch = 0,
+          expire = gettime()+10,  -- active
+        }
+        -- insert in the cache
+        local cache = client.getcache()
+        cache[A_entry[1].type..":"..A_entry[1].name] = A_entry
+        cache[AAAA_entry[1].type..":"..AAAA_entry[1].name] = AAAA_entry
+      end
+      assert(client:init({order = {"AAAA", "A"}}))
+      config()
+      local ip = client.toip("hello.world")
+      assert.equals(ip, "::1")
+      assert(client:init({order = {"A", "AAAA"}}))
+      config()
+      local ip = client.toip("hello.world")
+      assert.equals(ip, "5.6.7.8")
+    end)
+    it("resolving from cache only, expired and ttl = 0",function()
+      assert(client:init())
       local expired_entry = {
         {
           type = client.TYPE_A,
@@ -463,7 +515,8 @@ describe("Testing the DNS client", function()
       assert.are.equal(cache_count, #client.getcache())  -- should not be deleted
       assert.are.equal(expired_entry, client.getcache()[expired_entry[1].type..":"..expired_entry[1].name])
     end)
-    it("Tests handling of empty responses", function()
+    it("handling of empty responses", function()
+      assert(client:init())
       local empty_entry = {
         touch = 0,
         expire = 0,
@@ -476,7 +529,8 @@ describe("Testing the DNS client", function()
       assert.is_nil(ip)
       assert.is.string(port)  -- error message
     end)
-    it("Tests recursive lookups failure", function()
+    it("recursive lookups failure", function()
+      assert(client:init())
       local entry1 = {
         {
           type = client.TYPE_CNAME,
@@ -508,7 +562,7 @@ describe("Testing the DNS client", function()
       assert.is_nil(ip)
       assert.are.equal("maximum dns recursion level reached", port)
     end)
-    it("Tests passing through the resolver-object", function()
+    it("passing through the resolver-object", function()
       assert(client:init())
 
       local q1, err1, r1 = client.toip("google.com", 123, false)
@@ -537,25 +591,14 @@ describe("Testing the DNS client", function()
     end)
   end)
 
-  it("Tests initialization without i/o access", function()
-    local result, err = assert(client:init({
-        nameservers = { "8.8.8.8:53" },
-        hosts = {},  -- empty tables to parse to prevent defaulting to /etc/hosts
-        resolv_conf = {},   -- and resolv.conf files
-      }))
-    assert.is.True(result)
-    assert.is.Nil(err)
-    assert.are.equal(#client.getcache(), 0) -- no hosts file record should have been imported
-  end)
-  
-  describe("the stdError function", function()
+  describe("stdError() function", function()
     it("Tests a valid record passed through", function()
       local rec = { { address = "1.2.3.4" } }
       local res, err = client.stdError(rec, nil)
       assert.are.equal(rec, res)
       assert.is_nil(err)
     end)
-    it("Tests a server error returned as Lua error", function()
+    it("server error returned as Lua error", function()
       local rec = {
         errcode = 3,
         errstr = "name error",
@@ -564,13 +607,13 @@ describe("Testing the DNS client", function()
       assert.are.equal(err, "dns server error; 3 name error")
       assert.is_nil(res)
     end)
-    it("Tests a Lua error passed through", function()
+    it("Lua error passed through", function()
       local rec = "this is an error"
       local res, err = client.stdError(nil, rec)
       assert.are.equal(rec, err)
       assert.is_nil(res)
     end)
-    it("Tests an empty response returned with message", function()
+    it("empty response returned with message", function()
       local rec = {}
       local res, err = client.stdError(rec, nil)
       assert.are.equal(rec, res)

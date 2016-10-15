@@ -486,12 +486,17 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
   -- go try a sequence of record types
   local last = cachegetsuccess(qname)  -- check if we have a previous succesful one
   local records, err
-  for i = (last and 0 or 1), #type_order do
-    local qtype = (i == 0) and last or type_order[i]
-    if (qtype == last) and (i ~= 0) then
+  local already_tried = { [_M.TYPE_LAST] = true }
+  for _, qtype in ipairs(type_order) do
+    if (qtype == _M.TYPE_LAST) and last then
+      qtype = last
+    end
+    if already_tried[qtype] then
       -- already tried this one, based on 'last', no use in trying again
     else
       opts.qtype = qtype
+      already_tried[qtype] = true
+      
       records, err, r = _lookup(qname, opts, dns_cache_only, r)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
