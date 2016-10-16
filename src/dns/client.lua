@@ -30,6 +30,9 @@ local time = ngx.now
 local log = ngx.log
 local log_WARN = ngx.WARN
 
+local empty = setmetatable({}, 
+  {__newindex = function() error("The 'empty' table is read-only") end})
+
 -- resolver options
 local config
 
@@ -37,6 +40,9 @@ local config
 local max_dns_recursion = 20
 -- ttl (in seconds) for an empty/error dns result
 local bad_ttl = 1
+-- default order to query
+local order_valids = {"LAST", "SRV", "A", "AAAA", "CNAME"}
+for _,v in ipairs(order_valids) do order_valids[v:upper()] = v end
 
 -- create module table
 local _M = {}
@@ -59,26 +65,40 @@ _M.TYPE_LAST = -1
 -- for this name, see `resolve` function.
 local cache = {}
 
--- lookup a single entry in the cache. Invalidates the entry if its beyond its ttl
+-- lookup a single entry in the cache. Invalidates the entry if its beyond its ttl.
+-- Even if the record is expired and `nil` is returned, the second return value
+-- can be `true`.
 -- @param qname name to lookup
--- @qtype type number, any of the TYPE_xxx constants
--- @peek just consult the cache, do not check ttl and expire, just touch it
+-- @param qtype type number, any of the TYPE_xxx constants
+-- @param peek just consult the cache, do not check ttl and expire, just touch it
+-- @return 1st; cached record or nil, 2nd; expect_ttl_0, true if the last one was ttl  0
 local cachelookup = function(qname, qtype, peek)
   local now = time()
   local key = qtype..":"..qname
   local cached = cache[key]
+  local expect_ttl_0
   
   if cached then
-    if (cached.expire < now) and (not peek) then
-      -- the cached entry expired
+    expect_ttl_0 = ((cached[1] or empty).ttl == 0)
+    if peek then
+      -- cannot update, just update touch time
+      cached.touch = now
+    elseif expect_ttl_0 then
+      -- ttl = 0 so we should not remove the cache entry, but we should also
+      -- not return it
+      cached.touch = now
+      cached = nil
+    elseif (cached.expire < now) then
+      -- the cached entry expired, and we're allowed to mark it as such
       cache[key] = nil
       cached = nil
     else
+      -- still valid, so nothing to do
       cached.touch = now
     end
   end
   
-  return cached
+  return cached, expect_ttl_0
 end
 
 -- inserts an entry in the cache
@@ -176,21 +196,19 @@ local pool_max_wait
 local pool_max_retry
 
 --- initialize resolver. When called multiple times, it will clear the cache.
--- Will parse hosts and resolv.conf files/tables. The `bad_ttl` options sets the ttl 
--- (in seconds, default 1) for bad query results (empty or errors).
--- If the `hosts` and `resolv_conf` fields are not provided, it will fall back on default
--- filenames (see the `dns.utils` module for details). To prevent any potential 
--- blocking i/o all together, manually fetch the contents of those files and 
--- provide them as tables. Or provide both fields as empty tables.
--- @param options Same table as the openresty dns resolver, with extra fields `hosts`, `resolv_conf`, `order` and `bad_ttl`.
--- @return true on success, nil+error otherwise
+-- @param options Same table as the openresty dns resolver, with some extra fields explained in the example below.
+-- @return true on success, nil+error, or throw an error on bad input
 -- @usage -- config files to parse
+-- -- hosts and resolv_conf can both be a filename, or a table with file-contents
 -- local hosts = {}  -- initialize without any blocking i/o
 -- local resolv_conf = {}  -- initialize without any blocking i/o
 --
 -- -- Order in which to try different dns record types when resolving
 -- -- 'last'; will try the last previously succesful type for a hostname.
--- local order = { "last", "SRV", "A", "AAAA", "CNAME" }
+-- local order = { "last", "SRV", "A", "AAAA", "CNAME" } 
+--
+-- -- Cache ttl for empty and error responses
+-- local bad_ttl = 1.0   -- in seconds
 --
 -- local client = require("dns.client")
 -- assert(client.init({
@@ -207,8 +225,6 @@ _M.init = function(options, secondary)
   options = options or {}
   cache = {}  -- clear cache on re-initialization
   
-  local order_valids = {"LAST", "SRV", "A", "AAAA", "CNAME"}
-  for _,v in ipairs(order_valids) do order_valids[v:upper()] = v end
   local order = options.order or order_valids
   type_order = {} -- clear existing upvalue
   for i,v in ipairs(order) do 
@@ -312,7 +328,7 @@ local _queue = setmetatable({}, {__mode = "v"})
 -- query by the other thread returns an error.
 -- The maximum delay would be `max_wait * max_retry`.
 -- @return query result + nil + r, or nil + error + r
-local function _synchronized_query(qname, r_opts, r, count)
+local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
   local key = qname..":"..r_opts.qtype
   local item = _queue[key]
   if not item then
@@ -323,19 +339,26 @@ local function _synchronized_query(qname, r_opts, r, count)
       if not r then
         return r, err, nil
       end
-
     end
-    item = {
-      semaphore = semaphore(),
-    }
-    _queue[key] = item  -- insertion in _queue; this is where the synchronization starts
-    item.result, item.err = r:query(qname, r_opts)
-    -- query done, but by now many others might be waiting for our result.
-    -- 1) stop new ones from adding to our lock/semaphore
-    _queue[key] = nil
-    -- 2) release all waiting threads
-    item.semaphore:post(math.max(item.semaphore:count() * -1, 1))
-    return item.result, item.err, r
+
+    if expect_ttl_0 then
+      -- we're not limiting the dns queries, but query on EVERY request
+      local result, err = r:query(qname, r_opts)
+      return result, err, r
+    else
+      -- we're limiting to one request at a time
+      item = {
+        semaphore = semaphore(),
+      }
+      _queue[key] = item  -- insertion in _queue; this is where the synchronization starts
+      item.result, item.err = r:query(qname, r_opts)
+      -- query done, but by now many others might be waiting for our result.
+      -- 1) stop new ones from adding to our lock/semaphore
+      _queue[key] = nil
+      -- 2) release all waiting threads
+      item.semaphore:post(math.max(item.semaphore:count() * -1, 1))
+      return item.result, item.err, r
+    end
   else
     -- lookup is on its way, wait for it
     local ok, err = item.semaphore:wait(pool_max_wait)
@@ -352,7 +375,7 @@ local function _synchronized_query(qname, r_opts, r, count)
         return r, nil, "dns lookup pool exceeded retries ("..tostring(pool_max_retry).."): "..(item.error or err or "unknown")
       end
       _queue[key] = nil  -- don't block on the same thread again
-      return _synchronized_query(qname, r_opts, r, count + 1)
+      return _synchronized_query(qname, r_opts, r, expect_ttl_0, count + 1)
     end
   end
 end
@@ -406,40 +429,48 @@ end
 -- @return query result + nil + r, or r + nil + error
 local function _lookup(qname, r_opts, dns_cache_only, r)
   local qtype = r_opts.qtype
-  local record = cachelookup(qname, qtype, dns_cache_only)
-  if record then
-    return record, nil, r          -- cache hit
-  elseif (qtype == _M.TYPE_AAAA) and qname:find(":") then
-    return check_ipv6(qname, r)    -- IPv6 or invalid
-  elseif (qtype == _M.TYPE_A) and qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
-    return check_ipv4(qname, r)    -- IPv4 address
-  elseif dns_cache_only then
+  local record, expect_ttl_0 = cachelookup(qname, qtype, dns_cache_only)
+  if record then  -- cache hit
+    return record, nil, r
+  end
+  if not expect_ttl_0 then -- so no record, and no expected ttl, so not seen
+    -- this one recently, this is the only time we do the expensive checks
+    -- for ip addresses, as they will be inserted with a ttl of 10years and 
+    -- hence never hit this code branch again
+    if (qtype == _M.TYPE_AAAA) and qname:find(":") then
+      return check_ipv6(qname, r)    -- IPv6 or invalid
+    end
+    if (qtype == _M.TYPE_A) and qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
+      return check_ipv4(qname, r)    -- IPv4 address
+    end
+  end
+  if dns_cache_only then
     -- no active lookups allowed, so return error
     return {
       errcode = 4,                                         -- standard is "server failure"
       errstr = "server failure, cache only lookup failed", -- extended description
     }, nil, r   -- NOTE: this error response should never cached
-  else
-    -- not found in our cache, so perform query on dns servers
-    local answers, err
-    answers, err, r = _synchronized_query(qname, r_opts, r)
-    if not answers then return answers, err, r end
-    
-    -- check our answers and store them in the cache
-    -- A, AAAA, SRV records may be accompanied by CNAME records
-    -- store them all, leaving only the requested type in so we can return that set
-    for i = #answers, 1, -1 do -- we're deleting entries, so reverse the traversal
-      local answer = answers[i]
-      if answer.type ~= qtype then
-        cacheinsert({answer}) -- insert in cache before removing it
-        table.remove(answers, i)
-      end
-    end
-
-    -- now insert actual target record in cache
-    cacheinsert(answers, qname, qtype)
-    return answers, nil, r
   end
+  
+  -- not found in our cache, so perform query on dns servers
+  local answers, err
+  answers, err, r = _synchronized_query(qname, r_opts, r, expect_ttl_0)
+  if not answers then return answers, err, r end
+  
+  -- check our answers and store them in the cache
+  -- A, AAAA, SRV records may be accompanied by CNAME records
+  -- store them all, leaving only the requested type in so we can return that set
+  for i = #answers, 1, -1 do -- we're deleting entries, so reverse the traversal
+    local answer = answers[i]
+    if answer.type ~= qtype then
+      cacheinsert({answer}) -- insert in cache before removing it
+      table.remove(answers, i)
+    end
+  end
+
+  -- now insert actual target record in cache
+  cacheinsert(answers, qname, qtype)
+  return answers, nil, r
 end
 
 --- Resolve a name. 
