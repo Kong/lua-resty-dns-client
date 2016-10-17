@@ -310,7 +310,7 @@ _M.init = function(options, secondary)
   config = options -- store it in our module level global
   
   pool_max_retry = 1  -- do one retry, dns resolver is already doing 'retrans' number of retries on top
-  pool_max_wait = options.timeout / 1000 * options.retrans 
+  pool_max_wait = options.timeout / 1000 * options.retrans -- default is to wait for the dns resolver to hit its timeouts
   
   return true
 end
@@ -331,6 +331,7 @@ local _queue = setmetatable({}, {__mode = "v"})
 local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
   local key = qname..":"..r_opts.qtype
   local item = _queue[key]
+--print("query "..tostring(count))
   if not item then
     -- no lookup being done so far
     if not r then
@@ -357,24 +358,28 @@ local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
       _queue[key] = nil
       -- 2) release all waiting threads
       item.semaphore:post(math.max(item.semaphore:count() * -1, 1))
+--print("primairy 'done'")
       return item.result, item.err, r
     end
   else
     -- lookup is on its way, wait for it
+--print("gonna wait; ",pool_max_wait)
     local ok, err = item.semaphore:wait(pool_max_wait)
     if ok and item.result then
       -- we were released, and have a query result from the
       -- other thread, so all is well, return it
+--print("secondary ok")
       return item.result, item.err, r
     else
+--print("released with error...", tostring(err))
       -- there was an error, either a semaphore timeout, or 
       -- a lookup error, so retry (retry actually means; do 
       -- our own lookup instead of waiting for another lookup).
       count = count or 1
       if count > pool_max_retry then
-        return r, nil, "dns lookup pool exceeded retries ("..tostring(pool_max_retry).."): "..(item.error or err or "unknown")
+        return nil, "dns lookup pool exceeded retries ("..tostring(pool_max_retry).."): "..(item.error or err or "unknown"), r
       end
-      _queue[key] = nil  -- don't block on the same thread again
+      if _queue[key] == item then _queue[key] = nil end -- don't block on the same thread again
       return _synchronized_query(qname, r_opts, r, expect_ttl_0, count + 1)
     end
   end

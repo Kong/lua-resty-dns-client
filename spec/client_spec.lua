@@ -1,4 +1,3 @@
-local modname = "dns.client"
 local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname
 local pretty = require("pl.pretty").write
@@ -24,11 +23,12 @@ describe("DNS client", function()
   
   before_each(function()
       _G._TEST = true
-    client = require(modname)
+    client = require("dns.client")
   end)
   
   after_each(function()
-    package.loaded[modname] = nil
+    package.loaded["dns.client"] = nil
+    package.loaded["resty.dns.resolver"] = nil
     client = nil
     _G._TEST = nil
   end)
@@ -865,8 +865,77 @@ describe("DNS client", function()
       assert.equal(10,count)
     end)
 
-    pending("some edge cases go here, error, timeout, etc", function()
+    it("timeout while waiting", function()
       -- basically the local function _synchronized_query
+      assert(client:init({timeout = 2000, retrans = 1, }))
+      
+      -- insert a stub thats waits and returns a fixed record
+      local name = "thijsschreijer.nl"
+      local resty = require("resty.dns.resolver")
+      resty.new = function(...)
+        return {
+          query = function()
+            local ip = "1.4.2.3"
+            local entry = {
+              {
+                type = client.TYPE_A,
+                address = ip,
+                class = 1,
+                name = name,
+                ttl = 10,
+              },
+              touch = 0,
+              expire = gettime() + 10, 
+            }
+            sleep(2) -- wait before we return the results
+            return entry
+          end
+        }
+      end
+      
+      
+      local coros = {}
+      local results = {}
+      
+      -- we're going to schedule a whole bunch of queries, all of this
+      -- function, which does the same lookup and stores the result
+      local x = function()
+        -- the function is ran when started. So we must immediately yield
+        -- so the scheduler loop can first schedule them all before actually
+        -- starting resolving
+        coroutine.yield(coroutine.running())
+        local result, err = client.resolve("thijsschreijer.nl", {qtype = client.TYPE_A})
+        table.insert(results, result or err)
+      end
+      
+      -- schedule a bunch of the same lookups
+      for _ = 1, 10 do
+        local co = ngx.thread.spawn(x)
+        table.insert(coros, co)
+      end
+      
+      -- all scheduled and waiting to start due to the yielding done.
+      -- now start them all
+      for i = 1, #coros do
+        ngx.thread.wait(coros[i]) -- this wait will resume the scheduled ones
+      end
+      
+      -- the result should be 3 entries
+      -- 1: a table  (first attempt)
+      -- 2: a second table (the 1 retry, as hardcoded in `pool_max_retry` variable)
+      -- 3-10: error message (returned by thread 3 to 10)
+      assert.is.table(results[1])
+      assert.is.table(results[1][1])
+      assert.is.equal(results[1][1].name, name)
+      results[1].touch = nil
+      results[2].touch = nil
+      results[1].expire = nil
+      results[2].expire = nil
+      assert.Not.equal(results[1], results[2])
+      assert.same(results[1], results[2])
+      for i = 3, 10 do
+        assert.equal("dns lookup pool exceeded retries (1): timeout", results[i])
+      end
     end)
   end)
 end)
