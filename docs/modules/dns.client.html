@@ -38,6 +38,7 @@
 
 <h2>Modules</h2>
 <ul class="$(kind=='Topics' and '' or 'nowrap'">
+  <li><a href="../modules/dns.balancer.html">dns.balancer</a></li>
   <li><strong>dns.client</strong></li>
   <li><a href="../modules/dns.utils.html">dns.utils</a></li>
 </ul>
@@ -57,16 +58,17 @@
 <p> <em>NOTES</em>: </p>
 
 <ol>
-    <li>parsing the config files upon initialization uses blocking i/o, so use with
-    care. See <code>init()</code> for details.</li>
-    <li>All returned records are directly from the cache. So do not modify them! If you
-    need to, copy them first.</li>
-    <li>TTL for records is the TTL returned by the server at the time of fetching
-    and won't be updated while the client serves the records from its cache.</li>
-    <li>resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
-    the hostname to be resolved is a valid IP address, it will be cached with a ttl of
-    10 years. So the user doesn't have to check for ip adresses.</li>
+<li>parsing the config files upon initialization uses blocking i/o, so use with
+care. See <code>init()</code> for details.</li>
+<li>All returned records are directly from the cache. So do not modify them! If you
+need to, copy them first.</li>
+<li>TTL for records is the TTL returned by the server at the time of fetching
+and won&rsquo;t be updated while the client serves the records from its cache.</li>
+<li>resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
+the hostname to be resolved is a valid IP address, it will be cached with a ttl of
+10 years. So the user doesn&rsquo;t have to check for ip adresses.</li>
 </ol>
+
 
 <p> See <code>./examples/</code> for examples and output returned.</p>
     <h3>Info:</h3>
@@ -120,7 +122,7 @@
     Implements tcp-connect method with dns resolution.
  This builds on top of <a href="../modules/dns.client.html#toip">toip</a>. If the name resolves to an SRV record,
  the port returned by the DNS server will override the one provided.
- <strong>NOTE</strong>: can also be used for other connect methods; http/redis as long as
+ <strong>NOTE</strong>: can also be used for other connect methods, eg. http/redis clients, as long as
  the argument order is the same
 
 
@@ -156,35 +158,45 @@
     </dt>
     <dd>
     initialize resolver.  When called multiple times, it will clear the cache.
- Will parse hosts and resolv.conf files/tables.
- If the <code>hosts</code> and <code>resolv_conf</code> fields are not provided, it will fall back on default
- filenames (see the <a href="../modules/dns.utils.html#">dns.utils</a> module for details). To prevent any potential
- blocking i/o all together, manually fetch the contents of those files and
- provide them as tables. Or provide both fields as empty tables.
 
 
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">options</span>
-         Same table as the openresty dns resolver, with extra fields <code>hosts</code>, <code>resolv_conf</code> containing the filenames to parse.
+         Same table as the openresty dns resolver, with some extra fields explained in the example below.
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        true on success, nil+error otherwise
+        true on success, nil+error, or throw an error on bad input
     </ol>
 
 
 
     <h3>Usage:</h3>
     <ul>
-        <pre class="example"> <span class="comment">-- initialize without any blocking i/o
-</span> <span class="keyword">local</span> client = <span class="global">require</span>(<span class="string">"dns.client"</span>)
+        <pre class="example"> <span class="comment">-- config files to parse
+</span> <span class="comment">-- <code>hosts</code> and <code>resolv_conf</code> can both be a filename, or a table with file-contents
+</span> <span class="comment">-- The contents of the <code>hosts</code> file will be inserted in the cache
+</span> <span class="comment">-- From <code>resolve_conf</code> the <code>nameservers</code>, <code>attempts</code> and <code>timeout</code> values will be used.
+</span> <span class="keyword">local</span> hosts = {}  <span class="comment">-- initialize without any blocking i/o
+</span> <span class="keyword">local</span> resolv_conf = {}  <span class="comment">-- initialize without any blocking i/o
+</span>
+ <span class="comment">-- Order in which to try different dns record types when resolving
+</span> <span class="comment">-- 'last'; will try the last previously succesful type for a hostname.
+</span> <span class="keyword">local</span> order = { <span class="string">"last"</span>, <span class="string">"SRV"</span>, <span class="string">"A"</span>, <span class="string">"AAAA"</span>, <span class="string">"CNAME"</span> }
+
+ <span class="comment">-- Cache ttl for empty and error responses
+</span> <span class="keyword">local</span> bad_ttl = <span class="number">1.0</span>   <span class="comment">-- in seconds
+</span>
+ <span class="keyword">local</span> client = <span class="global">require</span>(<span class="string">"dns.client"</span>)
  <span class="global">assert</span>(client.init({
-          hosts = {},
-          resolv_conf = {},
+          hosts = hosts,
+          resolv_conf = resolv_conf,
+          order = order,
+          bad_ttl = bad_ttl,
         })
  )</pre>
     </ul>
@@ -224,22 +236,17 @@
     <strong>resolve (qname, r_opts, dns_cache_only, r)</strong>
     </dt>
     <dd>
-    Resolve a name. <br/>
- If <code>r_opts.qtype</code> is given, then it will fetch that specific type only (if it's a <code>TYPE_CNAME</code> then
- it will return the cname record). If <code>r_opts.qtype</code> is not provided, then it will try to resolve
- the name using the following record types, in the order listed;</p>
+    Resolve a name.<br/>
+ If <code>r_opts.qtype</code> is given, then it will fetch that specific type only. If
+ <code>r_opts.qtype</code> is not provided, then it will try to resolve
+ the name using the record types, in the order as provided to <a href="../modules/dns.client.html#init">init</a>.</p>
 
-<ol>
-    <li>last succesful lookup type (if any), </li>
-    <li>A-record, </li>
-    <li>AAAA-record, </li>
-    <li>SRV-record,  --> will be returned, if found, will not be dereferenced</li>
-    <li>CNAME-record --> will not be returned, but dereferenced, so its target will be returned</li>
-</ol>
+<p> Note that unless explictly requesting a CNAME record (by setting <code>r_opts.qtyp</code>) this
+ function will dereference the CNAME records.</p>
 
-<p> So requesting <code>mysrv.domain.com</code> (assuming to be an SRV record) will try to resolve
- it (the first time) as A, then AAAA, then SRV, CNAME will not be tried. If succesful, a second lookup
- will now try SRV, A, AAAA, CNAME.
+<p> So requesting <code>my.domain.com</code> (assuming to be an AAAA record, and default <code>order</code>) will try to resolve
+ it (the first time) as SRV, then A, then AAAA (after AAAA success, CNAME will not be tried).
+ A second lookup will now try AAAA, SRV, A, CNAME. As AAAA was previously succesful.
 
 
     <h3>Parameters:</h3>
@@ -248,13 +255,13 @@
          Name to resolve
         </li>
         <li><span class="parameter">r_opts</span>
-         Options table, see remark about the <code>qtype</code> field above
+         Options table, see remark about the <code>qtype</code> field above and OpenResty docs for more options.
         </li>
         <li><span class="parameter">dns_cache_only</span>
-         Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
+         Only check the cache, won&rsquo;t do server lookups (will not invalidate any ttl expired data and will hence possibly return expired data)
         </li>
         <li><span class="parameter">r</span>
-         (optional) dns resolver object to use
+         (optional) dns resolver object to use, it will also be returned. In case of multiple calls, this allows to reuse the resolver object instead of recreating a new one on each call.
         </li>
     </ul>
 
@@ -276,7 +283,7 @@
     Standardizes the <a href="../modules/dns.client.html#resolve">resolve</a> output to more standard Lua errors.
  Both <code>nil+error+r</code> and succesful lookups are passed through.
  A server error table is returned as <code>nil+error+r</code> (where <code>error</code> is a string extracted from the server error table).
- An empty response is returned as <code>response+error+r</code> (where <code>error</code> is 'dns query returned no results').
+ An empty response is returned as <code>response+error+r</code> (where <code>error</code> is &lsquo;dns query returned no results&rsquo;).
 
 
 
@@ -308,6 +315,7 @@
  dereference SRV type records. Will round-robin on each level individually. Eg.
  SRV with 2 entries; a) IPv4 address, b) hostname to an A record with also 2 entries, b1 and b2.
  Calling <a href="../modules/dns.client.html#toip">toip</a> 4 times will in turn result in; 1) a, 2) b1, 3) a, 4) b2.
+ For SRV records it will do a weighted-round-robin.
 
 
     <h3>Parameters:</h3>
@@ -319,17 +327,17 @@
          (optional) default port number to return if none was found in the lookup chain
         </li>
         <li><span class="parameter">dns_cache_only</span>
-         (optional) if truthy, no dns queries will be performed, only cache lookups
+         Only check the cache, won&rsquo;t do server lookups (will not invalidate any ttl expired data and will hence possibly return expired data)
         </li>
         <li><span class="parameter">r</span>
-         (optional) dns resolver object to use
+         (optional) dns resolver object to use, it will also be returned. In case of multiple calls, this allows to reuse the resolver object instead of recreating a new one on each call.
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        <code>ip address + port + r</code>, or <code>nil + error + r</code>
+        <code>ip address + port + r</code>, or in case of an error <code>nil + error + r</code>
     </ol>
 
 
@@ -343,7 +351,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.3</a></i>
-<i style="float:right;">Last updated 2016-10-10 17:16:30 </i>
+<i style="float:right;">Last updated 2016-10-18 15:38:19 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

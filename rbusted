@@ -1,5 +1,4 @@
 #!/usr/bin/env resty
---#!/usr/bin/env resty -c 65535
 
 package.path = "?/init.lua;"..package.path
 

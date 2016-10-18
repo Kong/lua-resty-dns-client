@@ -199,7 +199,9 @@ local pool_max_retry
 -- @param options Same table as the openresty dns resolver, with some extra fields explained in the example below.
 -- @return true on success, nil+error, or throw an error on bad input
 -- @usage -- config files to parse
--- -- hosts and resolv_conf can both be a filename, or a table with file-contents
+-- -- `hosts` and `resolv_conf` can both be a filename, or a table with file-contents
+-- -- The contents of the `hosts` file will be inserted in the cache
+-- -- From `resolve_conf` the `nameservers`, `attempts` and `timeout` values will be used.
 -- local hosts = {}  -- initialize without any blocking i/o
 -- local resolv_conf = {}  -- initialize without any blocking i/o
 --
@@ -474,24 +476,21 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
 end
 
 --- Resolve a name. 
--- If `r_opts.qtype` is given, then it will fetch that specific type only (if it's a `TYPE_CNAME` then 
--- it will return the cname record). If `r_opts.qtype` is not provided, then it will try to resolve
--- the name using the following record types, in the order listed;
+-- If `r_opts.qtype` is given, then it will fetch that specific type only. If 
+-- `r_opts.qtype` is not provided, then it will try to resolve
+-- the name using the record types, in the order as provided to `init`.
 -- 
--- 1. last succesful lookup type (if any), 
--- 2. A-record, 
--- 3. AAAA-record, 
--- 4. SRV-record,  --> will be returned, if found, will not be dereferenced
--- 5. CNAME-record --> will not be returned, but dereferenced, so its target will be returned
+-- Note that unless explictly requesting a CNAME record (by setting `r_opts.qtyp`) this
+-- function will dereference the CNAME records.
 --
--- So requesting `mysrv.domain.com` (assuming to be an SRV record) will try to resolve
--- it (the first time) as A, then AAAA, then SRV, CNAME will not be tried. If succesful, a second lookup 
--- will now try SRV, A, AAAA, CNAME.
+-- So requesting `my.domain.com` (assuming to be an AAAA record, and default `order`) will try to resolve
+-- it (the first time) as SRV, then A, then AAAA (after AAAA success, CNAME will not be tried). 
+-- A second lookup will now try AAAA, SRV, A, CNAME. As AAAA was previously succesful.
 -- @function resolve
 -- @param qname Name to resolve
--- @param r_opts Options table, see remark about the `qtype` field above
--- @param dns_cache_only Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will possibly return expired data)
--- @param r (optional) dns resolver object to use
+-- @param r_opts Options table, see remark about the `qtype` field above and OpenResty docs for more options.
+-- @param dns_cache_only Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will hence possibly return expired data)
+-- @param r (optional) dns resolver object to use, it will also be returned. In case of multiple calls, this allows to reuse the resolver object instead of recreating a new one on each call.
 -- @return `list of records + nil + r`, or `nil + err + r`. The list can be empty if the name is present on the server, but has a different record type. Any dns server errors are returned in a hashtable (see openresty docs).
 local function resolve(qname, r_opts, dns_cache_only, r, count)
   if count and (count > max_dns_recursion) then
@@ -700,13 +699,14 @@ end
 -- Does a round-robin over the returned records. Builds on top of `resolve`, but will also further 
 -- dereference SRV type records. Will round-robin on each level individually. Eg.
 -- SRV with 2 entries; a) IPv4 address, b) hostname to an A record with also 2 entries, b1 and b2.
--- Calling `toip` 4 times will in turn result in; 1) a, 2) b1, 3) a, 4) b2. 
+-- Calling `toip` 4 times will in turn result in; 1) a, 2) b1, 3) a, 4) b2.
+-- For SRV records it will do a weighted-round-robin.
 -- @function toip
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in the lookup chain
--- @param dns_cache_only (optional) if truthy, no dns queries will be performed, only cache lookups
--- @param r (optional) dns resolver object to use
--- @return `ip address + port + r`, or `nil + error + r`
+-- @param dns_cache_only Only check the cache, won't do server lookups (will not invalidate any ttl expired data and will hence possibly return expired data)
+-- @param r (optional) dns resolver object to use, it will also be returned. In case of multiple calls, this allows to reuse the resolver object instead of recreating a new one on each call.
+-- @return `ip address + port + r`, or in case of an error `nil + error + r`
 local function toip(qname, port, dns_cache_only, r)
   local rec, err
   rec, err, r = stdError(resolve(qname, nil, dns_cache_only, r))
@@ -727,7 +727,7 @@ end
 --- Implements tcp-connect method with dns resolution.
 -- This builds on top of `toip`. If the name resolves to an SRV record, 
 -- the port returned by the DNS server will override the one provided.
--- __NOTE__: can also be used for other connect methods; http/redis as long as
+-- __NOTE__: can also be used for other connect methods, eg. http/redis clients, as long as
 -- the argument order is the same
 -- @function connect
 -- @param sock the socket to connect

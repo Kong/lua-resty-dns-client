@@ -77,6 +77,10 @@
 	<td class="summary">Drop an amount of slots and return them to the overall balancer.</td>
 	</tr>
 	<tr>
+	<td class="name" nowrap><a href="#mt_addr:getPeer">mt_addr:getPeer ()</a></td>
+	<td class="summary">Returns the peer info.</td>
+	</tr>
+	<tr>
 	<td class="name" nowrap><a href="#mt_balancer:addHost">mt_balancer:addHost (hostname, port, weight)</a></td>
 	<td class="summary">Adds a host to the balancer.</td>
 	</tr>
@@ -89,11 +93,11 @@
 	<td class="summary">Address iterator.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#mt_balancer:getPeer">mt_balancer:getPeer ()</a></td>
+	<td class="name" nowrap><a href="#mt_balancer:getPeer">mt_balancer:getPeer (hashvalue, cache_only)</a></td>
 	<td class="summary">Gets the next host according to the loadbalancing scheme.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#mt_balancer:redistributeSlots">mt_balancer:redistributeSlots ()</a></td>
+	<td class="name" nowrap><a href="#mt_balancer:redistributeSlots">mt_balancer:redistributeSlots (slotList)</a></td>
 	<td class="summary">Recalculates the weights.</td>
 	</tr>
 	<tr>
@@ -109,12 +113,16 @@
 	<td class="summary">Changes the host overall weight.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#mt_host:queryDns">mt_host:queryDns ()</a></td>
+	<td class="name" nowrap><a href="#mt_host:getPeer">mt_host:getPeer (hashvalue, cache_only, slot)</a></td>
+	<td class="summary">Gets address and port number from a specific slot owned by the host.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#mt_host:queryDns">mt_host:queryDns (cache_only)</a></td>
 	<td class="summary">Queries the DNS for this hostname.</td>
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#mt_host:removeAddress">mt_host:removeAddress (entry)</a></td>
-	<td class="summary">Removes an <code>address</code> object from the <code>host</code>.</td>
+	<td class="summary">Looks up and disables an <code>address</code> object from the <code>host</code>.</td>
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#new">new (opts)</a></td>
@@ -164,8 +172,8 @@
     </dt>
     <dd>
     disables an address object from the balancer.
- It will set its weight to 0 and the <code>deleteMe</code> flag to <code>true</code>. So the next slot-recalculation
- will delete the address.
+ It will set its weight to 0, so the next slot-recalculation
+ can delete the address by calling <code>delete</code>.
 
 
 
@@ -206,6 +214,25 @@
 
 </dd>
     <dt>
+    <a name = "mt_addr:getPeer"></a>
+    <strong>mt_addr:getPeer ()</strong>
+    </dt>
+    <dd>
+    Returns the peer info.
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+        ip-address, port and hostname of the target
+    </ol>
+
+
+
+
+</dd>
+    <dt>
     <a name = "mt_balancer:addHost"></a>
     <strong>mt_balancer:addHost (hostname, port, weight)</strong>
     </dt>
@@ -216,7 +243,7 @@
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">hostname</span>
-         hostname to add
+         hostname to add (note: not validated, as long as it&rsquo;s a string it will be accepted!)
         </li>
         <li><span class="parameter">port</span>
          (optional) the port to use (defaults to 80 if omitted)
@@ -229,7 +256,7 @@
     <h3>Returns:</h3>
     <ol>
 
-        balancer object, or throw an error if it already is in the list
+        balancer object, nil+error on a duplicate or throw an error on bad input
     </ol>
 
 
@@ -241,7 +268,7 @@
     <strong>mt_balancer:addWeight (delta)</strong>
     </dt>
     <dd>
-    Updates the total weight.  Will mark the balancer as 'dirty' for recalculation of the slots
+    Updates the total weight.
 
 
     <h3>Parameters:</h3>
@@ -278,17 +305,27 @@
 </dd>
     <dt>
     <a name = "mt_balancer:getPeer"></a>
-    <strong>mt_balancer:getPeer ()</strong>
+    <strong>mt_balancer:getPeer (hashvalue, cache_only)</strong>
     </dt>
     <dd>
     Gets the next host according to the loadbalancing scheme.
+ Hashvalue can be an integer from 1 to <code>wheelSize</code>, or a float from 0 up to but not including 1.
 
 
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">hashvalue</span>
+         (optional) number for consistent hashing, round-robins if omitted
+        </li>
+        <li><span class="parameter">cache_only</span>
+         If thruthy, no dns lookups will be done, only cache.
+        </li>
+    </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        hostname/ip and port
+        ip, port, hostname, or nil+error
     </ol>
 
 
@@ -297,13 +334,19 @@
 </dd>
     <dt>
     <a name = "mt_balancer:redistributeSlots"></a>
-    <strong>mt_balancer:redistributeSlots ()</strong>
+    <strong>mt_balancer:redistributeSlots (slotList)</strong>
     </dt>
     <dd>
     Recalculates the weights.  Updates the slot lists for all hostnames.
  Must be called whenever a weight might have changed; added/removed hosts.
 
 
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">slotList</span>
+         initial slotlist, to be used only upon creation of a balancer!
+        </li>
+    </ul>
 
     <h3>Returns:</h3>
     <ol>
@@ -378,6 +421,36 @@
         <li><span class="parameter">delta</span>
 
 
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "mt_host:getPeer"></a>
+    <strong>mt_host:getPeer (hashvalue, cache_only, slot)</strong>
+    </dt>
+    <dd>
+    Gets address and port number from a specific slot owned by the host.
+ The slot MUST be owned by the host. Call balancer:getPeer, never this one.
+ access: balancer:getpeer->slot->address->host->returns addr+port
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">hashvalue</span>
+
+
+        </li>
+        <li><span class="parameter">cache_only</span>
+
+
+        </li>
+        <li><span class="parameter">slot</span>
+
 
         </li>
     </ul>
@@ -389,17 +462,27 @@
 </dd>
     <dt>
     <a name = "mt_host:queryDns"></a>
-    <strong>mt_host:queryDns ()</strong>
+    <strong>mt_host:queryDns (cache_only)</strong>
     </dt>
     <dd>
     Queries the DNS for this hostname.  Updates the underlying address objects.
+ This method always succeeds, but it might leave the balancer in a 0-weight
+ state if none of the hosts resolves, and hence none of the slots are allocated
+ to &lsquo;addresss&rsquo; objects.
 
 
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">cache_only</span>
+
+
+        </li>
+    </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        <code>true</code> when something changed and a recalculation of the weights is required
+        <code>true</code>, always succeeds
     </ol>
 
 
@@ -411,7 +494,7 @@
     <strong>mt_host:removeAddress (entry)</strong>
     </dt>
     <dd>
-    Removes an <code>address</code> object from the <code>host</code>.
+    Looks up and disables an <code>address</code> object from the <code>host</code>.
 
 
     <h3>Parameters:</h3>
@@ -421,6 +504,11 @@
         </li>
     </ul>
 
+    <h3>Returns:</h3>
+    <ol>
+
+        address object that was disabled
+    </ol>
 
 
 
@@ -431,17 +519,18 @@
     <strong>new (opts)</strong>
     </dt>
     <dd>
-
-<p>Creates a new balancer.  The balancer is based on a wheel with slots. The slots will be randomly distributed
+    <p>Creates a new balancer.  The balancer is based on a wheel with slots. The slots will be randomly distributed
  over the hosts. The number of slots assigned will be relative to the weight.</p>
 
 <p> The options table has the following fields;</p>
 
 <ul>
-    <li><code>hosts</code> (required) containing hostnames and (optional) weights, must have at least one entry.</li>
-    <li><code>wheelsize</code> (required) for total number of slots in the balancer</li>
-    <li><code>dns</code> (required) a configured <a href="../modules/dns.client.html#">dns.client</a> object for querying the dns server</li>
+<li><code>hosts</code> (optional) containing hostnames, ports and weights.</li>
+<li><code>wheelsize</code> (optional) for total number of slots in the balancer, if mitted the size of <code>order</code> is used, or 1000 if <code>order</code> is not provided</li>
+<li><code>order</code> (optional) if given, a list of random numbers, size <code>wheelsize</code>, used to randomize the wheel</li>
+<li><code>dns</code> (required) a configured <a href="../modules/dns.client.html#">dns.client</a> object for querying the dns server</li>
 </ul>
+
 
 
 
@@ -460,6 +549,15 @@
 
 
 
+    <h3>Usage:</h3>
+    <ul>
+        <pre class="example"> <span class="comment">-- hosts
+</span> <span class="keyword">local</span> hosts = {
+   <span class="string">"mashape.com"</span>,                                     <span class="comment">-- name only, as string
+</span>   { name = <span class="string">"gelato.io"</span> },                            <span class="comment">-- name only, as table
+</span>   { name = <span class="string">"getkong.org"</span>, port = <span class="number">80</span>, weight = <span class="number">25</span> },  <span class="comment">-- fully specified, as table
+</span> }</pre>
+    </ul>
 
 </dd>
 </dl>
@@ -469,7 +567,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.3</a></i>
-<i style="float:right;">Last updated 2016-09-02 14:26:28 </i>
+<i style="float:right;">Last updated 2016-10-18 15:38:19 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
