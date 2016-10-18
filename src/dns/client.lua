@@ -331,7 +331,6 @@ local _queue = setmetatable({}, {__mode = "v"})
 local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
   local key = qname..":"..r_opts.qtype
   local item = _queue[key]
---print("query "..tostring(count))
   if not item then
     -- no lookup being done so far
     if not r then
@@ -358,20 +357,16 @@ local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
       _queue[key] = nil
       -- 2) release all waiting threads
       item.semaphore:post(math.max(item.semaphore:count() * -1, 1))
---print("primairy 'done'")
       return item.result, item.err, r
     end
   else
     -- lookup is on its way, wait for it
---print("gonna wait; ",pool_max_wait)
     local ok, err = item.semaphore:wait(pool_max_wait)
     if ok and item.result then
       -- we were released, and have a query result from the
       -- other thread, so all is well, return it
---print("secondary ok")
       return item.result, item.err, r
     else
---print("released with error...", tostring(err))
       -- there was an error, either a semaphore timeout, or 
       -- a lookup error, so retry (retry actually means; do 
       -- our own lookup instead of waiting for another lookup).
@@ -576,6 +571,131 @@ local function stdError(result, err, r)
   return result, nil, r
 end
 
+-- returns the index of the record next up in the round-robin scheme.
+local function roundrobin(rec)
+  local cursor = rec.last_cursor or 0 -- start with first entry, trust the dns server! no random pick
+  if cursor == #rec then
+    cursor = 1
+  else
+    cursor = cursor + 1
+  end
+  rec.last_cursor = cursor
+  return cursor
+end
+
+-- greatest common divisor of 2 integers.
+-- @return greatest common divisor
+local function gcd(m, n)
+  while m ~= 0 do
+    m, n = math.fmod(n, m), m
+  end
+  return n
+end
+
+-- greatest common divisor of a list of integers.
+-- @return 2 values; greatest common divisor for the whole list and
+-- the sum of all weights
+local function gcdl(list)
+  local m = list[1]
+  local n = list[2]
+  local t = m
+  local i = 2
+  repeat
+    t = t + n
+    m = gcd(m, n)
+    i = i + 1
+    n = list[i]
+  until not n
+  return m, t
+end
+
+-- reduce a list of weights to their smallest relative counterparts.
+-- eg. 20, 5, 5 --> 4, 1, 1 
+-- @return 2 values; reduced list (index == original index) and
+-- the sum of all the (reduced) weights
+local function reducedweights(list)
+  local gcd, total = gcdl(list)
+  local l = {}
+  for i, val in  ipairs(list) do
+    l[i] = val/gcd
+  end
+  return l, total/gcd
+end
+
+-- returns the index of the SRV entry next up in the weighted round-robin scheme.
+local function roundrobinw(rec)
+  
+  -- determine priority; stick to current or lower priority
+  local prio_list = rec.prio_list -- list with indexes-to-entries having the lowest priority
+  
+  if not prio_list then
+    -- 1st time we're seeing this record, so go and
+    -- find lowest priorities
+    local top_prio = 999999
+    local weight_list -- weights for the entry
+    local n = 0
+    for i, r in ipairs(rec) do
+      if r.priority == top_prio then
+        n = n + 1
+        prio_list[n] = i
+        weight_list[n] = r.weight
+      elseif r.priority < top_prio then
+        n = 1
+        top_prio = r.priority
+        prio_list = { i }
+        weight_list = { r.weight }
+      end
+    end
+    rec.prio_list = prio_list
+    rec.weight_list = weight_list
+    return prio_list[1]  -- start with first entry, trust the dns server!
+  end
+
+  local rrw_list = rec.rrw_list
+  local rrw_pointer = rec.rrw_pointer
+
+  if not rrw_list then
+    -- 2nd time we're seeing this record
+    -- 1st time we trusted the dns server, now we do WRR by our selves, so
+    -- must create a list based on the weights. We do this only when necessary
+    -- for performance reasons, so only on 2nd or later calls. Especially for
+    -- ttl=0 scenarios where there is only 1 call ever.
+    local weight_list = reducedweights(rec.weight_list)
+    rrw_list = {}
+    local x = 0
+    -- create a list of entries, where each entry is repeated based on its
+    -- relative weight.
+    for i, idx in ipairs(prio_list) do
+      for _ = 1, weight_list[i] do
+        x = x + 1
+        rrw_list[x] = idx
+      end
+    end
+    rec.rrw_list = rrw_list
+    -- The list has 2 parts, lower-part is yet to be used, higher-part was
+    -- already used. The `rrw_pointer` points to the last entry of the lower-part.
+    -- On the initial call we served the first record, so we must rotate
+    -- that initial call to be up-to-date.
+    rrw_list[1], rrw_list[x] = rrw_list[x], rrw_list[1]
+    rrw_pointer = x-1  -- we have 1 entry in the higher-part now
+    if rrw_pointer == 0 then rrw_pointer = x end
+  end
+  
+  -- all structures are in place, so we can just serve the next up record
+  local idx = math.random(1, rrw_pointer)
+  local target = rrw_list[idx]
+  
+  -- rotate to next
+  rrw_list[idx], rrw_list[rrw_pointer] = rrw_list[rrw_pointer], rrw_list[idx]
+  if rrw_pointer == 1 then 
+    rec.rrw_pointer = #rrw_list 
+  else
+    rec.rrw_pointer = rrw_pointer-1
+  end
+  
+  return target
+end
+
 --- Resolves to an IP and port number.
 -- Does a round-robin over the returned records. Builds on top of `resolve`, but will also further 
 -- dereference SRV type records. Will round-robin on each level individually. Eg.
@@ -594,45 +714,13 @@ local function toip(qname, port, dns_cache_only, r)
     return nil, err, r
   end
 
-  local cursor = rec.last_cursor
   if rec[1].type == _M.TYPE_SRV then
-    -- determine priority; stick to current or lower priority
-    local last_prio
-    if not cursor then
-      -- new record, find lowest priority
-      last_prio = rec[1].priority
-      for _, r in ipairs(rec) do
-        last_prio = math.min(last_prio, r.priority)
-      end
-      cursor = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
-    else
-      last_prio = rec[cursor].priority
-    end
-    -- find record
-    repeat
-      if cursor == #rec then
-        cursor = 1
-      else
-        cursor = cursor + 1
-      end
-    until rec[cursor].priority <= last_prio
-    rec.last_cursor = cursor
-    -- our SRV might still contain a hostname, so recurse, with found port number
-    return toip(rec[cursor].target, rec[cursor].port, dns_cache_only, r)
+    local entry = rec[roundrobinw(rec)]
+    -- our SRV entry might still contain a hostname, so recurse, with found port number
+    return toip(entry.target, entry.port, dns_cache_only, r)
   else
     -- must be A or AAAA
-    -- find next-up record
-    if cursor then
-      if cursor == #rec then
-        cursor = 1
-      else
-        cursor = cursor + 1
-      end
-    else
-      cursor = math.random(1, #rec)  -- initially randomize the cursor we're using to traverse
-    end
-    rec.last_cursor = cursor
-    return rec[cursor].address, port, r
+    return rec[roundrobin(rec)].address, port, r
   end
 end
 
