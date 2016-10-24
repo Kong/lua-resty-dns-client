@@ -34,6 +34,10 @@ use the `rbusted` script.
 History
 =======
 
+###0.2.1 (24-Oct-2016) Bugfix
+ 
+- fix: `toip()` failed on SRV records with only 1 entry
+
 ###0.2 (18-Oct-2016) Added the balancer
  
 - fix: was creating resolver objects even if serving from cache
