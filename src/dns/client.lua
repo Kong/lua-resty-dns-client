@@ -597,6 +597,7 @@ end
 local function gcdl(list)
   local m = list[1]
   local n = list[2]
+  if not n then return 1, m end
   local t = m
   local i = 2
   repeat

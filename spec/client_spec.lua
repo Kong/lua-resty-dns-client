@@ -429,6 +429,35 @@ describe("DNS client", function()
       results[answers2[1].address.."+"..answers[prio2].port] = nil
       assert.is_nil(next(results))
     end)
+    it("SRV-record with 1 entry, round-robin",function()
+      assert(client:init())
+      local host = "hello.world"
+      local entry = {
+        {
+          type = client.TYPE_SRV,
+          target = "1.2.3.4",
+          port = 321,
+          weight = 10,
+          priority = 10,
+          class = 1,
+          name = host,
+          ttl = 10, 
+        },
+        touch = 0,
+        expire = gettime()+10,
+      }
+      -- insert in the cache
+      client.getcache()[entry[1].type..":"..entry[1].name] = entry
+
+      -- repeated lookups, as the first will simply serve the first entry
+      -- and the only second will setup the round-robin scheme, this is 
+      -- specific for the SRV record type, due to the weights
+      for i = 1 , 10 do
+        local ip, port = assert(client.toip(host))
+        assert.equal("1.2.3.4", ip)
+        assert.equal(321, port)
+      end
+    end)
     it("port passing",function()
       assert(client:init())
       local ip, port, host 
