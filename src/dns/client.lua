@@ -30,6 +30,12 @@ local time = ngx.now
 local log = ngx.log
 local log_WARN = ngx.WARN
 
+local math_min = math.min
+local math_max = math.max
+local math_fmod = math.fmod
+local math_random = math.random
+local table_remove = table.remove
+
 local empty = setmetatable({}, 
   {__newindex = function() error("The 'empty' table is read-only") end})
 
@@ -114,7 +120,7 @@ local cacheinsert = function(entry, qname, qtype)
     -- determine minimum ttl of all answer records
     ttl = e1.ttl
     for i = 2, #entry do
-      ttl = math.min(ttl, entry[i].ttl)
+      ttl = math_min(ttl, entry[i].ttl)
     end
   else
     -- list-part is empty, so no entries to grab data from
@@ -358,7 +364,7 @@ local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
       -- 1) stop new ones from adding to our lock/semaphore
       _queue[key] = nil
       -- 2) release all waiting threads
-      item.semaphore:post(math.max(item.semaphore:count() * -1, 1))
+      item.semaphore:post(math_max(item.semaphore:count() * -1, 1))
       return item.result, item.err, r
     end
   else
@@ -466,7 +472,7 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
     local answer = answers[i]
     if answer.type ~= qtype then
       cacheinsert({answer}) -- insert in cache before removing it
-      table.remove(answers, i)
+      table_remove(answers, i)
     end
   end
 
@@ -480,7 +486,7 @@ end
 -- `r_opts.qtype` is not provided, then it will try to resolve
 -- the name using the record types, in the order as provided to `init`.
 -- 
--- Note that unless explictly requesting a CNAME record (by setting `r_opts.qtyp`) this
+-- Note that unless explictly requesting a CNAME record (by setting `r_opts.qtype`) this
 -- function will dereference the CNAME records.
 --
 -- So requesting `my.domain.com` (assuming to be an AAAA record, and default `order`) will try to resolve
@@ -586,7 +592,7 @@ end
 -- @return greatest common divisor
 local function gcd(m, n)
   while m ~= 0 do
-    m, n = math.fmod(n, m), m
+    m, n = math_fmod(n, m), m
   end
   return n
 end
@@ -682,7 +688,7 @@ local function roundrobinw(rec)
   end
   
   -- all structures are in place, so we can just serve the next up record
-  local idx = math.random(1, rrw_pointer)
+  local idx = math_random(1, rrw_pointer)
   local target = rrw_list[idx]
   
   -- rotate to next
