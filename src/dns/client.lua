@@ -76,7 +76,7 @@ local cache = {}
 -- can be `true`.
 -- @param qname name to lookup
 -- @param qtype type number, any of the TYPE_xxx constants
--- @param peek just consult the cache, do not check ttl and expire, just touch it
+-- @param peek just consult the cache, do not check ttl nor expire, just touch it
 -- @return 1st; cached record or nil, 2nd; expect_ttl_0, true if the last one was ttl  0
 local cachelookup = function(qname, qtype, peek)
   local now = time()
@@ -454,10 +454,12 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
   end
   if dns_cache_only then
     -- no active lookups allowed, so return error
+    -- NOTE: this error response should never be cached, because it is caused 
+    -- by the limited nginx context where we can't use sockets to do the lookup
     return {
       errcode = 4,                                         -- standard is "server failure"
       errstr = "server failure, cache only lookup failed", -- extended description
-    }, nil, r   -- NOTE: this error response should never cached
+    }, nil, r
   end
   
   -- not found in our cache, so perform query on dns servers
