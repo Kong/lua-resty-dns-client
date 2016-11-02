@@ -23,6 +23,8 @@ local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
 
 local dns = require "dns.client"
+local utils = require "dns.utils"
+
 local time = ngx.now
 
 local dumptree = function(balancer, marker)
@@ -63,7 +65,14 @@ local mt_addr = {}
 --- Returns the peer info.
 -- @return ip-address, port and hostname of the target
 function mt_addr:getPeer()
-  return self.ip, self.port, self.host.hostname
+  if self.ip_type == "name" then
+    -- SRV type record with a named target
+    local ip, port = dns.toip(self.ip, self.port)
+    return ip, port, self.host.name
+  else
+    -- just an IP address
+    return self.ip, self.port, self.host.hostname
+  end
 end
 
 --- Adds a list of slots to the address. The slots added to the address will be removed from 
@@ -140,7 +149,7 @@ function mt_addr:delete()
 end
 
 --- creates a new address object.
--- @param ip the upstream ip address
+-- @param ip the upstream ip address or target name
 -- @param port the upstream port number
 -- @param weight the relative weight for the balancer algorithm
 -- @param host the host object the address belongs to
@@ -148,7 +157,8 @@ end
 local newAddress = function(ip, port, weight, host)
   local addr = { 
     -- properties
-    ip = ip,
+    ip = ip,              -- might be a name (for SRV records)
+    ip_type = utils.hostname_type(ip),  -- 'ipv4', 'ipv6' or 'name'
     port = port,
     weight = weight,
     host = host,          -- the host this address belongs to
@@ -307,11 +317,13 @@ end
 --- Adds an `address` object to the `host`.
 -- @param entry (table) DNS entry
 function mt_host:addAddress(entry)
-  local weight = entry.weight or self.nodeWeight
-  local port = entry.port or self.port
-  local addr = newAddress(entry.address, port, weight, self)
   local addresses = self.addresses
-  addresses[#addresses+1] = addr
+  addresses[#addresses+1] = newAddress(
+    entry.address or entry.target, 
+    entry.port or self.port, 
+    entry.weight or self.nodeWeight, 
+    self
+  )
 end
 
 --- Looks up and disables an `address` object from the `host`.

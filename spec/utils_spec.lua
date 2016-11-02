@@ -301,5 +301,18 @@ describe("cached versions", function()
     val2 = dnsutils.getresolv()
     assert.Not.equal(val1, val2)   -- ttl timed out, so distinct tables
   end)
-  
+
+end)
+
+describe("hostname_type", function()
+  -- no check on "name" type as anything not ipv4 and not ipv6 will be labelled as 'name' anyway
+  it("checks valid IPv4 address types", function()
+    assert.are.same("ipv4", dnsutils.hostname_type("123.123.123.123"))
+    assert.are.same("ipv4", dnsutils.hostname_type("1.2.3.4"))
+  end)
+  it("checks valid IPv6 address types", function()
+    assert.are.same("ipv6", dnsutils.hostname_type("::1"))
+    assert.are.same("ipv6", dnsutils.hostname_type("2345::6789"))
+    assert.are.same("ipv6", dnsutils.hostname_type("0001:0001:0001:0001:0001:0001:0001:0001"))
+  end)
 end)

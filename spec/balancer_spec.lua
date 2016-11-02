@@ -852,7 +852,37 @@ describe("Loadbalancer", function()
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
       assert.same(state, copyWheel(b))
     end)
-    pending("renewed DNS SRV record; no changes", function()
+    it("renewed DNS SRV record; no changes", function()
+      local record = dnsSRV({ 
+        { name = "gelato.io", target = "1.2.3.6", port = 8001, weight = 5 },
+        { name = "gelato.io", target = "1.2.3.6", port = 8002, weight = 5 },
+        { name = "gelato.io", target = "1.2.3.6", port = 8003, weight = 5 },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "gelato.io" }, 
+          { name = "getkong.org", port = 123, weight = 10 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      local state = copyWheel(b)
+      record.expire = gettime() -1 -- expire current dns cache record
+      local rec_new = dnsSRV({    -- create a new record (identical)
+        { name = "gelato.io", target = "1.2.3.6", port = 8001, weight = 5 },
+        { name = "gelato.io", target = "1.2.3.6", port = 8002, weight = 5 },
+        { name = "gelato.io", target = "1.2.3.6", port = 8003, weight = 5 },
+      })
+      -- create a spy to check whether dns was queried
+      local s = spy.on(client, "resolve")
+      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+        b:getPeer()  -- invoke balancer, to expire record and re-query dns
+      end
+      assert.spy(client.resolve).was_called_with("gelato.io",nil, nil)
+      assert.same(state, copyWheel(b))
     end)
     it("renewed DNS record; different record type", function()
       local record = dnsAAAA({ 
