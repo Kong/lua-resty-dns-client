@@ -21,9 +21,12 @@
 
 local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
+local TTL_0_RETRY = 60      -- How often check for changed ttl for added hosts with ttl=0
 
 local dns = require "dns.client"
 local utils = require "dns.utils"
+local empty = setmetatable({}, 
+  {__newindex = function() error("The 'empty' table is read-only") end})
 
 local time = ngx.now
 
@@ -64,10 +67,10 @@ local mt_addr = {}
 
 --- Returns the peer info.
 -- @return ip-address, port and hostname of the target
-function mt_addr:getPeer()
+function mt_addr:getPeer(cache_only)
   if self.ip_type == "name" then
     -- SRV type record with a named target
-    local ip, port = dns.toip(self.ip, self.port)
+    local ip, port = dns.toip(self.ip, self.port, cache_only)
     return ip, port, self.host.name
   else
     -- just an IP address
@@ -239,10 +242,39 @@ function mt_host:queryDns(cache_only)
   -- we're using the dns' own cache to check for changes.
   -- if our previous result is the same table as the current result, then nothing changed
   if oldQuery == newQuery then return true end  -- exit, nothing changed
+
+  if (newQuery[1] or empty).ttl == 0 then
+    -- ttl = 0 means we need to lookup on every request.
+    -- To enable lookup on each request we 'abuse' a virtual SRV record. We set the ttl
+    -- to `TTL_0_RETRY` seconds, and set the `target` field to the hostname that needs
+    -- resolving. Now `getPeer` will resolve on each request if the target is not an IP address,
+    -- and after `TTL_0_RETRY` seconds we'll retry to see whether the ttl has changed to non-0.
+    -- Note: if the original record is an SRV we cannot use the dns provided weights,
+    -- because we can/are not going to possibly change weights on each request
+    -- so we fix them at the `nodeWeight` property, as with A and AAAA records.
+    if oldQuery.__ttl_0_flag then
+      -- still ttl 0 so nothing changed
+      return true
+    end
+    newQuery = {
+        {
+          type = dns.TYPE_SRV,
+          target = self.hostname,
+          name = self.hostname,
+          port = self.port,
+          weight = self.nodeWeight,
+          priority = 1,
+          ttl = TTL_0_RETRY,
+        },
+        expire = time() + TTL_0_RETRY,
+        touched = time(),
+        __ttl_0_flag = true,        -- flag marking this record as a fake SRV one
+      }
+  end
   
   -- a new dns record, was returned, but contents could still be the same, so check for changes
   -- sort table in unique order
-  local rtype = (newQuery[1] or {}).type
+  local rtype = (newQuery[1] or empty).type
   if not rtype then
     -- we got an empty query table, so assume A record, because it's empty
     -- all existing addresses will be removed
@@ -251,8 +283,8 @@ function mt_host:queryDns(cache_only)
   local newSorted = sorts[rtype](newQuery)
   local dirty
   local delete = {}
-  
-  if rtype ~= (oldSorted[1] or {}).type then
+
+  if rtype ~= (oldSorted[1] or empty).type then
     -- DNS recordtype changed; recycle everything
     for i = #oldSorted, 1, -1 do  -- reverse order because we're deleting items
       delete[#delete+1] = self:removeAddress(oldSorted[i])
@@ -332,7 +364,8 @@ end
 function mt_host:removeAddress(entry)
   -- first lookup address object
   for _, addr in ipairs(self.addresses) do
-    if addr.ip == entry.address and addr.port == (entry.port or self.port) then
+    if (addr.ip == (entry.address or entry.target)) and 
+        addr.port == (entry.port or self.port) then
       -- found it
       addr:disable()
       return addr
@@ -370,20 +403,17 @@ end
 -- access: balancer:getpeer->slot->address->host->returns addr+port
 function mt_host:getPeer(hashvalue, cache_only, slot)
   
-  if (self.lastQuery.expire and self.lastQuery.expire >= time()) or
-     cache_only then
-    return slot.address:getPeer()
-  end
-  
-  -- ttl expired, so must renew
-  self:queryDns(cache_only)
+  if (self.lastQuery.expire or 0) < time() and not cache_only then
+    -- ttl expired, so must renew
+    self:queryDns(cache_only)
 
-  if slot.address.host ~= self then
-    -- our slot has been reallocated to another host, so recurse to start over
-    return self.balancer:getPeer(hashvalue, cache_only)
+    if slot.address.host ~= self then
+      -- our slot has been reallocated to another host, so recurse to start over
+      return self.balancer:getPeer(hashvalue, cache_only)
+    end
   end
-  -- nothing changed, return slot contents
-  return slot.address:getPeer()
+
+  return slot.address:getPeer(cache_only)
 end
 
 --- creates a new host object.
@@ -664,7 +694,7 @@ _M.new = function(opts)
   
   -- Sort the hosts, to make order deterministic
   local hosts = {}
-  for i, host in ipairs(opts.hosts or {}) do
+  for i, host in ipairs(opts.hosts or empty) do
     if type(host) == "table" then
       hosts[i] = host
     else

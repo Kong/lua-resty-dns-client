@@ -998,7 +998,37 @@ describe("Loadbalancer", function()
       updateWheelState(state, " %- 1%.2%.3%.4 @ ", " - 1.2.3.6 @ ")
       assert.same(state, copyWheel(b))
     end)
-    pending("renewed DNS A record; address changes", function()
+    it("renewed DNS A record; address changes", function()
+      local record = dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.5" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+        { name = "getkong.org", address = "8.8.8.8" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 10 }, 
+          { name = "getkong.org", port = 123, weight = 10 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      local state = copyWheel(b)
+      record.expire = gettime() -1 -- expire current dns cache record
+      record = dnsA({              -- insert an updated record
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.6" },  -- target updated
+      })
+      -- run entire wheel to make sure the expired one is requested, and updated
+      for i = 1, b.wheelSize do b:getPeer() end 
+      -- all old 'mashape.com @ 1.2.3.5' should now be 'mashape.com @ 1.2.3.6'
+      -- and more important; all others should not have moved slot positions!
+      updateWheelState(state, " %- 1%.2%.3%.5 @ ", " - 1.2.3.6 @ ")
+      assert.same(state, copyWheel(b))
+    end)
+    pending("renewed DNS A record; failed", function()
       local record = dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
       })
@@ -1044,14 +1074,105 @@ describe("Loadbalancer", function()
       assert.same(state2, copyWheel(b))
       
     end)
-    pending("renewed DNS A record; failed", function()
-        -- empty dns record --> all addresses gone, host weight = 0
+    it("low weight with zero-slots assigned doesn't fail", function()
+      -- depending on order of insertion it is either 1 or 0 slots
+      -- but it may never error.
+      local record = dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 99999 }, 
+          { name = "getkong.org", port = 123, weight = 1 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      -- Now the order reversed (weights exchanged)
+      record = dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 1 }, 
+          { name = "getkong.org", port = 123, weight = 99999 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
     end)
-    pending("renewed DNS A record; failed", function()
-    end)
-    pending("low weight with zero-slots assigned", function()
-    end)
-    pending("ttl of 0 inserts only a single unresolved address", function()
+    it("ttl of 0 inserts only a single unresolved address", function()
+      local ttl = 0
+      local resolve_count = 0
+      local toip_count = 0
+      
+      -- mock the resolve/toip methods
+      local old_resolve = client.resolve
+      local old_toip = client.toip
+      finally(function() 
+          client.resolve = old_resolve 
+          client.toip = old_toip
+        end)
+      client.resolve = function(name, ...)
+        if name == "mashape.com" then
+          local record = dnsA({ 
+            { name = "mashape.com", address = "1.2.3.4", ttl = ttl },
+          })
+          resolve_count = resolve_count + 1
+          return record
+        else
+          return old_resolve(name, ...)
+        end
+      end
+      client.toip = function(name, ...)
+        if name == "mashape.com" then
+          toip_count = toip_count + 1
+          return "1.2.3.4", ...
+        else
+          return old_toip(name, ...)
+        end
+      end
+
+      -- insert 2nd address
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9", ttl = 60*60 },
+      })
+
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 50 }, 
+          { name = "getkong.org", port = 123, weight = 50 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+      })
+      -- get current state
+      local state = copyWheel(b)
+      -- run it down, count the dns queries done
+      for i = 1, b.wheelSize do b:getPeer() end 
+      assert.equal(b.wheelSize/2, toip_count)  -- one resolver hit for each slot entry
+      assert.equal(1, resolve_count) -- hit once, when adding the host to the balancer
+      
+      -- wait for expiring the 0-ttl setting
+      sleep(61)  -- 0 ttl is requeried after 60 seconds, to check for changed ttl
+      
+      ttl = 60 -- set our records ttl to 60 now, so we only get one extra hit now
+      toip_count = 0  --reset counters
+      resolve_count = 0
+      -- run it down, count the dns queries done
+      for i = 1, b.wheelSize do b:getPeer() end 
+      assert.equal(0, toip_count)
+      assert.equal(1, resolve_count) -- hit once, when updating the 0-ttl entry
+      
+      -- finally check whether slots didn't move around
+      updateWheelState(state, " %- mashape%.com @ ", " - 1.2.3.4 @ ")
+      assert.same(state, copyWheel(b))
     end)
   end)
 end)
