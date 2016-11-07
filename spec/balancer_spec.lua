@@ -284,6 +284,16 @@ describe("Loadbalancer", function()
           "expected option `dns` to be a configured dns client"
         )
       end)
+      it("fails with a bad 'requery' option", function()
+        assert.has.error(
+          function() balancer.new({ 
+                hosts = {"mashape.com"},
+                dns = client,
+                requery = -5,
+            }) end,
+          "expected 'requery' parameter to be > 0"
+        )
+      end)
       it("fails with inconsistent wheel and order sizes", function()
         assert.has.error(
           function() balancer.new({
@@ -315,6 +325,7 @@ describe("Loadbalancer", function()
           dns = client,
           wheelsize = 10,
           order = {1,2,3,4,5,6,7,8,9,10},
+          requery = 2,
         })
       end)
       it("succeeds with the right sizes", function()
@@ -425,6 +436,27 @@ describe("Loadbalancer", function()
         })
         check_balancer(b:addHost("mashape.com", 80, 10))
         assert.equals(10, b.weight) -- has one succesful host, so weight must equal that one
+      end)
+      it("accepts a hostname when dns server is unavailable", function()
+        -- This test might show some error output similar to the lines below. This is expected and ok.
+        -- 2016/11/07 16:48:33 [error] 81932#0: *2 recv() failed (61: Connection refused), context: ngx.timer
+        
+        -- reconfigure the dns client to make sure query fails
+        assert(client:init {
+          hosts = {}, 
+          resolv_conf = {
+            "nameserver 127.0.0.1:22000" -- make sure dns query fails
+          },
+        })
+        -- create balancer
+        local b = check_balancer(balancer.new { 
+          hosts = { 
+            { name = "mashape.com", port = 80, weight = 10 }, 
+          },
+          dns = client,
+          wheelsize = 100,
+        })
+        assert.equal(0, b.weight)
       end)
       it("fails if the 'hostname:port' combo already exists", function()
         -- returns nil + error
@@ -1028,23 +1060,29 @@ describe("Loadbalancer", function()
       updateWheelState(state, " %- 1%.2%.3%.5 @ ", " - 1.2.3.6 @ ")
       assert.same(state, copyWheel(b))
     end)
-    pending("renewed DNS A record; failed", function()
+    it("renewed DNS A record; failed", function()
+      -- This test might show some error output similar to the lines below. This is expected and ok.
+      -- 2016/11/07 16:48:33 [error] 81932#0: *2 recv() failed (61: Connection refused), context: ngx.timer
+      
       local record = dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
       })
       dnsA({ 
         { name = "getkong.org", address = "9.9.9.9" },
       })
+--print("setup fake record, now creating a balancer")
       local b = check_balancer(balancer.new { 
         hosts = { 
           { name = "mashape.com", port = 80, weight = 10 }, 
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelsize = 20,
       })
+--print("balancer created, storing state1 + state2 here")
       local state1 = copyWheel(b)
       local state2 = copyWheel(b)
+--print("reconfiguring dns client with bad nameserver...")
       -- reconfigure the dns client to make sure next query fails
       assert(client:init {
         hosts = {}, 
@@ -1052,27 +1090,37 @@ describe("Loadbalancer", function()
           "nameserver 127.0.0.1:22000" -- make sure dns query fails
         },
       })
-      dnscache = client.getcache()  -- must be after 'init' call because it is replaced
+      -- refetch the cache, since the 'init' call above caused it to be replaced
+      dnscache = client.getcache()
       record.expire = gettime() -1 -- expire current dns cache record
-      -- run entire wheel to make sure the expired one is requested
-      for i = 1, b.wheelSize do b:getPeer() end 
+--print("dns client reconfigured, local cache updated (empty now). Running whole wheel...")
+      -- run entire wheel to make sure the expired one is requested, so it can fail
+      for i = 1, b.wheelSize do b:getPeer() end
+--print("ran down whole wheel. Now updating previous state2 to be the expected one")
       -- all slots are now getkong.org
-      updateWheelState(state1, " %- 1%.2%.3%.4 @ ", " - 9.9.9.9 @ ")
-      assert.same(state1, copyWheel(b))
+      updateWheelState(state2, " %- 1%.2%.3%.4 @ 80 %(mashape%.com%)", " - 9.9.9.9 @ 123 (getkong.org)")
+      
+      assert.same(state2, copyWheel(b))
+--print("asserted that the failure updated the wheel correctly by removing 'mashape.com'")
       -- reconfigure the dns client to make sure next query works again
       assert(client:init {
         hosts = {}, 
         resolv_conf = {
-          "nameserver 8.8.8.8" 
+          "nameserver 8.8.8.8"
         },
       })
-      dnscache = client.getcache()  -- must be after 'init' call because it is replaced
-
--- TODO: force the requery of the failed `getkong.org` domain...
+      -- refetch the cache, since the 'init' call above caused it to be replaced
+      dnscache = client.getcache()  
+      local record = dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+      })
+--print("client reconfigured, local cache updated, and inserted the fake record again")      
+--print("waiting 1 sec for timer to update the failed record...")
+      sleep(1) --requery timer runs once per second, so should be fixed after this
 
       -- wheel should be back in original state
-      assert.same(state2, copyWheel(b))
-      
+--print("now checking the updated results")
+      assert.same(state1, copyWheel(b))
     end)
     it("low weight with zero-slots assigned doesn't fail", function()
       -- depending on order of insertion it is either 1 or 0 slots

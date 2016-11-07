@@ -236,7 +236,10 @@ function mt_host:queryDns(cache_only)
     -- 1) disable the current information (dropping all slots for this host)
     -- 2) keep running on existing info, until some timeout, and then do 1.
     -- For now option 1.
-    newQuery = {}
+    newQuery = {
+      __error_query = true  --flag to mark the record as a failed lookup
+    }
+    self.balancer:startRequery()
   end
   
   -- we're using the dns' own cache to check for changes.
@@ -295,7 +298,7 @@ function mt_host:queryDns(cache_only)
     dirty = true
   else
     -- new record, but the same type
-    local topPriority = newSorted[1].priority
+    local topPriority = (newSorted[1] or empty).priority -- nil for non-SRV records
     local done = {}
     local dCount = 0
     for _, newEntry in ipairs(newSorted) do
@@ -618,6 +621,45 @@ function mt_balancer:getPeer(hashvalue, cache_only)
   return slot.address.host:getPeer(hashvalue, cache_only, slot)
 end
 
+--- Timer invoked to check for failed queries
+local function timer_func(premature, self)
+  if premature then return end
+  
+  local all_ok = true
+  for _, host in ipairs(self.hosts) do
+    -- only retry the errorred ones
+    if host.lastQuery.__error_query then
+      all_ok = false -- note: only if NO requery at all is done, we are 'all_ok'
+      -- if even a single dns query is performed, we yield on the dns socket 
+      -- operation and our universe might have changed. Could lead to nasty 
+      -- race-conditions otherwise.
+      host:queryDns(false) -- timer-context; cache_only always false
+    end
+  end
+  
+  if all_ok then
+    -- shutdown recurring timer
+    self.requery_running = false
+  else
+    -- not done yet, reschedule timer
+    local ok, err = ngx.timer.at(self.requery_interval, timer_func, self)
+    if not ok then
+      ngx.log(ngx.ERR, "failed to create the timer: ", err)
+    end
+  end
+end
+
+--- Starts the requery timer.
+function mt_balancer:startRequery()
+  if self.requery_running then return end  -- already running, nothing to do here
+  
+  self.requery_running = true
+  local ok, err = ngx.timer.at(self.requery_interval, timer_func, self)
+  if not ok then
+    ngx.log(ngx.ERR, "failed to create the timer: ", err)
+  end
+end
+
 --- Creates a new balancer. The balancer is based on a wheel with slots. The slots will be randomly distributed
 -- over the hosts. The number of slots assigned will be relative to the weight.
 -- 
@@ -646,6 +688,7 @@ _M.new = function(opts)
   if opts.order then
     assert(opts.order and (opts.wheelsize == #opts.order), "mismatch between size of 'order' and 'wheelsize'")
   end
+  assert((opts.requery or 1) > 0, "expected 'requery' parameter to be > 0")
   
   local self = {
     -- properties
@@ -656,6 +699,8 @@ _M.new = function(opts)
     wheelSize = opts.wheelsize or 1000, -- number of entries in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
     unassignedSlots = {}, -- list to hold unassigned slots (initially, and when all hosts fail)
+    requery_running = false,  -- requery timer is not running, see `startRequery`
+    requery_interval = opts.requery or 1,  -- how often to requery failed dns lookups (seconds)
   }
   for name, method in pairs(mt_balancer) do self[name] = method end
 
