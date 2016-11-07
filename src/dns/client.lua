@@ -734,12 +734,12 @@ local function toip(qname, port, dns_cache_only, r)
 end
 
 --- Implements tcp-connect method with dns resolution.
--- This builds on top of `toip`. If the name resolves to an SRV record, 
+-- This builds on top of `toip`. If the name resolves to an SRV record,
 -- the port returned by the DNS server will override the one provided.
 -- __NOTE__: can also be used for other connect methods, eg. http/redis clients, as long as
 -- the argument order is the same
 -- @function connect
--- @param sock the socket to connect
+-- @param sock the tcp socket
 -- @param host hostname to connect to
 -- @param port port to connect to
 -- @param opts the options table
@@ -747,7 +747,7 @@ end
 local function connect(sock, host, port, sock_opts)
   local target_ip, target_port = toip(host, port)
   
-  if not target_ip then 
+  if not target_ip then
     return nil, target_port 
   else
     -- need to do the extra check here: https://github.com/openresty/lua-nginx-module/issues/860
@@ -759,11 +759,33 @@ local function connect(sock, host, port, sock_opts)
   end
 end
 
+--- Implements udp-setpeername method with dns resolution.
+-- This builds on top of `toip`. If the name resolves to an SRV record,
+-- the port returned by the DNS server will override the one provided.
+-- @function setpeername
+-- @param sock the udp socket
+-- @param host hostname to connect to
+-- @param port port to connect to
+-- @return success, or nil + error
+local function setpeername(sock, host, port)
+  local target_ip, target_port
+  if host:sub(1,5) == "unix:" then
+    target_ip = host  -- unix domain socket, nothing to resolve
+  else
+    target_ip, target_port = toip(host, port)
+    if not target_ip then
+      return nil, target_port
+    end
+  end
+  return sock:connect(target_ip, target_port)
+end
+
 -- export local functions
 _M.resolve = resolve
 _M.toip = toip
 _M.stdError = stdError
 _M.connect = connect
+_M.setpeername = setpeername
 
 -- export the local cache in case we're testing
 if _TEST then 
