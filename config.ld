@@ -1,13 +1,12 @@
-project='dns.lua'
-title='DNS'
-description='DNS client and reading the DNS configuration from the `hosts` file and `resolv.conf`.'
+project='lua-resty-dns-client'
+title='DNS client for OpenResty'
+description='DNS client, utilities, and load balancers for OpenResty'
 format='discount'
 file='./src/'
 dir='docs'
 readme='readme.md'
 sort=true
 sort_modules=true
-not_luadoc=true
 all=false
 
 

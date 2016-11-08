@@ -229,7 +229,7 @@ describe("Loadbalancer", function()
   end)
   
   before_each(function()
-    assert(client:init {
+    assert(client.init {
       hosts = {}, 
       resolv_conf = {
         "nameserver 8.8.8.8"
@@ -294,6 +294,16 @@ describe("Loadbalancer", function()
           "expected 'requery' parameter to be > 0"
         )
       end)
+      it("fails with a bad 'ttl0' option", function()
+        assert.has.error(
+          function() balancer.new({ 
+                hosts = {"mashape.com"},
+                dns = client,
+                ttl0 = -5,
+            }) end,
+          "expected 'ttl0' parameter to be > 0"
+        )
+      end)
       it("fails with inconsistent wheel and order sizes", function()
         assert.has.error(
           function() balancer.new({
@@ -326,6 +336,7 @@ describe("Loadbalancer", function()
           wheelsize = 10,
           order = {1,2,3,4,5,6,7,8,9,10},
           requery = 2,
+          ttl0 = 5,
         })
       end)
       it("succeeds with the right sizes", function()
@@ -442,7 +453,7 @@ describe("Loadbalancer", function()
         -- 2016/11/07 16:48:33 [error] 81932#0: *2 recv() failed (61: Connection refused), context: ngx.timer
         
         -- reconfigure the dns client to make sure query fails
-        assert(client:init {
+        assert(client.init {
           hosts = {}, 
           resolv_conf = {
             "nameserver 127.0.0.1:22000" -- make sure dns query fails
@@ -458,26 +469,32 @@ describe("Loadbalancer", function()
         })
         assert.equal(0, b.weight)
       end)
-      it("fails if the 'hostname:port' combo already exists", function()
+      it("updates the weight when 'hostname:port' combo already exists", function()
         -- returns nil + error
         local b = check_balancer(balancer.new { 
           dns = client,
           wheelsize = 15,
         })
-        ok, err = b:addHost("just_a_name", 80)
+        dnsA({ 
+          { name = "mashape.com", address = "1.2.3.4" },
+        })
+        ok, err = b:addHost("mashape.com", 80, 10)
         assert.are.equal(b, ok)
         assert.is_nil(err)
         check_balancer(b)
+        assert.equal(10, b.weight)
         
-        ok, err = b:addHost("just_a_name", 81)  -- different port is ok
+        ok, err = b:addHost("mashape.com", 81, 20)  -- different port
         assert.are.equal(b, ok)
         assert.is_nil(err)
         check_balancer(b)
+        assert.equal(30, b.weight)
         
-        ok, err = b:addHost("just_a_name", 80)
-        assert.is_nil(ok)
-        assert.are.equal("duplicate entry, hostname entry already exists; 'just_a_name', port 80", err)
+        ok, err = b:addHost("mashape.com", 80, 5)  -- reduce weight by 5
+        assert.are.equal(b, ok)
+        assert.is_nil(err)
         check_balancer(b)
+        assert.equal(25, b.weight)
       end)
     end)
   
@@ -823,6 +840,167 @@ describe("Loadbalancer", function()
       b:removeHost("getkong.org", 8080)
       b:removeHost("mashape.com", 80)
     end)
+    it("weight change updates properly", function() 
+      dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.5" },
+      })
+      dnsAAAA({ 
+        { name = "getkong.org", address = "::1" },
+      })
+      local b = check_balancer(balancer.new { 
+        dns = client,
+        wheelsize = 60,
+      })
+      b:addHost("mashape.com", 80, 10)
+      b:addHost("getkong.org", 80, 10)
+      local count = count_slots(b)
+      assert.same({
+          ["1.2.3.4:80"] = 20,
+          ["1.2.3.5:80"] = 20,
+          ["[::1]:80"]   = 20,
+      }, count)
+      
+      b:addHost("mashape.com", 80, 25)
+      count = count_slots(b)
+      assert.same({
+          ["1.2.3.4:80"] = 25,
+          ["1.2.3.5:80"] = 25,
+          ["[::1]:80"]   = 10,
+      }, count)
+    end)
+    it("weight change ttl=0 record, updates properly", function() 
+      -- mock the resolve/toip methods
+      local old_resolve = client.resolve
+      local old_toip = client.toip
+      finally(function() 
+          client.resolve = old_resolve 
+          client.toip = old_toip
+        end)
+      client.resolve = function(name, ...)
+        if name == "mashape.com" then
+          local record = dnsA({ 
+            { name = "mashape.com", address = "1.2.3.4", ttl = 0 },
+          })
+          return record
+        else
+          return old_resolve(name, ...)
+        end
+      end
+      client.toip = function(name, ...)
+        if name == "mashape.com" then
+          return "1.2.3.4", ...
+        else
+          return old_toip(name, ...)
+        end
+      end
+
+      -- insert 2nd address
+      dnsA({ 
+        { name = "getkong.org", address = "9.9.9.9", ttl = 60*60 },
+      })
+
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = "mashape.com", port = 80, weight = 50 }, 
+          { name = "getkong.org", port = 123, weight = 50 }, 
+        },
+        dns = client,
+        wheelsize = 100,
+        ttl0 = 2,
+      })
+    
+      count = count_slots(b)
+      assert.same({
+          ["mashape.com:80"] = 50,
+          ["9.9.9.9:123"] = 50,
+      }, count)
+
+      -- update weights
+      b:addHost("mashape.com", 80, 150)
+      
+      count = count_slots(b)
+      assert.same({
+          ["mashape.com:80"] = 75,
+          ["9.9.9.9:123"] = 25,
+      }, count)
+    end)
+    it("weight change for unresolved record, updates properly", function() 
+      local record = dnsA({ 
+        { name = "does.not.exist.mashape.com", address = "1.2.3.4" },
+      })
+      dnsAAAA({ 
+        { name = "getkong.org", address = "::1" },
+      })
+      local b = check_balancer(balancer.new { 
+        dns = client,
+        wheelsize = 60,
+      })
+      b:addHost("does.not.exist.mashape.com", 80, 10)
+      b:addHost("getkong.org", 80, 10)
+      local count = count_slots(b)
+      assert.same({
+          ["1.2.3.4:80"] = 30,
+          ["[::1]:80"]   = 30,
+      }, count)
+      
+      record.expire = gettime() - 1 -- expire record now
+      for i = 1, b.wheelSize do b:getPeer() end -- hit them all to force renewal
+      
+      count = count_slots(b)
+      assert.same({
+          --["1.2.3.4:80"] = 0,  --> failed to resolve, no more entries
+          ["[::1]:80"]   = 60,
+      }, count)
+      
+      -- update the failed record
+      b:addHost("does.not.exist.mashape.com", 80, 20)
+      -- reinsert a cache entry
+      local record = dnsA({ 
+        { name = "does.not.exist.mashape.com", address = "1.2.3.4" },
+      })
+      sleep(2)  -- wait for timer to re-resolve the record
+      
+      count = count_slots(b)
+      assert.same({
+          ["1.2.3.4:80"] = 40,
+          ["[::1]:80"]   = 20,
+      }, count)
+    end)
+    it("weight change SRV record, has no effect", function() 
+      dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+        { name = "mashape.com", address = "1.2.3.5" },
+      })
+      dnsSRV({ 
+        { name = "gelato.io", target = "1.2.3.6", port = 8001, weight = 5 },
+        { name = "gelato.io", target = "1.2.3.6", port = 8002, weight = 5 },
+      })
+      local b = check_balancer(balancer.new { 
+        dns = client,
+        wheelsize = 120,
+      })
+      b:addHost("mashape.com", 80, 10)
+      b:addHost("gelato.io", 80, 10)  --> port + weight will be ignored
+      local count = count_slots(b)
+      local state = copyWheel(b)
+      assert.same({
+          ["1.2.3.4:80"]   = 40,
+          ["1.2.3.5:80"]   = 40,
+          ["1.2.3.6:8001"] = 20,
+          ["1.2.3.6:8002"] = 20,
+      }, count)
+      
+      b:addHost("gelato.io", 80, 20)  --> port + weight will be ignored
+      count = count_slots(b)
+      assert.same({
+          ["1.2.3.4:80"]   = 40,
+          ["1.2.3.5:80"]   = 40,
+          ["1.2.3.6:8001"] = 20,
+          ["1.2.3.6:8002"] = 20,
+      }, count)
+      assert.same(state, copyWheel(b))
+    end)
     it("renewed DNS A record; no changes", function()
       local record = dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
@@ -1078,13 +1256,14 @@ describe("Loadbalancer", function()
         },
         dns = client,
         wheelsize = 20,
+        requery = 1,   -- shorten default requery time for the test
       })
 --print("balancer created, storing state1 + state2 here")
       local state1 = copyWheel(b)
       local state2 = copyWheel(b)
 --print("reconfiguring dns client with bad nameserver...")
       -- reconfigure the dns client to make sure next query fails
-      assert(client:init {
+      assert(client.init {
         hosts = {}, 
         resolv_conf = {
           "nameserver 127.0.0.1:22000" -- make sure dns query fails
@@ -1103,7 +1282,7 @@ describe("Loadbalancer", function()
       assert.same(state2, copyWheel(b))
 --print("asserted that the failure updated the wheel correctly by removing 'mashape.com'")
       -- reconfigure the dns client to make sure next query works again
-      assert(client:init {
+      assert(client.init {
         hosts = {}, 
         resolv_conf = {
           "nameserver 8.8.8.8"
@@ -1115,8 +1294,8 @@ describe("Loadbalancer", function()
         { name = "mashape.com", address = "1.2.3.4" },
       })
 --print("client reconfigured, local cache updated, and inserted the fake record again")      
---print("waiting 1 sec for timer to update the failed record...")
-      sleep(1) --requery timer runs once per second, so should be fixed after this
+--print("waiting for timer to update the failed record...")
+      sleep(b.requery_interval + 1) --requery timer runs, so should be fixed after this
 
       -- wheel should be back in original state
 --print("now checking the updated results")
@@ -1199,6 +1378,7 @@ describe("Loadbalancer", function()
         },
         dns = client,
         wheelsize = 100,
+        ttl0 = 2,
       })
       -- get current state
       local state = copyWheel(b)
@@ -1208,7 +1388,7 @@ describe("Loadbalancer", function()
       assert.equal(1, resolve_count) -- hit once, when adding the host to the balancer
       
       -- wait for expiring the 0-ttl setting
-      sleep(61)  -- 0 ttl is requeried after 60 seconds, to check for changed ttl
+      sleep(b.ttl0_interval + 1)  -- 0 ttl is requeried, to check for changed ttl
       
       ttl = 60 -- set our records ttl to 60 now, so we only get one extra hit now
       toip_count = 0  --reset counters

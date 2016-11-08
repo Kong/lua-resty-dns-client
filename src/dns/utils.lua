@@ -1,15 +1,10 @@
 --------------------------------------------------------------------------
--- DNS utility module to parse the `/etc/hosts` and `/etc/resolv.conf` 
--- configuration files.
+-- DNS utility module. 
 --
--- On regular Lua it uses LuaSocket if available for the `gettime` function. Or 
--- falls back on `os.time` if LuaSocket is unavailable. With OpenResty it uses 
--- native OpenResty functions.
--- 
--- _NOTE_: parsing the files is done using blocking i/o file operations, for
--- non-blocking applications parse only at startup.
+-- Parses the `/etc/hosts` and `/etc/resolv.conf` configuration files, caches them, 
+-- and provides some utility functions. 
 --
--- See `./examples/` for examples and output returned.
+-- _NOTE_: parsing the files is done using blocking i/o file operations.
 --
 -- @copyright 2016 Mashape Inc.
 -- @author Thijs Schreijer
@@ -20,14 +15,7 @@ local _M = {}
 local utils = require("pl.utils")
 local gsub = string.gsub
 local tinsert = table.insert
-local is_windows = package.config:sub(1,1) == [[\]]
-local gettime
-
-if ngx then
-  gettime = ngx.now
-else
-  gettime = require("socket").gettime
-end
+local gettime = ngx.now
 
 -- pattern that will only match data before a # or ; comment
 -- returns nil if there is none before the # or ;
@@ -35,31 +23,49 @@ end
 local PATT_COMMENT = "^([^#;]+)[#;]*(.*)$"
 -- Splits a string in IP and hostnames part, drops leading/trailing whitespace
 local PATT_IP_HOST = "^%s*([%x%.%:]+)%s+(%S.-%S)%s*$"
--- hosts filename to use when omitted
-local DEFAULT_HOSTS = "/etc/hosts"
-if is_windows then
-  DEFAULT_HOSTS = (os.getenv("SystemRoot") or "") .. [[\system32\drivers\etc\hosts]]
-end
 
--- resolv.conf default filename
-local DEFAULT_RESOLV_CONF = "/etc/resolv.conf"
+local _DEFAULT_HOSTS = "/etc/hosts"              -- hosts filename to use when omitted
+local _DEFAULT_RESOLV_CONF = "/etc/resolv.conf"  -- resolv.conf default filename
 
-_M.DEFAULT_HOSTS = DEFAULT_HOSTS
-_M.DEFAULT_RESOLV_CONF = DEFAULT_RESOLV_CONF
+--- Default filename to parse for the `hosts` file.
+-- @field DEFAULT_HOSTS Defaults to `/etc/hosts`
+_M.DEFAULT_HOSTS = _DEFAULT_HOSTS
 
---- Parses a hosts file or table.
--- Does not check for correctness of ip addresses nor hostnames (hostnames will be forced to lowercase). 
--- Might return `nil + error` if the file cannot be read. NOTE: All hostnames and aliases will be returned in lowercase.
--- @param filename (optional) File to parse, defaults to "/etc/hosts" if omitted, or a table with the file contents in lines.
--- @return 1; reverse lookup table, ip addresses (table with `ipv4` and `ipv6` fields) indexed by their canonical names and aliases
--- @return 2; list with all entries. Containing fields `ip`, `canonical` and `family`, and a list of aliasses
+--- Default filename to parse for the `resolv.conf` file.
+-- @field DEFAULT_RESOLV_CONF Defaults to `/etc/resolv.conf`
+_M.DEFAULT_RESOLV_CONF = _DEFAULT_RESOLV_CONF
+
+--- Parsing configuration files and variables
+-- @section parsing
+
+--- Parses a `hosts` file or table.
+-- Does not check for correctness of ip addresses nor hostnames (hostnames will 
+-- be forced to lowercase). Might return `nil + error` if the file cannot be read.
+--
+-- __NOTE__: All hostnames and aliases will be returned in lowercase.
+-- @param filename (optional) Filename to parse, or a table with the file 
+-- contents in lines (defaults to `'/etc/hosts'` if omitted)
+-- @return 1; reverse lookup table, ip addresses (table with `ipv4` and `ipv6` 
+-- fields) indexed by their canonical names and aliases
+-- @return 2; list with all entries. Containing fields `ip`, `canonical` and `family`, 
+-- and a list of aliasses
+-- @usage local lookup, list = utils.parse_hosts({
+--   "127.0.0.1   localhost",
+--   "1.2.3.4     someserver",
+--   "192.168.1.2 test.computer.com",
+--   "192.168.1.3 ftp.COMPUTER.com alias1 alias2",
+-- })
+-- 
+-- print(lookup["localhost"])         --> "127.0.0.1"
+-- print(lookup["ftp.computer.com"])  --> "192.168.1.3" note: name in lowercase!
+-- print(lookup["alias1"])            --> "192.168.1.3"
 _M.parse_hosts = function(filename)
   local lines
   if type(filename) == "table" then
     lines = filename
   else
     local err
-    lines, err = utils.readlines(filename or DEFAULT_HOSTS)
+    lines, err = utils.readlines(filename or _M.DEFAULT_HOSTS)
     if not lines then return lines, err end
   end
   local result = {}
@@ -115,18 +121,20 @@ local parse_option = function(target, details)
   end
 end
 
---- Parses a resolv.conf file or table.
--- Does not check for correctness of ip addresses nor hostnames, bad options will be ignored. Might 
--- return `nil + error` if the file cannot be read.
--- @param filename (optional) File to parse (defaults to "/etc/resolv.conf" if omitted) or a table with the file contents in lines.
--- @return table with fields `nameserver` (table), `domain` (string), `search` (table), `sortlist` (table) and `options` (table)
+--- Parses a `resolv.conf` file or table.
+-- Does not check for correctness of ip addresses nor hostnames, bad options 
+-- will be ignored. Might return `nil + error` if the file cannot be read.
+-- @param filename (optional) File to parse (defaults to `'/etc/resolv.conf'` if 
+-- omitted) or a table with the file contents in lines.
+-- @return a table with fields `nameserver` (table), `domain` (string), `search` (table), `sortlist` (table) and `options` (table)
+-- @see apply_env
 _M.parse_resolv_conf = function(filename)
   local lines
   if type(filename) == "table" then
     lines = filename
   else
     local err
-    lines, err = utils.readlines(filename or DEFAULT_RESOLV_CONF)
+    lines, err = utils.readlines(filename or _M.DEFAULT_RESOLV_CONF)
     if not lines then return lines, err end
   end
   local result = {}
@@ -162,22 +170,22 @@ _M.parse_resolv_conf = function(filename)
   return result
 end
 
---- Will parse `LOCALDOMAIN` and `RES_OPTIONS` environment variables
--- and insert them into the given configuration table.
+--- Will parse `LOCALDOMAIN` and `RES_OPTIONS` environment variables.
+-- It will insert them into the given `resolv.conf` based configuration table.
 --
--- NOTE: if the input is `nil+error` it will return the input, to allow for pass-through error handling
--- @param config Options table, as parsed by `parse_resolv_conf()`, or an empty table to get only the environment options
+-- __NOTE__: if the input is `nil+error` it will return the input, to allow for 
+-- pass-through error handling
+-- @param config Options table, as parsed by `parse_resolv_conf`, or an empty table to get only the environment options
 -- @return modified table
--- @usage local dnsutils = require("dns.utils")
---
--- -- errors are passed through, so this;
--- local config, err = dnsutils.parse_resolf_conf()
+-- @see parse_resolv_conf
+-- @usage -- errors are passed through, so this;
+-- local config, err = utils.parse_resolv_conf()
 -- if config then 
---   config, err = dnsutils.apply_env(config)
+--   config, err = utils.apply_env(config)
 -- end
 -- 
 -- -- Is identical to;
--- local config, err = dnsutils.apply_env(dnsutils.parse_resolf_conf())
+-- local config, err = utils.apply_env(utils.parse_resolv_conf())
 _M.apply_env = function(config, err)
   if not config then return config, err end -- allow for 'nil+error' pass-through
   local localdomain = os.getenv("LOCALDOMAIN") or ""
@@ -200,21 +208,23 @@ _M.apply_env = function(config, err)
   return config
 end
 
-if is_windows then
-  -- there are no environment variables like this on Windows, so short-circuit it
-  _M.parse_resolv_conf = function(...) return ... end
-end
+--- Caching configuration files and variables
+-- @section caching
 
-
+-- local caches
 local cache_hosts  -- cached value
 local cache_hostsr  -- cached value
 local last_hosts = 0 -- timestamp
 local ttl_hosts   -- time to live for cache
 
---- returns the `parse_hosts()` results, but cached.
--- Once `ttl` has been provided, only after it expires the file will be parsed again
+--- returns the `parse_hosts` results, but cached.
+-- Once `ttl` has been provided, only after it expires the file will be parsed again.
+--
+-- __NOTE__: if cached, the _SAME_ tables will be returned, so do not modify them 
+-- unless you know what you are doing!
 -- @param ttl cache time-to-live in seconds (can be updated in following calls)
--- @return reverse and list tables, see `parse_hosts()`. NOTE: if cached, the _SAME_ tables will be returned, so do not modify them unless you know what you are doing
+-- @return reverse and list tables, same as `parse_hosts`.
+-- @see parse_hosts
 _M.gethosts = function(ttl)
   ttl_hosts = ttl or ttl_hosts
   local now = gettime()
@@ -236,10 +246,14 @@ local cache_resolv  -- cached value
 local last_resolv = 0 -- timestamp
 local ttl_resolv   -- time to live for cache
 
---- returns the `dnsutils.apply_env(dnsutils.parse_resolve_conf())` results, but cached.
--- Once `ttl` has been provided, only after it expires it will be parsed again
+--- returns the `apply_env` results, but cached.
+-- Once `ttl` has been provided, only after it expires it will be parsed again.
+--
+-- __NOTE__: if cached, the _SAME_ table will be returned, so do not modify them 
+-- unless you know what you are doing!
 -- @param ttl cache time-to-live in seconds (can be updated in following calls)
--- @return configuration table, see `parse_resolve_conf()`. NOTE: if cached, the _SAME_ table will be returned, so do not modify them unless you know what you are doing
+-- @return configuration table, same as `parse_resolve_conf`.
+-- @see parse_resolv_conf
 _M.getresolv = function(ttl)
   ttl_resolv = ttl or ttl_resolv
   local now = gettime()
@@ -255,13 +269,18 @@ _M.getresolv = function(ttl)
   return cache_resolv
 end
 
+--- Miscellaneous
+-- @section miscellaneous
+
 --- checks the hostname type; ipv4, ipv6, or name.
--- Type is determined by exclusion, not by validation. So if it returns 'ipv6' then
+-- Type is determined by exclusion, not by validation. So if it returns `'ipv6'` then
 -- it can only be an ipv6, but it is not necessarily a valid ipv6 address.
--- @param name the string to check (this may contain a portnumber)
--- @return string either; 'ipv4', 'ipv6', or 'name'
+-- @param name the string to check (this may contain a port number)
+-- @return string either; `'ipv4'`, `'ipv6'`, or `'name'`
 -- @usage hostname_type("123.123.123.123")  -->  "ipv4"
+-- hostname_type("127.0.0.1:8080")   -->  "ipv4"
 -- hostname_type("::1")              -->  "ipv6"
+-- hostname_type("[::1]:8000")       -->  "ipv6"
 -- hostname_type("some::thing")      -->  "ipv6", but invalid...
 _M.hostname_type = function(name)
   local remainder, colons = gsub(name, ":", "")

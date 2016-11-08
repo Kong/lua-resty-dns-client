@@ -1,27 +1,43 @@
 --------------------------------------------------------------------------
--- DNS based loadbalancer.
+-- Ring-balancer.
 --
+-- This loadbalancer is designed for consistent hashing approaches and
+-- to retain consistency on a maximum level while dealing with dynamic
+-- changes like adding/removing hosts/targets.
 --
--- See `./examples/` for examples and output returned.
+-- Due to its deterministic way of operating it is also capable of running
+-- identical balancers (identical consistent rings) on multiple servers/workers 
+-- (though it does not implement inter-server/worker communication).
+-- 
+-- Only dns is non-deterministic as it might occur when a peer is requested, 
+-- and hence should be avoided (by directly inserting ip addresses).
+-- Adding/deleting hosts, etc (as long as done in the same order) is always 
+-- deterministic.
+--
+-- Updating the dns records is passive, meaning that when `getPeer` accesses a
+-- target, only then the check is done whether the record is stale, and if so
+-- it is updated. The one exception is the failed dns queries (because they 
+-- have no slots assigned, and hence will never be hit by `getPeer`), which will
+-- be actively refreshed using a timer. 
+--
+-- Whenever dns resolution fails for a hostname, the host will relinguish all
+-- the slots it owns, and they will be reassigned to other targets. 
+-- Periodically the query for the hostname will be retried, and if it succeeds
+-- it will get slots reassigned to it.
+--
+-- __Housekeeping__; the ring-balancer does some house keeping and may insert
+-- some extra fields in dns records. Those fields will, similar to the `toip`
+-- function, have an `__` prefix (double underscores).
 --
 -- @author Thijs Schreijer
 -- @copyright Mashape Inc. All rights reserved.
 -- @license Apache 2.0
 
 
--- Recalculating is done on 2 occasions;
--- 1) when removing a host, weight  will be set to 0, recalculated, and erased.
--- 2) when updating dns records. Which happens in 2 places;
---    A - when adding a new host, dns is queried and addresses added
---    B - when getting a peer. ttl is checked, and dns requeried. Addresses
---        will be added/updated/deleted
--- 
--- Only dns is non-deterministic as it might occur when a peer is requested.
--- Adding/deleting hosts, etc (as long as done in the same order) is always deterministic.
-
 local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
-local TTL_0_RETRY = 60      -- How often check for changed ttl for added hosts with ttl=0
+local TTL_0_RETRY = 60      -- Maximum life-time for hosts added with ttl=0, requery after it expires
+local REQUERY_INTERVAL = 1  -- Interval for requerying failed dns queries
 
 local dns = require "dns.client"
 local utils = require "dns.utils"
@@ -46,26 +62,15 @@ end
 
 local _M = {}
 
---[[
-set a fixed number of slots up-front, generate a set of random numbers of this size (store centrally)
-based on the weights
-each host name gets a number of slots from the random list.
-The first added host goes first, then the second and so on.
-Note: kong should not maintain a list of nodes, but a history of adding and removing nodes
-By replaying that, the exact same sequence can be recreated on every kong node.
 
-adding a node should then probably write a current snapshot, followed by the change. Based on timestamps all nodes
-can only apply the change, while new nodes can replay from the snapshot onwards.
---]]
-
------------------------------------------------------------------------------
+-- ===========================================================================
 -- address object.
 -- Manages an ip address. It links to a `host`, and is associated with a number
 -- of slots managed by the `balancer`.
------------------------------------------------------------------------------
+-- ===========================================================================
 local mt_addr = {}
 
---- Returns the peer info.
+-- Returns the peer info.
 -- @return ip-address, port and hostname of the target
 function mt_addr:getPeer(cache_only)
   if self.ip_type == "name" then
@@ -78,7 +83,7 @@ function mt_addr:getPeer(cache_only)
   end
 end
 
---- Adds a list of slots to the address. The slots added to the address will be removed from 
+-- Adds a list of slots to the address. The slots added to the address will be removed from 
 -- the provided `slotList`.
 -- @param slotList a list of slots to be added
 -- @param count the number of slots to take from the list provided, defaults to ALL if omitted
@@ -106,7 +111,7 @@ function mt_addr:addSlots(slotList, count)
   return self
 end
 
---- Drop an amount of slots and return them to the overall balancer.
+-- Drop an amount of slots and return them to the overall balancer.
 -- @param slotList The list to add the dropped slots to
 -- @param count (optional) The number of slots to drop, defaults to ALL if omitted
 -- @return slotList with added to it the slots removed from this address
@@ -133,7 +138,7 @@ function mt_addr:dropSlots(slotList, count)
   return slotList
 end
 
---- disables an address object from the balancer.
+-- disables an address object from the balancer.
 -- It will set its weight to 0, so the next slot-recalculation
 -- can delete the address by calling `delete`.
 -- @see delete
@@ -151,7 +156,14 @@ function mt_addr:delete()
   self.host = nil
 end
 
---- creates a new address object.
+-- changes the weight of an address.
+-- requires redistributing slots afterwards
+function mt_addr:change(newWeight)
+  self.host:addWeight(newWeight - self.weight)
+  self.weight = newWeight
+end
+
+-- creates a new address object.
 -- @param ip the upstream ip address or target name
 -- @param port the upstream port number
 -- @param weight the relative weight for the balancer algorithm
@@ -175,11 +187,11 @@ local newAddress = function(ip, port, weight, host)
 end
 
 
------------------------------------------------------------------------------
+-- ===========================================================================
 -- Host object.
 -- Manages a single hostname, with DNS resolution and expanding into 
 -- multiple upstream IPs.
------------------------------------------------------------------------------
+-- ===========================================================================
 local mt_host = {}
 
 -- define sort order for DNS query results
@@ -220,7 +232,7 @@ sorts = setmetatable(sorts,{
     end,
   })
 
---- Queries the DNS for this hostname. Updates the underlying address objects.
+-- Queries the DNS for this hostname. Updates the underlying address objects.
 -- This method always succeeds, but it might leave the balancer in a 0-weight
 -- state if none of the hosts resolves, and hence none of the slots are allocated
 -- to 'addresss' objects.
@@ -249,9 +261,9 @@ function mt_host:queryDns(cache_only)
   if (newQuery[1] or empty).ttl == 0 then
     -- ttl = 0 means we need to lookup on every request.
     -- To enable lookup on each request we 'abuse' a virtual SRV record. We set the ttl
-    -- to `TTL_0_RETRY` seconds, and set the `target` field to the hostname that needs
+    -- to `ttl0_interval` seconds, and set the `target` field to the hostname that needs
     -- resolving. Now `getPeer` will resolve on each request if the target is not an IP address,
-    -- and after `TTL_0_RETRY` seconds we'll retry to see whether the ttl has changed to non-0.
+    -- and after `ttl0_interval` seconds we'll retry to see whether the ttl has changed to non-0.
     -- Note: if the original record is an SRV we cannot use the dns provided weights,
     -- because we can/are not going to possibly change weights on each request
     -- so we fix them at the `nodeWeight` property, as with A and AAAA records.
@@ -267,9 +279,9 @@ function mt_host:queryDns(cache_only)
           port = self.port,
           weight = self.nodeWeight,
           priority = 1,
-          ttl = TTL_0_RETRY,
+          ttl = self.balancer.ttl0_interval,
         },
-        expire = time() + TTL_0_RETRY,
+        expire = time() + self.balancer.ttl0_interval,
         touched = time(),
         __ttl_0_flag = true,        -- flag marking this record as a fake SRV one
       }
@@ -317,7 +329,7 @@ function mt_host:queryDns(cache_only)
       end
     end
     if dCount ~= #oldSorted then
-      -- not all existing entries we're handled, remove the ones that are not in the
+      -- not all existing entries were handled, remove the ones that are not in the
       -- new query result
       for _, entry in ipairs(oldSorted) do
         if not done[entry._balancer_sortkey] then
@@ -342,14 +354,36 @@ function mt_host:queryDns(cache_only)
   return true
 end
 
---- Changes the host overall weight. It will also update the parent balancer object.
+-- Changes the host overall weight. It will also update the parent balancer object.
 -- To be called whenever an address is added/removed/changed
 function mt_host:addWeight(delta)
   self.weight = self.weight + delta
   self.balancer:addWeight(delta)
 end
 
---- Adds an `address` object to the `host`.
+-- Updates the host nodeWeight.
+-- @return `true` if something changed and slots must be redistributed
+function mt_host:change(newWeight)
+  local dirty = false
+  self.nodeWeight = newWeight
+  local lastQuery = self.lastQuery or {}
+  if #lastQuery > 0 then
+    if lastQuery[1].type == dns.TYPE_SRV and not lastQuery.__ttl_0_flag then
+      -- this is an SRV record (and not a fake ttl=0 one), which 
+      -- carries its own weight setting, so nothing to update
+    else
+      -- so here we have A, AAAA, or a fake SRV, which uses the `nodeWeight` property
+      -- go update all our addresses
+      for _, addr in ipairs(self.addresses) do
+        addr:change(newWeight)
+      end
+      dirty = true
+    end
+  end
+  return dirty
+end
+
+-- Adds an `address` object to the `host`.
 -- @param entry (table) DNS entry
 function mt_host:addAddress(entry)
   local addresses = self.addresses
@@ -361,7 +395,7 @@ function mt_host:addAddress(entry)
   )
 end
 
---- Looks up and disables an `address` object from the `host`.
+-- Looks up and disables an `address` object from the `host`.
 -- @param entry (table) DNS entry
 -- @return address object that was disabled
 function mt_host:removeAddress(entry)
@@ -401,9 +435,9 @@ function mt_host:delete()
   self.balancer = nil
 end
  
---- Gets address and port number from a specific slot owned by the host.
+-- Gets address and port number from a specific slot owned by the host.
 -- The slot MUST be owned by the host. Call balancer:getPeer, never this one.
--- access: balancer:getpeer->slot->address->host->returns addr+port
+-- access: balancer:getPeer->slot->address->host->returns addr+port
 function mt_host:getPeer(hashvalue, cache_only, slot)
   
   if (self.lastQuery.expire or 0) < time() and not cache_only then
@@ -419,7 +453,7 @@ function mt_host:getPeer(hashvalue, cache_only, slot)
   return slot.address:getPeer(cache_only)
 end
 
---- creates a new host object.
+-- creates a new host object.
 -- A host refers to a host name. So a host can have multiple addresses.
 -- @param hostname the upstream hostname (as used in dns queries)
 -- @param port the upstream port number for A and AAAA dns records. For SRV records the reported port by the DNS server will be used.
@@ -453,14 +487,14 @@ local newHost = function(hostname, port, weight, balancer)
 end
 
 
------------------------------------------------------------------------------
+-- ===========================================================================
 -- Balancer object.
 -- Manages a set of hostnames, to balance the requests over.
------------------------------------------------------------------------------
+-- ===========================================================================
 
 local mt_balancer = {}
 
---- Address iterator.
+-- Address iterator.
 -- Iterates over all addresses in the balancer (nested through the hosts)
 -- @return weight (number), address (address object), host (host object the address belongs to)
 function mt_balancer:addressIter()
@@ -485,7 +519,7 @@ function mt_balancer:addressIter()
   end
 end
 
---- Recalculates the weights. Updates the slot lists for all hostnames.
+-- Recalculates the weights. Updates the slot lists for all hostnames.
 -- Must be called whenever a weight might have changed; added/removed hosts.
 -- @param slotList initial slotlist, to be used only upon creation of a balancer!
 -- @return balancer object
@@ -535,11 +569,37 @@ function mt_balancer:redistributeSlots()
   return self
 end
 
---- Adds a host to the balancer.
--- @param hostname hostname to add (note: not validated, as long as it's a string it will be accepted!)
+--- Adds a host to the balancer. If the name resolves to multiple entries,
+-- each entry will be added, all with the same weight. So adding an A record
+-- with 2 entries, with weight 10, will insert both entries with weight 10, 
+-- and increase to overall balancer weight by 20. The one exception is that if
+-- it resolves to a record with `ttl=0`, then it will __always__ only insert a single
+-- (unresolved) entry. The unresolved entry will be resolved by `getPeer` when 
+-- requested.
+--
+-- Resolving will be done by the dns clients `resolve` method. Which will 
+-- dereference CNAME record if set to, but it will not dereference SRV records.
+-- An unresolved SRV `target` field will also be resolved by `getPeer` when requested.
+-- 
+-- Only the slots assigned to the newly added targets will loose their
+-- consistency, all other slots are guaranteed to remain the same.
+--
+-- Within a balancer the combination of `hostname` and `port` must be unique, so 
+-- multiple calls with the same target will only update the `weight` of the
+-- existing entry.
+--
+-- __multi-server/worker consistency__; to keep multiple servers/workers consistent it is
+-- important to apply all modifications to the ring-balancer in the exact same
+-- order on each system. Also the initial `order` list must be the same. And; do 
+-- not use names, only ip adresses, as dns resolution is non-deterministic
+-- across servers/workers.
+-- @function addHost
+-- @param hostname hostname to add (note: not validated, as long as it's a 
+-- string it will be accepted, but remain unresolved!)
 -- @param port (optional) the port to use (defaults to 80 if omitted)
--- @param weight (optional) relative weight (defaults to 10 if omitted)
--- @return balancer object, nil+error on a duplicate or throw an error on bad input
+-- @param weight (optional) relative weight for A/AAAA records (defaults to 
+-- 10 if omitted), and will be ignored in case of an SRV record.
+-- @return balancer object, or throw an error on bad input
 function mt_balancer:addHost(hostname, port, weight)
   assert(type(hostname) == "string", "expected a hostname (string), got "..tostring(hostname))
   port = port or DEFAULT_PORT
@@ -549,23 +609,42 @@ function mt_balancer:addHost(hostname, port, weight)
          weight >= 1, 
          "Expected 'weight' to be an integer >= 1; got "..tostring(weight))
 
-  for _, host in ipairs(self.hosts) do
-    if host.hostname == hostname and host.port == port then
-      return nil, "duplicate entry, hostname entry already exists; '"..tostring(hostname).."', port "..tostring(port)
+  local host
+  for _, host_entry in ipairs(self.hosts) do
+    if host_entry.hostname == hostname and host_entry.port == port then
+      -- found it
+      host = host_entry
+      break
     end
   end
   
-  -- create the new host, that will insert itself in the balancer
-  newHost(hostname, port, weight, self)
+  if not host then
+    -- create the new host, that will insert itself in the balancer
+    newHost(hostname, port, weight, self)
+  else
+    -- this one already exists, update if different
+    if host.nodeWeight ~= weight then
+      -- weight changed, go update
+      if host:change(weight) then
+        -- update had an impact so must redistribute slots
+        self:redistributeSlots()
+      end
+    end
+  end
   
   return self
 end
 
---- Removes a host from a balancer. Will not throw an error if the
--- hostname is not in the current list
+--- Removes a host from a balancer. All assigned slots will be redistributed 
+-- to the remaining targets. Only the slots from the removed host will loose
+-- their consistency, all other slots are guaranteed to remain in place.
+-- Will not throw an error if the hostname is not in the current list.
+--
+-- See `addHost` for multi-server consistency.
+-- @function removeHost
 -- @param hostname hostname to remove
 -- @param port port to remove (optional, defaults to 80 if omitted)
--- @return balancer object
+-- @return balancer object, or an error on bad input
 function mt_balancer:removeHost(hostname, port)
   assert(type(hostname) == "string", "expected a hostname (string), got "..tostring(hostname))
   port = port or DEFAULT_PORT
@@ -576,7 +655,7 @@ function mt_balancer:removeHost(hostname, port)
       host:disable()
   
       -- removing hosts must always be recalculated to make sure
-      -- it's order is deterministic (only dns updates are not)
+      -- its order is deterministic (only dns updates are not)
       self:redistributeSlots()
 
       -- remove host
@@ -588,17 +667,27 @@ function mt_balancer:removeHost(hostname, port)
   return self
 end
 
---- Updates the total weight.
+-- Updates the total weight.
 -- @param delta the in/decrease of the overall weight (negative for decrease)
 function mt_balancer:addWeight(delta)
   self.weight = self.weight + delta
 end
 
---- Gets the next host according to the loadbalancing scheme.
--- Hashvalue can be an integer from 1 to `wheelSize`, or a float from 0 up to but not including 1.
--- @param hashvalue (optional) number for consistent hashing, round-robins if omitted
--- @param cache_only If thruthy, no dns lookups will be done, only cache.
--- @return ip, port, hostname, or nil+error
+--- Gets the next ip address and port according to the loadbalancing scheme.
+-- If the dns record attached to the requested slot is expired, then it will 
+-- be renewed and as a consequence the ring-balancer might be updated.
+--
+-- If the slot that is requested holds either an unresolved SRV entry (where
+-- the `target` field contains a name instead of an ip), or a record with `ttl=0` then
+-- this call will perform the final query to resolve to an ip using the `toip` 
+-- function of the dns client (this also invokes the loadbalancing as done by 
+-- the `toip` function).
+-- @function getPeer
+-- @param hashvalue (optional) number for consistent hashing, round-robins if 
+-- omitted. The hashvalue can be an integer from 1 to `wheelSize`, or a float 
+-- from 0 up to, but not including, 1.
+-- @param cache_only If truthy, no dns lookups will be done, only cache.
+-- @return `ip + port + hostname`, or `nil+error`
 function mt_balancer:getPeer(hashvalue, cache_only)
   local pointer
   if self.weight == 0 then
@@ -621,7 +710,7 @@ function mt_balancer:getPeer(hashvalue, cache_only)
   return slot.address.host:getPeer(hashvalue, cache_only, slot)
 end
 
---- Timer invoked to check for failed queries
+-- Timer invoked to check for failed queries
 local function timer_func(premature, self)
   if premature then return end
   
@@ -649,7 +738,7 @@ local function timer_func(premature, self)
   end
 end
 
---- Starts the requery timer.
+-- Starts the requery timer.
 function mt_balancer:startRequery()
   if self.requery_running then return end  -- already running, nothing to do here
   
@@ -660,15 +749,40 @@ function mt_balancer:startRequery()
   end
 end
 
---- Creates a new balancer. The balancer is based on a wheel with slots. The slots will be randomly distributed
--- over the hosts. The number of slots assigned will be relative to the weight.
--- 
+--- Creates a new balancer. The balancer is based on a wheel with slots. The 
+-- slots will be randomly distributed over the targets. The number of slots 
+-- assigned will be relative to the weight.
+--
+-- A single balancer can hold multiple hosts. A host can be an ip address or a
+-- name. As such each host can have multiple targets (or actual ip+port 
+-- combinations).
+--
 -- The options table has the following fields;
 --
--- - `hosts` (optional) containing hostnames, ports and weights.
--- - `wheelsize` (optional) for total number of slots in the balancer, if mitted the size of `order` is used, or 1000 if `order` is not provided
--- - `order` (optional) if given, a list of random numbers, size `wheelsize`, used to randomize the wheel
--- - `dns` (required) a configured `dns.client` object for querying the dns server
+-- - `hosts` (optional) containing hostnames, ports and weights. If omitted,
+-- ports and weights default respectively to 80 and 10. The list will be sorted
+-- before being added, so the order of entry is deterministic.
+-- - `wheelsize` (optional) for total number of slots in the balancer, if omitted 
+-- the size of `order` is used, or 1000 if `order` is not provided. It is important 
+-- to have enough slots to keep the ring properly randomly distributed. If there
+-- are to few slots for the number of targets then the load distribution might
+-- become to coarse. Consider the maximum number of targets expected, as new
+-- hosts can be dynamically added, and dns renewals might yield larger record 
+-- sets. The `wheelsize` cannot be altered, only a new wheel can be created, but
+-- then all consistency would be lost. On a similar note; making it too big, 
+-- will have a performance impact when the wheel is modified as too many slots
+-- will have to be moved between targets. A value of 50 to 200 slots per entry 
+-- seems about right.
+-- - `order` (optional) if given, a list of random numbers, size `wheelsize`, used to 
+-- randomize the wheel. This entry is solely to support multiple servers with 
+-- the same consistency, as it allows to use the same randomization on each
+-- server, and hence the same slot assignment. Duplicates are not allowed in
+-- the list.
+-- - `dns` (required) a configured `dns.client` object for querying the dns server.
+-- - `requery` (optional) interval of requerying the dns server for previously 
+-- failed queries. Defaults to 1 if omitted (in seconds)
+-- - `ttl0` (optional) Maximum lifetime for records inserted with ttl=0, to verify
+-- the ttl is still 0. Defaults to 60 if omitted (in seconds)
 -- @param opts table with options
 -- @return new balancer object or nil+error
 -- @usage -- hosts
@@ -689,6 +803,7 @@ _M.new = function(opts)
     assert(opts.order and (opts.wheelsize == #opts.order), "mismatch between size of 'order' and 'wheelsize'")
   end
   assert((opts.requery or 1) > 0, "expected 'requery' parameter to be > 0")
+  assert((opts.ttl0 or 1) > 0, "expected 'ttl0' parameter to be > 0")
   
   local self = {
     -- properties
@@ -700,7 +815,8 @@ _M.new = function(opts)
     dns = opts.dns,  -- the configured dns client to use for resolving
     unassignedSlots = {}, -- list to hold unassigned slots (initially, and when all hosts fail)
     requery_running = false,  -- requery timer is not running, see `startRequery`
-    requery_interval = opts.requery or 1,  -- how often to requery failed dns lookups (seconds)
+    requery_interval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
+    ttl0_interval = opts.ttl0 or TTL_0_RETRY -- refreshing ttl=0 records
   }
   for name, method in pairs(mt_balancer) do self[name] = method end
 

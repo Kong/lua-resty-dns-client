@@ -3,7 +3,7 @@
 <html>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 <head>
-    <title>DNS</title>
+    <title>DNS client for OpenResty</title>
     <link rel="stylesheet" href="../ldoc.css" type="text/css" />
 </head>
 <body>
@@ -24,7 +24,7 @@
 
 <div id="navigation">
 <br/>
-<h1>dns.lua</h1>
+<h1>lua-resty-dns-client</h1>
 
 <ul>
   <li><a href="../index.html">Index</a></li>
@@ -37,13 +37,13 @@
 
 
 <h2>Modules</h2>
-<ul class="$(kind=='Topics' and '' or 'nowrap'">
+<ul class="nowrap">
   <li><strong>dns.balancer</strong></li>
   <li><a href="../modules/dns.client.html">dns.client</a></li>
   <li><a href="../modules/dns.utils.html">dns.utils</a></li>
 </ul>
 <h2>Topics</h2>
-<ul class="$(kind=='Topics' and '' or 'nowrap'">
+<ul class="">
   <li><a href="../topics/readme.md.html">readme</a></li>
 </ul>
 
@@ -52,8 +52,34 @@
 <div id="content">
 
 <h1>Module <code>dns.balancer</code></h1>
-<p>DNS based loadbalancer.</p>
-<p> See <code>./examples/</code> for examples and output returned.</p>
+<p>Ring-balancer.</p>
+<p> This loadbalancer is designed for consistent hashing approaches and
+ to retain consistency on a maximum level while dealing with dynamic
+ changes like adding/removing hosts/targets.</p>
+
+<p> Due to its deterministic way of operating it is also capable of running
+ identical balancers (identical consistent rings) on multiple servers/workers
+ (though it does not implement inter-server/worker communication).</p>
+
+<p> Only dns is non-deterministic as it might occur when a peer is requested,
+ and hence should be avoided (by directly inserting ip addresses).
+ Adding/deleting hosts, etc (as long as done in the same order) is always
+ deterministic.</p>
+
+<p> Updating the dns records is passive, meaning that when <a href="../modules/dns.balancer.html#getPeer">getPeer</a> accesses a
+ target, only then the check is done whether the record is stale, and if so
+ it is updated. The one exception is the failed dns queries (because they
+ have no slots assigned, and hence will never be hit by <a href="../modules/dns.balancer.html#getPeer">getPeer</a>), which will
+ be actively refreshed using a timer. </p>
+
+<p> Whenever dns resolution fails for a hostname, the host will relinguish all
+ the slots it owns, and they will be reassigned to other targets.
+ Periodically the query for the hostname will be retried, and if it succeeds
+ it will get slots reassigned to it.</p>
+
+<p> <strong>Housekeeping</strong>; the ring-balancer does some house keeping and may insert
+ some extra fields in dns records. Those fields will, similar to the <code>toip</code>
+ function, have an <code>__</code> prefix (double underscores).</p>
     <h3>Info:</h3>
     <ul>
         <li><strong>Copyright</strong>: Mashape Inc. All rights reserved.</li>
@@ -65,68 +91,20 @@
 <h2><a href="#Functions">Functions</a></h2>
 <table class="function_list">
 	<tr>
-	<td class="name" nowrap><a href="#mt_addr:addSlots">mt_addr:addSlots (slotList, count)</a></td>
-	<td class="summary">Adds a list of slots to the address.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_addr:disable">mt_addr:disable ()</a></td>
-	<td class="summary">disables an address object from the balancer.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_addr:dropSlots">mt_addr:dropSlots (slotList, count)</a></td>
-	<td class="summary">Drop an amount of slots and return them to the overall balancer.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_addr:getPeer">mt_addr:getPeer ()</a></td>
-	<td class="summary">Returns the peer info.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_balancer:addHost">mt_balancer:addHost (hostname, port, weight)</a></td>
+	<td class="name" nowrap><a href="#addHost">addHost (hostname, port, weight)</a></td>
 	<td class="summary">Adds a host to the balancer.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#mt_balancer:addWeight">mt_balancer:addWeight (delta)</a></td>
-	<td class="summary">Updates the total weight.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_balancer:addressIter">mt_balancer:addressIter ()</a></td>
-	<td class="summary">Address iterator.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_balancer:getPeer">mt_balancer:getPeer (hashvalue, cache_only)</a></td>
-	<td class="summary">Gets the next host according to the loadbalancing scheme.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_balancer:redistributeSlots">mt_balancer:redistributeSlots (slotList)</a></td>
-	<td class="summary">Recalculates the weights.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_balancer:removeHost">mt_balancer:removeHost (hostname, port)</a></td>
-	<td class="summary">Removes a host from a balancer.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_host:addAddress">mt_host:addAddress (entry)</a></td>
-	<td class="summary">Adds an <code>address</code> object to the <code>host</code>.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_host:addWeight">mt_host:addWeight (delta)</a></td>
-	<td class="summary">Changes the host overall weight.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_host:getPeer">mt_host:getPeer (hashvalue, cache_only, slot)</a></td>
-	<td class="summary">Gets address and port number from a specific slot owned by the host.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_host:queryDns">mt_host:queryDns (cache_only)</a></td>
-	<td class="summary">Queries the DNS for this hostname.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#mt_host:removeAddress">mt_host:removeAddress (entry)</a></td>
-	<td class="summary">Looks up and disables an <code>address</code> object from the <code>host</code>.</td>
+	<td class="name" nowrap><a href="#getPeer">getPeer (hashvalue, cache_only)</a></td>
+	<td class="summary">Gets the next ip address and port according to the loadbalancing scheme.</td>
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#new">new (opts)</a></td>
 	<td class="summary">Creates a new balancer.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#removeHost">removeHost (hostname, port)</a></td>
+	<td class="summary">Removes a host from a balancer.</td>
 	</tr>
 </table>
 
@@ -138,125 +116,55 @@
 
     <dl class="function">
     <dt>
-    <a name = "mt_addr:addSlots"></a>
-    <strong>mt_addr:addSlots (slotList, count)</strong>
+    <a name = "addHost"></a>
+    <strong>addHost (hostname, port, weight)</strong>
     </dt>
     <dd>
-    Adds a list of slots to the address.  The slots added to the address will be removed from
- the provided <code>slotList</code>.
+    Adds a host to the balancer.  If the name resolves to multiple entries,
+ each entry will be added, all with the same weight. So adding an A record
+ with 2 entries, with weight 10, will insert both entries with weight 10,
+ and increase to overall balancer weight by 20. The one exception is that if
+ it resolves to a record with <code>ttl=0</code>, then it will <strong>always</strong> only insert a single
+ (unresolved) entry. The unresolved entry will be resolved by <a href="../modules/dns.balancer.html#getPeer">getPeer</a> when
+ requested.</p>
 
+<p> Resolving will be done by the dns clients <code>resolve</code> method. Which will
+ dereference CNAME record if set to, but it will not dereference SRV records.
+ An unresolved SRV <code>target</code> field will also be resolved by <a href="../modules/dns.balancer.html#getPeer">getPeer</a> when requested.</p>
 
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">slotList</span>
-         a list of slots to be added
-        </li>
-        <li><span class="parameter">count</span>
-         the number of slots to take from the list provided, defaults to ALL if omitted
-        </li>
-    </ul>
+<p> Only the slots assigned to the newly added targets will loose their
+ consistency, all other slots are guaranteed to remain the same.</p>
 
-    <h3>Returns:</h3>
-    <ol>
+<p> Within a balancer the combination of <code>hostname</code> and <code>port</code> must be unique, so
+ multiple calls with the same target will only update the <code>weight</code> of the
+ existing entry.</p>
 
-        the address object
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_addr:disable"></a>
-    <strong>mt_addr:disable ()</strong>
-    </dt>
-    <dd>
-    disables an address object from the balancer.
- It will set its weight to 0, so the next slot-recalculation
- can delete the address by calling <code>delete</code>.
-
-
-
-
-
-    <h3>See also:</h3>
-    <ul>
-    </ul>
-
-
-</dd>
-    <dt>
-    <a name = "mt_addr:dropSlots"></a>
-    <strong>mt_addr:dropSlots (slotList, count)</strong>
-    </dt>
-    <dd>
-    Drop an amount of slots and return them to the overall balancer.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">slotList</span>
-         The list to add the dropped slots to
-        </li>
-        <li><span class="parameter">count</span>
-         (optional) The number of slots to drop, defaults to ALL if omitted
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        slotList with added to it the slots removed from this address
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_addr:getPeer"></a>
-    <strong>mt_addr:getPeer ()</strong>
-    </dt>
-    <dd>
-    Returns the peer info.
-
-
-
-    <h3>Returns:</h3>
-    <ol>
-
-        ip-address, port and hostname of the target
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_balancer:addHost"></a>
-    <strong>mt_balancer:addHost (hostname, port, weight)</strong>
-    </dt>
-    <dd>
-    Adds a host to the balancer.
+<p> <strong>multi-server/worker consistency</strong>; to keep multiple servers/workers consistent it is
+ important to apply all modifications to the ring-balancer in the exact same
+ order on each system. Also the initial <code>order</code> list must be the same. And; do
+ not use names, only ip adresses, as dns resolution is non-deterministic
+ across servers/workers.
 
 
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">hostname</span>
-         hostname to add (note: not validated, as long as it&rsquo;s a string it will be accepted!)
+         hostname to add (note: not validated, as long as it&rsquo;s a
+ string it will be accepted, but remain unresolved!)
         </li>
         <li><span class="parameter">port</span>
          (optional) the port to use (defaults to 80 if omitted)
         </li>
         <li><span class="parameter">weight</span>
-         (optional) relative weight (defaults to 10 if omitted)
+         (optional) relative weight for A/AAAA records (defaults to
+ 10 if omitted), and will be ignored in case of an SRV record.
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        balancer object, nil+error on a duplicate or throw an error on bad input
+        balancer object, or throw an error on bad input
     </ol>
 
 
@@ -264,250 +172,37 @@
 
 </dd>
     <dt>
-    <a name = "mt_balancer:addWeight"></a>
-    <strong>mt_balancer:addWeight (delta)</strong>
+    <a name = "getPeer"></a>
+    <strong>getPeer (hashvalue, cache_only)</strong>
     </dt>
     <dd>
-    Updates the total weight.
+    Gets the next ip address and port according to the loadbalancing scheme.
+ If the dns record attached to the requested slot is expired, then it will
+ be renewed and as a consequence the ring-balancer might be updated.</p>
 
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">delta</span>
-         the in/decrease of the overall weight (negative for decrease)
-        </li>
-    </ul>
-
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_balancer:addressIter"></a>
-    <strong>mt_balancer:addressIter ()</strong>
-    </dt>
-    <dd>
-    Address iterator.
- Iterates over all addresses in the balancer (nested through the hosts)
-
-
-
-    <h3>Returns:</h3>
-    <ol>
-
-        weight (number), address (address object), host (host object the address belongs to)
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_balancer:getPeer"></a>
-    <strong>mt_balancer:getPeer (hashvalue, cache_only)</strong>
-    </dt>
-    <dd>
-    Gets the next host according to the loadbalancing scheme.
- Hashvalue can be an integer from 1 to <code>wheelSize</code>, or a float from 0 up to but not including 1.
+<p> If the slot that is requested holds either an unresolved SRV entry (where
+ the <code>target</code> field contains a name instead of an ip), or a record with <code>ttl=0</code> then
+ this call will perform the final query to resolve to an ip using the <code>toip</code>
+ function of the dns client (this also invokes the loadbalancing as done by
+ the <code>toip</code> function).
 
 
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">hashvalue</span>
-         (optional) number for consistent hashing, round-robins if omitted
+         (optional) number for consistent hashing, round-robins if
+ omitted. The hashvalue can be an integer from 1 to <code>wheelSize</code>, or a float
+ from 0 up to, but not including, 1.
         </li>
         <li><span class="parameter">cache_only</span>
-         If thruthy, no dns lookups will be done, only cache.
+         If truthy, no dns lookups will be done, only cache.
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        ip, port, hostname, or nil+error
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_balancer:redistributeSlots"></a>
-    <strong>mt_balancer:redistributeSlots (slotList)</strong>
-    </dt>
-    <dd>
-    Recalculates the weights.  Updates the slot lists for all hostnames.
- Must be called whenever a weight might have changed; added/removed hosts.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">slotList</span>
-         initial slotlist, to be used only upon creation of a balancer!
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        balancer object
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_balancer:removeHost"></a>
-    <strong>mt_balancer:removeHost (hostname, port)</strong>
-    </dt>
-    <dd>
-    Removes a host from a balancer.  Will not throw an error if the
- hostname is not in the current list
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">hostname</span>
-         hostname to remove
-        </li>
-        <li><span class="parameter">port</span>
-         port to remove (optional, defaults to 80 if omitted)
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        balancer object
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_host:addAddress"></a>
-    <strong>mt_host:addAddress (entry)</strong>
-    </dt>
-    <dd>
-    Adds an <code>address</code> object to the <code>host</code>.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">entry</span>
-         (table) DNS entry
-        </li>
-    </ul>
-
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_host:addWeight"></a>
-    <strong>mt_host:addWeight (delta)</strong>
-    </dt>
-    <dd>
-    Changes the host overall weight.  It will also update the parent balancer object.
- To be called whenever an address is added/removed/changed
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">delta</span>
-
-
-        </li>
-    </ul>
-
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_host:getPeer"></a>
-    <strong>mt_host:getPeer (hashvalue, cache_only, slot)</strong>
-    </dt>
-    <dd>
-    Gets address and port number from a specific slot owned by the host.
- The slot MUST be owned by the host. Call balancer:getPeer, never this one.
- access: balancer:getpeer->slot->address->host->returns addr+port
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">hashvalue</span>
-
-
-        </li>
-        <li><span class="parameter">cache_only</span>
-
-
-        </li>
-        <li><span class="parameter">slot</span>
-
-
-        </li>
-    </ul>
-
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_host:queryDns"></a>
-    <strong>mt_host:queryDns (cache_only)</strong>
-    </dt>
-    <dd>
-    Queries the DNS for this hostname.  Updates the underlying address objects.
- This method always succeeds, but it might leave the balancer in a 0-weight
- state if none of the hosts resolves, and hence none of the slots are allocated
- to &lsquo;addresss&rsquo; objects.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">cache_only</span>
-
-
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        <code>true</code>, always succeeds
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "mt_host:removeAddress"></a>
-    <strong>mt_host:removeAddress (entry)</strong>
-    </dt>
-    <dd>
-    Looks up and disables an <code>address</code> object from the <code>host</code>.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">entry</span>
-         (table) DNS entry
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        address object that was disabled
+        <code>ip + port + hostname</code>, or <code>nil+error</code>
     </ol>
 
 
@@ -519,16 +214,41 @@
     <strong>new (opts)</strong>
     </dt>
     <dd>
-    <p>Creates a new balancer.  The balancer is based on a wheel with slots. The slots will be randomly distributed
- over the hosts. The number of slots assigned will be relative to the weight.</p>
+    <p>Creates a new balancer.  The balancer is based on a wheel with slots. The
+ slots will be randomly distributed over the targets. The number of slots
+ assigned will be relative to the weight.</p>
+
+<p> A single balancer can hold multiple hosts. A host can be an ip address or a
+ name. As such each host can have multiple targets (or actual ip+port
+ combinations).</p>
 
 <p> The options table has the following fields;</p>
 
 <ul>
-<li><code>hosts</code> (optional) containing hostnames, ports and weights.</li>
-<li><code>wheelsize</code> (optional) for total number of slots in the balancer, if mitted the size of <code>order</code> is used, or 1000 if <code>order</code> is not provided</li>
-<li><code>order</code> (optional) if given, a list of random numbers, size <code>wheelsize</code>, used to randomize the wheel</li>
-<li><code>dns</code> (required) a configured <a href="../modules/dns.client.html#">dns.client</a> object for querying the dns server</li>
+<li><code>hosts</code> (optional) containing hostnames, ports and weights. If omitted,
+ports and weights default respectively to 80 and 10. The list will be sorted
+before being added, so the order of entry is deterministic.</li>
+<li><code>wheelsize</code> (optional) for total number of slots in the balancer, if omitted
+the size of <code>order</code> is used, or 1000 if <code>order</code> is not provided. It is important
+to have enough slots to keep the ring properly randomly distributed. If there
+are to few slots for the number of targets then the load distribution might
+become to coarse. Consider the maximum number of targets expected, as new
+hosts can be dynamically added, and dns renewals might yield larger record
+sets. The <code>wheelsize</code> cannot be altered, only a new wheel can be created, but
+then all consistency would be lost. On a similar note; making it too big,
+will have a performance impact when the wheel is modified as too many slots
+will have to be moved between targets. A value of 50 to 200 slots per entry
+seems about right.</li>
+<li><code>order</code> (optional) if given, a list of random numbers, size <code>wheelsize</code>, used to
+randomize the wheel. This entry is solely to support multiple servers with
+the same consistency, as it allows to use the same randomization on each
+server, and hence the same slot assignment. Duplicates are not allowed in
+the list.</li>
+<li><code>dns</code> (required) a configured <a href="../modules/dns.client.html#">dns.client</a> object for querying the dns server.</li>
+<li><code>requery</code> (optional) interval of requerying the dns server for previously
+failed queries. Defaults to 1 if omitted (in seconds)</li>
+<li><code>ttl0</code> (optional) Maximum lifetime for records inserted with ttl=0, to verify
+the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
 </ul>
 
 
@@ -551,13 +271,46 @@
 
     <h3>Usage:</h3>
     <ul>
-        <pre class="example"> <span class="comment">-- hosts
-</span> <span class="keyword">local</span> hosts = {
-   <span class="string">"mashape.com"</span>,                                     <span class="comment">-- name only, as string
-</span>   { name = <span class="string">"gelato.io"</span> },                            <span class="comment">-- name only, as table
-</span>   { name = <span class="string">"getkong.org"</span>, port = <span class="number">80</span>, weight = <span class="number">25</span> },  <span class="comment">-- fully specified, as table
-</span> }</pre>
+        <pre class="example"><span class="comment">-- hosts
+</span><span class="keyword">local</span> hosts = {
+  <span class="string">"mashape.com"</span>,                                     <span class="comment">-- name only, as string
+</span>  { name = <span class="string">"gelato.io"</span> },                            <span class="comment">-- name only, as table
+</span>  { name = <span class="string">"getkong.org"</span>, port = <span class="number">80</span>, weight = <span class="number">25</span> },  <span class="comment">-- fully specified, as table
+</span>}</pre>
     </ul>
+
+</dd>
+    <dt>
+    <a name = "removeHost"></a>
+    <strong>removeHost (hostname, port)</strong>
+    </dt>
+    <dd>
+    Removes a host from a balancer.  All assigned slots will be redistributed
+ to the remaining targets. Only the slots from the removed host will loose
+ their consistency, all other slots are guaranteed to remain in place.
+ Will not throw an error if the hostname is not in the current list.</p>
+
+<p> See <a href="../modules/dns.balancer.html#addHost">addHost</a> for multi-server consistency.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">hostname</span>
+         hostname to remove
+        </li>
+        <li><span class="parameter">port</span>
+         port to remove (optional, defaults to 80 if omitted)
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        balancer object, or an error on bad input
+    </ol>
+
+
+
 
 </dd>
 </dl>
@@ -566,8 +319,8 @@
 </div> <!-- id="content" -->
 </div> <!-- id="main" -->
 <div id="about">
-<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.3</a></i>
-<i style="float:right;">Last updated 2016-10-24 16:05:10 </i>
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.5</a></i>
+<i style="float:right;">Last updated 2016-11-08 16:31:24 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
