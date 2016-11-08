@@ -35,7 +35,7 @@ use the `rbusted` script.
 History
 =======
 
-###0.3.0 (xx-Nov-2016) Major breaking update
+###0.3.0 (8-Nov-2016) Major breaking update
 
 - breaking: renamed a lot of things; method names, module names, etc. pretty
   much breaks everything... also releasing under a new name
