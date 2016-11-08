@@ -19,7 +19,7 @@
 -- @author Thijs Schreijer
 -- @license Apache 2.0
 
-local utils = require("dns.utils")
+local utils = require("resty.dns.utils")
 local fileexists = require("pl.path").exists
 local semaphore = require("ngx.semaphore").new
 
@@ -41,12 +41,12 @@ local empty = setmetatable({},
 local config
 
 -- recursion level before erroring out
-local max_dns_recursion = 20
+local maxDnsRecursion = 20
 -- ttl (in seconds) for an empty/error dns result
-local bad_ttl = 1
+local badTtl = 1
 -- default order to query
-local order_valids = {"LAST", "SRV", "A", "AAAA", "CNAME"}
-for _,v in ipairs(order_valids) do order_valids[v:upper()] = v end
+local orderValids = {"LAST", "SRV", "A", "AAAA", "CNAME"}
+for _,v in ipairs(orderValids) do orderValids[v:upper()] = v end
 
 -- create module table
 local _M = {}
@@ -131,7 +131,7 @@ local cacheinsert = function(entry, qname, qtype)
   else
     -- list-part is empty, so no entries to grab data from
     -- (this is an empty response, or an error response)
-    ttl = bad_ttl
+    ttl = badTtl
     key = qtype..":"..qname
   end
  
@@ -163,9 +163,11 @@ end
 -- never be removed from the cache automatically. So unless you have a very 
 -- restricted fixed set of hostnames you're resolving, you should occasionally 
 -- purge the cache.
--- @param touched in seconds. Cleanup everything (also non-expired items) not touched in `touched` seconds. If omitted, only expired items (based on ttl) will be removed. 
+-- @param touched in seconds. Cleanup everything (also non-expired items) not 
+-- touched in `touched` seconds. If omitted, only expired items (based on ttl) 
+-- will be removed. 
 -- @return number of entries deleted
-_M.purge_cache = function(touched)
+_M.purgeCache = function(touched)
   local f
   if type(touched == nil) then 
     f = function(entry, now, count)  -- check ttl only
@@ -217,11 +219,11 @@ end
 -- them see the `r` parameters of the `resolve` and `toip` functions. Applicable
 -- for multiple consecutive calls in the same context.
 --
--- The `dns_cache_only` parameter found with `resolve` and `toip` can be used in 
+-- The `dnsCacheOnly` parameter found with `resolve` and `toip` can be used in 
 -- contexts where the co-socket api is unavailable. When the flag is set
 -- only cached data is returned, which is possibly stale, but it will never
 -- use blocking io. Also; the stale data will not
--- be invalidated from the cache when `dns_cache_only` is set.
+-- be invalidated from the cache when `dnsCacheOnly` is set.
 --
 -- __Housekeeping__; when using `toip` it has to do some housekeeping to apply
 -- the (weighted) round-robin scheme. Those values will be stored in the 
@@ -231,9 +233,9 @@ end
 -- @section resolving
 
 
-local type_order
-local pool_max_wait
-local pool_max_retry
+local typeOrder
+local poolMaxWait
+local poolMaxRetry
 
 --- Initialize the client. Can be called multiple times. When called again it 
 -- will clear the cache.
@@ -241,24 +243,24 @@ local pool_max_retry
 -- with some extra fields explained in the example below.
 -- @return `true` on success, `nil+error`, or throw an error on bad input
 -- @usage -- config files to parse
--- -- `hosts` and `resolv_conf` can both be a filename, or a table with file-contents
+-- -- `hosts` and `resolvConf` can both be a filename, or a table with file-contents
 -- -- The contents of the `hosts` file will be inserted in the cache.
 -- -- From `resolve_conf` the `nameservers`, `attempts` and `timeout` values will be used.
 -- local hosts = {}  -- initialize without any blocking i/o
--- local resolv_conf = {}  -- initialize without any blocking i/o
+-- local resolvConf = {}  -- initialize without any blocking i/o
 --
 -- -- Order in which to try different dns record types when resolving
 -- -- 'last'; will try the last previously successful type for a hostname.
 -- local order = { "last", "SRV", "A", "AAAA", "CNAME" } 
 --
 -- -- Cache ttl for empty and error responses
--- local bad_ttl = 1.0   -- in seconds (can have fractions)
+-- local badTtl = 1.0   -- in seconds (can have fractions)
 --
 -- assert(client.init({
 --          hosts = hosts, 
---          resolv_conf = resolv_conf,
+--          resolvConf = resolvConf,
 --          order = order,
---          bad_ttl = bad_ttl,
+--          badTtl = badTtl,
 --        })
 -- )
 _M.init = function(options)
@@ -267,21 +269,21 @@ _M.init = function(options)
   options = options or {}
   cache = {}  -- clear cache on re-initialization
   
-  local order = options.order or order_valids
-  type_order = {} -- clear existing upvalue
+  local order = options.order or orderValids
+  typeOrder = {} -- clear existing upvalue
   for i,v in ipairs(order) do 
     local t = v:upper()
-    assert(order_valids[t], "Invalid dns record type in order array; "..tostring(v))
-    type_order[i] = _M["TYPE_"..t]
+    assert(orderValids[t], "Invalid dns record type in order array; "..tostring(v))
+    typeOrder[i] = _M["TYPE_"..t]
   end
-  assert(#type_order > 0, "Invalid order list; cannot be empty")
+  assert(#typeOrder > 0, "Invalid order list; cannot be empty")
   
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
-  local resolvconffile = options.resolv_conf or utils.DEFAULT_RESOLV_CONF
+  local resolvconffile = options.resolvConf or utils.DEFAULT_RESOLV_CONF
 
   if ((type(hostsfile) == "string") and (fileexists(hostsfile)) or
      (type(hostsfile) == "table")) then
-    hosts, err = utils.parse_hosts(hostsfile)  -- results will be all lowercase!
+    hosts, err = utils.parseHosts(hostsfile)  -- results will be all lowercase!
     if not hosts then return hosts, err end
   else
     log(log_WARN, "Hosts file not found: "..tostring(hostsfile))  
@@ -313,7 +315,7 @@ _M.init = function(options)
 
   if ((type(resolvconffile) == "string") and (fileexists(resolvconffile)) or
      (type(resolvconffile) == "table")) then
-    resolv, err = utils.apply_env(utils.parse_resolv_conf(resolvconffile))
+    resolv, err = utils.applyEnv(utils.parseResolvConf(resolvconffile))
     if not resolv then return resolv, err end
   else
     log(log_WARN, "Resolv.conf file not found: "..tostring(resolvconffile))  
@@ -345,34 +347,34 @@ _M.init = function(options)
     end
   end
   
-  bad_ttl = options.bad_ttl or 1
+  badTtl = options.badTtl or 1
   
   -- options.no_recurse = -- not touching this one for now
   
   config = options -- store it in our module level global
   
-  pool_max_retry = 1  -- do one retry, dns resolver is already doing 'retrans' number of retries on top
-  pool_max_wait = options.timeout / 1000 * options.retrans -- default is to wait for the dns resolver to hit its timeouts
+  poolMaxRetry = 1  -- do one retry, dns resolver is already doing 'retrans' number of retries on top
+  poolMaxWait = options.timeout / 1000 * options.retrans -- default is to wait for the dns resolver to hit its timeouts
   
   return true
 end
 
-local _queue = setmetatable({}, {__mode = "v"})
+local queue = setmetatable({}, {__mode = "v"})
 -- Performs a query, but only one at a time. While the query is waiting for a response, all
 -- other queries for the same name+type combo will be yielded until the first one 
 -- returns. All calls will then return the same response.
 -- Reason; prevent a dog-pile effect when a dns record expires. Especially under load many dns 
 -- queries would be fired at the dns server if we wouldn't do this.
--- The `max_wait` is how long a thread waits for another to complete the query, after the timeout it will
+-- The `poolMaxWait` is how long a thread waits for another to complete the query, after the timeout it will
 -- clear the token in the cache and retry (all others will become in line after this new one)
--- The `max_retry` is how often we wait for another query to complete, after this number it will return
+-- The `poolMaxRetry` is how often we wait for another query to complete, after this number it will return
 -- an error. A retry will be performed when a) waiting for the other thread times out, or b) when the
 -- query by the other thread returns an error.
--- The maximum delay would be `max_wait * max_retry`.
+-- The maximum delay would be `poolMaxWait * poolMaxRetry`.
 -- @return query result + nil + r, or nil + error + r
-local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
+local function synchronizedQuery(qname, r_opts, r, expect_ttl_0, count)
   local key = qname..":"..r_opts.qtype
-  local item = _queue[key]
+  local item = queue[key]
   if not item then
     -- no lookup being done so far
     if not r then
@@ -392,18 +394,18 @@ local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
       item = {
         semaphore = semaphore(),
       }
-      _queue[key] = item  -- insertion in _queue; this is where the synchronization starts
+      queue[key] = item  -- insertion in queue; this is where the synchronization starts
       item.result, item.err = r:query(qname, r_opts)
       -- query done, but by now many others might be waiting for our result.
       -- 1) stop new ones from adding to our lock/semaphore
-      _queue[key] = nil
+      queue[key] = nil
       -- 2) release all waiting threads
       item.semaphore:post(math_max(item.semaphore:count() * -1, 1))
       return item.result, item.err, r
     end
   else
     -- lookup is on its way, wait for it
-    local ok, err = item.semaphore:wait(pool_max_wait)
+    local ok, err = item.semaphore:wait(poolMaxWait)
     if ok and item.result then
       -- we were released, and have a query result from the
       -- other thread, so all is well, return it
@@ -413,11 +415,11 @@ local function _synchronized_query(qname, r_opts, r, expect_ttl_0, count)
       -- a lookup error, so retry (retry actually means; do 
       -- our own lookup instead of waiting for another lookup).
       count = count or 1
-      if count > pool_max_retry then
-        return nil, "dns lookup pool exceeded retries ("..tostring(pool_max_retry).."): "..(item.error or err or "unknown"), r
+      if count > poolMaxRetry then
+        return nil, "dns lookup pool exceeded retries ("..tostring(poolMaxRetry).."): "..(item.error or err or "unknown"), r
       end
-      if _queue[key] == item then _queue[key] = nil end -- don't block on the same thread again
-      return _synchronized_query(qname, r_opts, r, expect_ttl_0, count + 1)
+      if queue[key] == item then queue[key] = nil end -- don't block on the same thread again
+      return synchronizedQuery(qname, r_opts, r, expect_ttl_0, count + 1)
     end
   end
 end
@@ -469,9 +471,9 @@ end
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
 -- only looks up the requested type.
 -- @return query result + nil + r, or r + nil + error
-local function _lookup(qname, r_opts, dns_cache_only, r)
+local function lookup(qname, r_opts, dnsCacheOnly, r)
   local qtype = r_opts.qtype
-  local record, expect_ttl_0 = cachelookup(qname, qtype, dns_cache_only)
+  local record, expect_ttl_0 = cachelookup(qname, qtype, dnsCacheOnly)
   if record then  -- cache hit
     return record, nil, r
   end
@@ -486,7 +488,7 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
       return check_ipv4(qname, r)    -- IPv4 address
     end
   end
-  if dns_cache_only then
+  if dnsCacheOnly then
     -- no active lookups allowed, so return error
     -- NOTE: this error response should never be cached, because it is caused 
     -- by the limited nginx context where we can't use sockets to do the lookup
@@ -498,7 +500,7 @@ local function _lookup(qname, r_opts, dns_cache_only, r)
   
   -- not found in our cache, so perform query on dns servers
   local answers, err
-  answers, err, r = _synchronized_query(qname, r_opts, r, expect_ttl_0)
+  answers, err, r = synchronizedQuery(qname, r_opts, r, expect_ttl_0)
   if not answers then return answers, err, r end
   
   -- check our answers and store them in the cache
@@ -544,7 +546,7 @@ end
 -- @param qname Name to resolve
 -- @param r_opts Options table, see remark about the `qtype` field above and 
 -- [OpenResty docs](https://github.com/openresty/lua-resty-dns) for more options.
--- @param dns_cache_only Only check the cache, won't do server lookups 
+-- @param dnsCacheOnly Only check the cache, won't do server lookups 
 -- (will not invalidate any ttl expired data and will hence possibly return
 -- expired data)
 -- @param r (optional) dns resolver object to use, it will also be returned. 
@@ -554,8 +556,8 @@ end
 -- the name is present on the server, but has a different record type. Any 
 -- dns server errors are returned in a hashtable (see 
 -- [OpenResty docs](https://github.com/openresty/lua-resty-dns)).
-local function resolve(qname, r_opts, dns_cache_only, r, count)
-  if count and (count > max_dns_recursion) then
+local function resolve(qname, r_opts, dnsCacheOnly, r, count)
+  if count and (count > maxDnsRecursion) then
     return nil, "maximum dns recursion level reached", r
   end
   qname = qname:lower()
@@ -564,7 +566,7 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
   if r_opts then
     if r_opts.qtype then
       -- type was provided, just resolve it and return
-      return _lookup(qname, r_opts, dns_cache_only, r)
+      return lookup(qname, r_opts, dnsCacheOnly, r)
     end
     -- options table, but no type, preserve options given
     opts = {}
@@ -578,22 +580,22 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
   -- go try a sequence of record types
   local last = cachegetsuccess(qname)  -- check if we have a previous succesful one
   local records, err
-  local already_tried = { [_M.TYPE_LAST] = true }
-  for _, qtype in ipairs(type_order) do
+  local alreadyTried = { [_M.TYPE_LAST] = true }
+  for _, qtype in ipairs(typeOrder) do
     if (qtype == _M.TYPE_LAST) and last then
       qtype = last
     end
-    if already_tried[qtype] then
+    if alreadyTried[qtype] then
       -- already tried this one, based on 'last', no use in trying again
     else
       opts.qtype = qtype
-      already_tried[qtype] = true
+      alreadyTried[qtype] = true
       
-      records, err, r = _lookup(qname, opts, dns_cache_only, r)
+      records, err, r = lookup(qname, opts, dnsCacheOnly, r)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
       if records and (#records > 0) then
-        if not dns_cache_only then 
+        if not dnsCacheOnly then 
           cachesetsuccess(qname, qtype) -- set last succesful type resolved
         end
         if qtype ~= _M.TYPE_CNAME then
@@ -601,13 +603,13 @@ local function resolve(qname, r_opts, dns_cache_only, r, count)
         else
           -- dereference CNAME
           opts.qtype = nil
-          return resolve(records[1].cname, opts, dns_cache_only, r, (count and count+1 or 1))
+          return resolve(records[1].cname, opts, dnsCacheOnly, r, (count and count+1 or 1))
         end
       end
     end
   end
   -- we failed, clear cache and return last error
-  if not dns_cache_only then
+  if not dnsCacheOnly then
     cachesetsuccess(qname, nil)
   end
   return records, err, r
@@ -635,14 +637,14 @@ local function stdError(result, err, r)
 end
 
 -- returns the index of the record next up in the round-robin scheme.
-local function roundrobin(rec)
-  local cursor = rec.__last_cursor or 0 -- start with first entry, trust the dns server! no random pick
+local function roundRobin(rec)
+  local cursor = rec.__lastCursor or 0 -- start with first entry, trust the dns server! no random pick
   if cursor == #rec then
     cursor = 1
   else
     cursor = cursor + 1
   end
-  rec.__last_cursor = cursor
+  rec.__lastCursor = cursor
   return cursor
 end
 
@@ -677,7 +679,7 @@ end
 -- eg. 20, 5, 5 --> 4, 1, 1 
 -- @return 2 values; reduced list (index == original index) and
 -- the sum of all the (reduced) weights
-local function reducedweights(list)
+local function reducedWeights(list)
   local gcd, total = gcdl(list)
   local l = {}
   for i, val in  ipairs(list) do
@@ -687,74 +689,74 @@ local function reducedweights(list)
 end
 
 -- returns the index of the SRV entry next up in the weighted round-robin scheme.
-local function roundrobinw(rec)
+local function roundRobinW(rec)
   
   -- determine priority; stick to current or lower priority
-  local prio_list = rec.__prio_list -- list with indexes-to-entries having the lowest priority
+  local prioList = rec.__prioList -- list with indexes-to-entries having the lowest priority
   
-  if not prio_list then
+  if not prioList then
     -- 1st time we're seeing this record, so go and
     -- find lowest priorities
-    local top_prio = 999999
-    local weight_list -- weights for the entry
+    local topPriority = 999999
+    local weightList -- weights for the entry
     local n = 0
     for i, r in ipairs(rec) do
-      if r.priority == top_prio then
+      if r.priority == topPriority then
         n = n + 1
-        prio_list[n] = i
-        weight_list[n] = r.weight
-      elseif r.priority < top_prio then
+        prioList[n] = i
+        weightList[n] = r.weight
+      elseif r.priority < topPriority then
         n = 1
-        top_prio = r.priority
-        prio_list = { i }
-        weight_list = { r.weight }
+        topPriority = r.priority
+        prioList = { i }
+        weightList = { r.weight }
       end
     end
-    rec.__prio_list = prio_list
-    rec.__weight_list = weight_list
-    return prio_list[1]  -- start with first entry, trust the dns server!
+    rec.__prioList = prioList
+    rec.__weightList = weightList
+    return prioList[1]  -- start with first entry, trust the dns server!
   end
 
-  local rrw_list = rec.__rrw_list
-  local rrw_pointer = rec.__rrw_pointer
+  local rrwList = rec.__rrwList
+  local rrwPointer = rec.__rrwPointer
 
-  if not rrw_list then
+  if not rrwList then
     -- 2nd time we're seeing this record
     -- 1st time we trusted the dns server, now we do WRR by our selves, so
     -- must create a list based on the weights. We do this only when necessary
     -- for performance reasons, so only on 2nd or later calls. Especially for
     -- ttl=0 scenarios where there is only 1 call ever.
-    local weight_list = reducedweights(rec.__weight_list)
-    rrw_list = {}
+    local weightList = reducedWeights(rec.__weightList)
+    rrwList = {}
     local x = 0
     -- create a list of entries, where each entry is repeated based on its
     -- relative weight.
-    for i, idx in ipairs(prio_list) do
-      for _ = 1, weight_list[i] do
+    for i, idx in ipairs(prioList) do
+      for _ = 1, weightList[i] do
         x = x + 1
-        rrw_list[x] = idx
+        rrwList[x] = idx
       end
     end
-    rec.__rrw_list = rrw_list
+    rec.__rrwList = rrwList
     -- The list has 2 parts, lower-part is yet to be used, higher-part was
-    -- already used. The `rrw_pointer` points to the last entry of the lower-part.
+    -- already used. The `rrwPointer` points to the last entry of the lower-part.
     -- On the initial call we served the first record, so we must rotate
     -- that initial call to be up-to-date.
-    rrw_list[1], rrw_list[x] = rrw_list[x], rrw_list[1]
-    rrw_pointer = x-1  -- we have 1 entry in the higher-part now
-    if rrw_pointer == 0 then rrw_pointer = x end
+    rrwList[1], rrwList[x] = rrwList[x], rrwList[1]
+    rrwPointer = x-1  -- we have 1 entry in the higher-part now
+    if rrwPointer == 0 then rrwPointer = x end
   end
   
   -- all structures are in place, so we can just serve the next up record
-  local idx = math_random(1, rrw_pointer)
-  local target = rrw_list[idx]
+  local idx = math_random(1, rrwPointer)
+  local target = rrwList[idx]
   
   -- rotate to next
-  rrw_list[idx], rrw_list[rrw_pointer] = rrw_list[rrw_pointer], rrw_list[idx]
-  if rrw_pointer == 1 then 
-    rec.__rrw_pointer = #rrw_list 
+  rrwList[idx], rrwList[rrwPointer] = rrwList[rrwPointer], rrwList[idx]
+  if rrwPointer == 1 then 
+    rec.__rrwPointer = #rrwList 
   else
-    rec.__rrw_pointer = rrw_pointer-1
+    rec.__rrwPointer = rrwPointer-1
   end
   
   return target
@@ -794,26 +796,26 @@ end
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in 
 -- the lookup chain (only SRV records carry port information)
--- @param dns_cache_only Only check the cache, won't do server lookups (will 
+-- @param dnsCacheOnly Only check the cache, won't do server lookups (will 
 -- not invalidate any ttl expired data and will hence possibly return expired data)
 -- @param r (optional) dns resolver object to use, it will also be returned. 
 -- In case of multiple calls, this allows to reuse the resolver object instead 
 -- of recreating a new one on each call.
 -- @return `ip address + port + r`, or in case of an error `nil + error + r`
-local function toip(qname, port, dns_cache_only, r)
+local function toip(qname, port, dnsCacheOnly, r)
   local rec, err
-  rec, err, r = stdError(resolve(qname, nil, dns_cache_only, r))
+  rec, err, r = stdError(resolve(qname, nil, dnsCacheOnly, r))
   if err then
     return nil, err, r
   end
 
   if rec[1].type == _M.TYPE_SRV then
-    local entry = rec[roundrobinw(rec)]
+    local entry = rec[roundRobinW(rec)]
     -- our SRV entry might still contain a hostname, so recurse, with found port number
-    return toip(entry.target, entry.port, dns_cache_only, r)
+    return toip(entry.target, entry.port, dnsCacheOnly, r)
   else
     -- must be A or AAAA
-    return rec[roundrobin(rec)].address, port, r
+    return rec[roundRobin(rec)].address, port, r
   end
 end
 
@@ -834,16 +836,16 @@ end
 -- @param opts the options table
 -- @return `success`, or `nil + error`
 local function connect(sock, host, port, sock_opts)
-  local target_ip, target_port = toip(host, port)
+  local targetIp, targetPort = toip(host, port)
   
-  if not target_ip then
-    return nil, target_port 
+  if not targetIp then
+    return nil, targetPort 
   else
     -- need to do the extra check here: https://github.com/openresty/lua-nginx-module/issues/860
     if not sock_opts then
-      return sock:connect(target_ip, target_port)
+      return sock:connect(targetIp, targetPort)
     else
-      return sock:connect(target_ip, target_port, sock_opts)
+      return sock:connect(targetIp, targetPort, sock_opts)
     end
   end
 end
@@ -857,16 +859,16 @@ end
 -- @param port port to connect to (will be overridden if `toip` returns a port)
 -- @return `success`, or `nil + error`
 local function setpeername(sock, host, port)
-  local target_ip, target_port
+  local targetIp, targetPort
   if host:sub(1,5) == "unix:" then
-    target_ip = host  -- unix domain socket, nothing to resolve
+    targetIp = host  -- unix domain socket, nothing to resolve
   else
-    target_ip, target_port = toip(host, port)
-    if not target_ip then
-      return nil, target_port
+    targetIp, targetPort = toip(host, port)
+    if not targetIp then
+      return nil, targetPort
     end
   end
-  return sock:connect(target_ip, target_port)
+  return sock:connect(targetIp, targetPort)
 end
 
 -- export local functions

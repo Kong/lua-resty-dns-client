@@ -41,9 +41,9 @@
 
 <h2>Modules</h2>
 <ul class="nowrap">
-  <li><a href="../modules/dns.balancer.html">dns.balancer</a></li>
-  <li><a href="../modules/dns.client.html">dns.client</a></li>
-  <li><strong>dns.utils</strong></li>
+  <li><a href="../modules/resty.dns.balancer.html">resty.dns.balancer</a></li>
+  <li><a href="../modules/resty.dns.client.html">resty.dns.client</a></li>
+  <li><strong>resty.dns.utils</strong></li>
 </ul>
 <h2>Topics</h2>
 <ul class="">
@@ -54,7 +54,7 @@
 
 <div id="content">
 
-<h1>Module <code>dns.utils</code></h1>
+<h1>Module <code>resty.dns.utils</code></h1>
 <p>DNS utility module.</p>
 <p> Parses the <code>/etc/hosts</code> and <code>/etc/resolv.conf</code> configuration files, caches them,
  and provides some utility functions. </p>
@@ -82,33 +82,33 @@
 <h2><a href="#Parsing_configuration_files_and_variables">Parsing configuration files and variables</a></h2>
 <table class="function_list">
 	<tr>
-	<td class="name" nowrap><a href="#apply_env">apply_env (config)</a></td>
+	<td class="name" nowrap><a href="#applyEnv">applyEnv (config)</a></td>
 	<td class="summary">Will parse <code>LOCALDOMAIN</code> and <code>RES_OPTIONS</code> environment variables.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#parse_hosts">parse_hosts (filename)</a></td>
+	<td class="name" nowrap><a href="#parseHosts">parseHosts (filename)</a></td>
 	<td class="summary">Parses a <code>hosts</code> file or table.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#parse_resolv_conf">parse_resolv_conf (filename)</a></td>
+	<td class="name" nowrap><a href="#parseResolvConf">parseResolvConf (filename)</a></td>
 	<td class="summary">Parses a <code>resolv.conf</code> file or table.</td>
 	</tr>
 </table>
 <h2><a href="#Caching_configuration_files_and_variables">Caching configuration files and variables</a></h2>
 <table class="function_list">
 	<tr>
-	<td class="name" nowrap><a href="#gethosts">gethosts (ttl)</a></td>
-	<td class="summary">returns the <a href="../modules/dns.utils.html#parse_hosts">parse_hosts</a> results, but cached.</td>
+	<td class="name" nowrap><a href="#getHosts">getHosts (ttl)</a></td>
+	<td class="summary">returns the <a href="../modules/resty.dns.utils.html#parseHosts">parseHosts</a> results, but cached.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#getresolv">getresolv (ttl)</a></td>
-	<td class="summary">returns the <a href="../modules/dns.utils.html#apply_env">apply_env</a> results, but cached.</td>
+	<td class="name" nowrap><a href="#getResolv">getResolv (ttl)</a></td>
+	<td class="summary">returns the <a href="../modules/resty.dns.utils.html#applyEnv">applyEnv</a> results, but cached.</td>
 	</tr>
 </table>
 <h2><a href="#Miscellaneous">Miscellaneous</a></h2>
 <table class="function_list">
 	<tr>
-	<td class="name" nowrap><a href="#hostname_type">hostname_type (name)</a></td>
+	<td class="name" nowrap><a href="#hostnameType">hostnameType (name)</a></td>
 	<td class="summary">checks the hostname type; ipv4, ipv6, or name.</td>
 	</tr>
 </table>
@@ -163,8 +163,8 @@
 
     <dl class="function">
     <dt>
-    <a name = "apply_env"></a>
-    <strong>apply_env (config)</strong>
+    <a name = "applyEnv"></a>
+    <strong>applyEnv (config)</strong>
     </dt>
     <dd>
     Will parse <code>LOCALDOMAIN</code> and <code>RES_OPTIONS</code> environment variables.
@@ -177,7 +177,7 @@
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">config</span>
-         Options table, as parsed by <a href="../modules/dns.utils.html#parse_resolv_conf">parse_resolv_conf</a>, or an empty table to get only the environment options
+         Options table, as parsed by <a href="../modules/resty.dns.utils.html#parseResolvConf">parseResolvConf</a>, or an empty table to get only the environment options
         </li>
     </ul>
 
@@ -190,25 +190,25 @@
 
     <h3>See also:</h3>
     <ul>
-         <a href="../modules/dns.utils.html#parse_resolv_conf">parse_resolv_conf</a>
+         <a href="../modules/resty.dns.utils.html#parseResolvConf">parseResolvConf</a>
     </ul>
 
     <h3>Usage:</h3>
     <ul>
         <pre class="example"><span class="comment">-- errors are passed through, so this;
-</span><span class="keyword">local</span> config, err = utils.parse_resolv_conf()
+</span><span class="keyword">local</span> config, err = utils.parseResolvConf()
 <span class="keyword">if</span> config <span class="keyword">then</span>
-  config, err = utils.apply_env(config)
+  config, err = utils.applyEnv(config)
 <span class="keyword">end</span>
 
 <span class="comment">-- Is identical to;
-</span><span class="keyword">local</span> config, err = utils.apply_env(utils.parse_resolv_conf())</pre>
+</span><span class="keyword">local</span> config, err = utils.applyEnv(utils.parseResolvConf())</pre>
     </ul>
 
 </dd>
     <dt>
-    <a name = "parse_hosts"></a>
-    <strong>parse_hosts (filename)</strong>
+    <a name = "parseHosts"></a>
+    <strong>parseHosts (filename)</strong>
     </dt>
     <dd>
     Parses a <code>hosts</code> file or table.
@@ -240,7 +240,7 @@
 
     <h3>Usage:</h3>
     <ul>
-        <pre class="example"><span class="keyword">local</span> lookup, list = utils.parse_hosts({
+        <pre class="example"><span class="keyword">local</span> lookup, list = utils.parseHosts({
   <span class="string">"127.0.0.1   localhost"</span>,
   <span class="string">"1.2.3.4     someserver"</span>,
   <span class="string">"192.168.1.2 test.computer.com"</span>,
@@ -254,8 +254,8 @@
 
 </dd>
     <dt>
-    <a name = "parse_resolv_conf"></a>
-    <strong>parse_resolv_conf (filename)</strong>
+    <a name = "parseResolvConf"></a>
+    <strong>parseResolvConf (filename)</strong>
     </dt>
     <dd>
     Parses a <code>resolv.conf</code> file or table.
@@ -280,7 +280,7 @@
 
     <h3>See also:</h3>
     <ul>
-         <a href="../modules/dns.utils.html#apply_env">apply_env</a>
+         <a href="../modules/resty.dns.utils.html#applyEnv">applyEnv</a>
     </ul>
 
 
@@ -290,11 +290,11 @@
 
     <dl class="function">
     <dt>
-    <a name = "gethosts"></a>
-    <strong>gethosts (ttl)</strong>
+    <a name = "getHosts"></a>
+    <strong>getHosts (ttl)</strong>
     </dt>
     <dd>
-    returns the <a href="../modules/dns.utils.html#parse_hosts">parse_hosts</a> results, but cached.
+    returns the <a href="../modules/resty.dns.utils.html#parseHosts">parseHosts</a> results, but cached.
  Once <code>ttl</code> has been provided, only after it expires the file will be parsed again.</p>
 
 <p> <strong>NOTE</strong>: if cached, the <em>SAME</em> tables will be returned, so do not modify them
@@ -311,23 +311,23 @@
     <h3>Returns:</h3>
     <ol>
 
-        reverse and list tables, same as <a href="../modules/dns.utils.html#parse_hosts">parse_hosts</a>.
+        reverse and list tables, same as <a href="../modules/resty.dns.utils.html#parseHosts">parseHosts</a>.
     </ol>
 
 
     <h3>See also:</h3>
     <ul>
-         <a href="../modules/dns.utils.html#parse_hosts">parse_hosts</a>
+         <a href="../modules/resty.dns.utils.html#parseHosts">parseHosts</a>
     </ul>
 
 
 </dd>
     <dt>
-    <a name = "getresolv"></a>
-    <strong>getresolv (ttl)</strong>
+    <a name = "getResolv"></a>
+    <strong>getResolv (ttl)</strong>
     </dt>
     <dd>
-    returns the <a href="../modules/dns.utils.html#apply_env">apply_env</a> results, but cached.
+    returns the <a href="../modules/resty.dns.utils.html#applyEnv">applyEnv</a> results, but cached.
  Once <code>ttl</code> has been provided, only after it expires it will be parsed again.</p>
 
 <p> <strong>NOTE</strong>: if cached, the <em>SAME</em> table will be returned, so do not modify them
@@ -344,13 +344,13 @@
     <h3>Returns:</h3>
     <ol>
 
-        configuration table, same as <code>parse_resolve_conf</code>.
+        configuration table, same as <code>parseResolveConf</code>.
     </ol>
 
 
     <h3>See also:</h3>
     <ul>
-         <a href="../modules/dns.utils.html#parse_resolv_conf">parse_resolv_conf</a>
+         <a href="../modules/resty.dns.utils.html#parseResolvConf">parseResolvConf</a>
     </ul>
 
 
@@ -360,8 +360,8 @@
 
     <dl class="function">
     <dt>
-    <a name = "hostname_type"></a>
-    <strong>hostname_type (name)</strong>
+    <a name = "hostnameType"></a>
+    <strong>hostnameType (name)</strong>
     </dt>
     <dd>
     checks the hostname type; ipv4, ipv6, or name.
@@ -386,11 +386,11 @@
 
     <h3>Usage:</h3>
     <ul>
-        <pre class="example">hostname_type(<span class="string">"123.123.123.123"</span>)  <span class="comment">--&gt;  "ipv4"
-</span>hostname_type(<span class="string">"127.0.0.1:8080"</span>)   <span class="comment">--&gt;  "ipv4"
-</span>hostname_type(<span class="string">"::1"</span>)              <span class="comment">--&gt;  "ipv6"
-</span>hostname_type(<span class="string">"[::1]:8000"</span>)       <span class="comment">--&gt;  "ipv6"
-</span>hostname_type(<span class="string">"some::thing"</span>)      <span class="comment">--&gt;  "ipv6", but invalid...</span></pre>
+        <pre class="example">hostnameType(<span class="string">"123.123.123.123"</span>)  <span class="comment">--&gt;  "ipv4"
+</span>hostnameType(<span class="string">"127.0.0.1:8080"</span>)   <span class="comment">--&gt;  "ipv4"
+</span>hostnameType(<span class="string">"::1"</span>)              <span class="comment">--&gt;  "ipv6"
+</span>hostnameType(<span class="string">"[::1]:8000"</span>)       <span class="comment">--&gt;  "ipv6"
+</span>hostnameType(<span class="string">"some::thing"</span>)      <span class="comment">--&gt;  "ipv6", but invalid...</span></pre>
     </ul>
 
 </dd>
@@ -401,7 +401,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.5</a></i>
-<i style="float:right;">Last updated 2016-11-08 16:31:24 </i>
+<i style="float:right;">Last updated 2016-11-08 21:54:44 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

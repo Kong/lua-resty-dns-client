@@ -15,7 +15,7 @@ local _M = {}
 local utils = require("pl.utils")
 local gsub = string.gsub
 local tinsert = table.insert
-local gettime = ngx.now
+local time = ngx.now
 
 -- pattern that will only match data before a # or ; comment
 -- returns nil if there is none before the # or ;
@@ -49,7 +49,7 @@ _M.DEFAULT_RESOLV_CONF = _DEFAULT_RESOLV_CONF
 -- fields) indexed by their canonical names and aliases
 -- @return 2; list with all entries. Containing fields `ip`, `canonical` and `family`, 
 -- and a list of aliasses
--- @usage local lookup, list = utils.parse_hosts({
+-- @usage local lookup, list = utils.parseHosts({
 --   "127.0.0.1   localhost",
 --   "1.2.3.4     someserver",
 --   "192.168.1.2 test.computer.com",
@@ -59,7 +59,7 @@ _M.DEFAULT_RESOLV_CONF = _DEFAULT_RESOLV_CONF
 -- print(lookup["localhost"])         --> "127.0.0.1"
 -- print(lookup["ftp.computer.com"])  --> "192.168.1.3" note: name in lowercase!
 -- print(lookup["alias1"])            --> "192.168.1.3"
-_M.parse_hosts = function(filename)
+_M.parseHosts = function(filename)
   local lines
   if type(filename) == "table" then
     lines = filename
@@ -97,26 +97,26 @@ _M.parse_hosts = function(filename)
 end
 
 
-local bool_options = { "debug", "rotate", "no-check-names", "inet6", 
+local boolOptions = { "debug", "rotate", "no-check-names", "inet6", 
                        "ip6-bytestring", "ip6-dotint", "no-ip6-dotint", 
                        "edns0", "single-request", "single-request-reopen",
                        "no-tld-query", "use-vc"}
-for i, name in ipairs(bool_options) do bool_options[name] = name bool_options[i] = nil end
+for i, name in ipairs(boolOptions) do boolOptions[name] = name boolOptions[i] = nil end
 
-local num_options = { "ndots", "timeout", "attempts" }
-for i, name in ipairs(num_options) do num_options[name] = name num_options[i] = nil end
+local numOptions = { "ndots", "timeout", "attempts" }
+for i, name in ipairs(numOptions) do numOptions[name] = name numOptions[i] = nil end
 
 -- Parses a single option.
 -- @param target table in which to insert the option
 -- @param details string containing the option details
 -- @return modified target table
-local parse_option = function(target, details)
+local parseOption = function(target, details)
   local option, n = details:match("^([^:]+)%:*(%d*)$")
-  if bool_options[option] and n == "" then
+  if boolOptions[option] and n == "" then
     target[option] = true
     if option == "ip6-dotint" then target["no-ip6-dotint"] = nil end
     if option == "no-ip6-dotint" then target["ip6-dotint"] = nil end
-  elseif num_options[option] and tonumber(n) then
+  elseif numOptions[option] and tonumber(n) then
     target[option] = tonumber(n)
   end
 end
@@ -127,8 +127,8 @@ end
 -- @param filename (optional) File to parse (defaults to `'/etc/resolv.conf'` if 
 -- omitted) or a table with the file contents in lines.
 -- @return a table with fields `nameserver` (table), `domain` (string), `search` (table), `sortlist` (table) and `options` (table)
--- @see apply_env
-_M.parse_resolv_conf = function(filename)
+-- @see applyEnv
+_M.parseResolvConf = function(filename)
   local lines
   if type(filename) == "table" then
     lines = filename
@@ -163,7 +163,7 @@ _M.parse_resolv_conf = function(filename)
         end
       elseif option == "options" then
         result.options = result.options or {}
-        parse_option(result.options, details)
+        parseOption(result.options, details)
       end
     end
   end
@@ -175,18 +175,18 @@ end
 --
 -- __NOTE__: if the input is `nil+error` it will return the input, to allow for 
 -- pass-through error handling
--- @param config Options table, as parsed by `parse_resolv_conf`, or an empty table to get only the environment options
+-- @param config Options table, as parsed by `parseResolvConf`, or an empty table to get only the environment options
 -- @return modified table
--- @see parse_resolv_conf
+-- @see parseResolvConf
 -- @usage -- errors are passed through, so this;
--- local config, err = utils.parse_resolv_conf()
+-- local config, err = utils.parseResolvConf()
 -- if config then 
---   config, err = utils.apply_env(config)
+--   config, err = utils.applyEnv(config)
 -- end
 -- 
 -- -- Is identical to;
--- local config, err = utils.apply_env(utils.parse_resolv_conf())
-_M.apply_env = function(config, err)
+-- local config, err = utils.applyEnv(utils.parseResolvConf())
+_M.applyEnv = function(config, err)
   if not config then return config, err end -- allow for 'nil+error' pass-through
   local localdomain = os.getenv("LOCALDOMAIN") or ""
   if localdomain ~= "" then
@@ -202,7 +202,7 @@ _M.apply_env = function(config, err)
   if options ~= "" then
     config.options = config.options or {}
     for option in options:gmatch("%S+") do
-      parse_option(config.options, option)
+      parseOption(config.options, option)
     end
   end
   return config
@@ -212,61 +212,61 @@ end
 -- @section caching
 
 -- local caches
-local cache_hosts  -- cached value
-local cache_hostsr  -- cached value
-local last_hosts = 0 -- timestamp
-local ttl_hosts   -- time to live for cache
+local cacheHosts  -- cached value
+local cacheHostsr  -- cached value
+local lastHosts = 0 -- timestamp
+local ttlHosts   -- time to live for cache
 
---- returns the `parse_hosts` results, but cached.
+--- returns the `parseHosts` results, but cached.
 -- Once `ttl` has been provided, only after it expires the file will be parsed again.
 --
 -- __NOTE__: if cached, the _SAME_ tables will be returned, so do not modify them 
 -- unless you know what you are doing!
 -- @param ttl cache time-to-live in seconds (can be updated in following calls)
--- @return reverse and list tables, same as `parse_hosts`.
--- @see parse_hosts
-_M.gethosts = function(ttl)
-  ttl_hosts = ttl or ttl_hosts
-  local now = gettime()
-  if (not ttl_hosts) or (last_hosts + ttl_hosts <= now) then
-    cache_hosts = nil    -- expired
-    cache_hostsr = nil    -- expired
+-- @return reverse and list tables, same as `parseHosts`.
+-- @see parseHosts
+_M.getHosts = function(ttl)
+  ttlHosts = ttl or ttlHosts
+  local now = time()
+  if (not ttlHosts) or (lastHosts + ttlHosts <= now) then
+    cacheHosts = nil    -- expired
+    cacheHostsr = nil    -- expired
   end
 
-  if not cache_hosts then
-    cache_hostsr, cache_hosts = _M.parse_hosts()
-    last_hosts = now
+  if not cacheHosts then
+    cacheHostsr, cacheHosts = _M.parseHosts()
+    lastHosts = now
   end
   
-  return cache_hostsr, cache_hosts
+  return cacheHostsr, cacheHosts
 end
 
 
-local cache_resolv  -- cached value
-local last_resolv = 0 -- timestamp
-local ttl_resolv   -- time to live for cache
+local cacheResolv  -- cached value
+local lastResolv = 0 -- timestamp
+local ttlResolv   -- time to live for cache
 
---- returns the `apply_env` results, but cached.
+--- returns the `applyEnv` results, but cached.
 -- Once `ttl` has been provided, only after it expires it will be parsed again.
 --
 -- __NOTE__: if cached, the _SAME_ table will be returned, so do not modify them 
 -- unless you know what you are doing!
 -- @param ttl cache time-to-live in seconds (can be updated in following calls)
--- @return configuration table, same as `parse_resolve_conf`.
--- @see parse_resolv_conf
-_M.getresolv = function(ttl)
-  ttl_resolv = ttl or ttl_resolv
-  local now = gettime()
-  if (not ttl_resolv) or (last_resolv + ttl_resolv <= now) then
-    cache_resolv = nil    -- expired
+-- @return configuration table, same as `parseResolveConf`.
+-- @see parseResolvConf
+_M.getResolv = function(ttl)
+  ttlResolv = ttl or ttlResolv
+  local now = time()
+  if (not ttlResolv) or (lastResolv + ttlResolv <= now) then
+    cacheResolv = nil    -- expired
   end
 
-  if not cache_resolv then
-    last_resolv = now
-    cache_resolv = _M.apply_env(_M.parse_resolv_conf())
+  if not cacheResolv then
+    lastResolv = now
+    cacheResolv = _M.applyEnv(_M.parseResolvConf())
   end
   
-  return cache_resolv
+  return cacheResolv
 end
 
 --- Miscellaneous
@@ -277,12 +277,12 @@ end
 -- it can only be an ipv6, but it is not necessarily a valid ipv6 address.
 -- @param name the string to check (this may contain a port number)
 -- @return string either; `'ipv4'`, `'ipv6'`, or `'name'`
--- @usage hostname_type("123.123.123.123")  -->  "ipv4"
--- hostname_type("127.0.0.1:8080")   -->  "ipv4"
--- hostname_type("::1")              -->  "ipv6"
--- hostname_type("[::1]:8000")       -->  "ipv6"
--- hostname_type("some::thing")      -->  "ipv6", but invalid...
-_M.hostname_type = function(name)
+-- @usage hostnameType("123.123.123.123")  -->  "ipv4"
+-- hostnameType("127.0.0.1:8080")   -->  "ipv4"
+-- hostnameType("::1")              -->  "ipv6"
+-- hostnameType("[::1]:8000")       -->  "ipv6"
+-- hostnameType("some::thing")      -->  "ipv6", but invalid...
+_M.hostnameType = function(name)
   local remainder, colons = gsub(name, ":", "")
   if colons > 1 then return "ipv6" end
   if remainder:match("^[%d%.]+$") then return "ipv4" end

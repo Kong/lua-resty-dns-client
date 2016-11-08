@@ -1,8 +1,8 @@
-package = "dns"
+package = "lua-resty-dns-client"
 version = "0.2.1-1"
 source = {
-  url = "https://github.com/Mashape/dns.lua/archive/0.2.1.tar.gz",
-  dir = "dns.lua-0.2.1"
+  url = "https://github.com/Mashape/lua-resty-dns-client/archive/0.3.0.tar.gz",
+  dir = "lua-resty-dns-client-0.3.0"
 }
 description = {
   summary = "DNS library",
@@ -10,7 +10,7 @@ description = {
     DNS client library. Including utilities to parse configuration files and
     a ring-balancer for round-robin and consistent-hashing approaches.
   ]],
-  homepage = "https://github.com/Mashape/dnsutils.lua",
+  homepage = "https://github.com/Mashape/lua-resty-dns-client",
   license = "Apache 2.0"
 }
 dependencies = {
@@ -20,8 +20,8 @@ dependencies = {
 build = {
   type = "builtin",
   modules = {
-    ["dns.utils"] = "src/dns/utils.lua",
-    ["dns.client"] = "src/dns/client.lua",
-    ["dns.balancer"] = "src/dns/balancer.lua",
+    ["resty.dns.utils"] = "src/resty/dns/utils.lua",
+    ["resty.dns.client"] = "src/resty/dns/client.lua",
+    ["resty.dns.balancer"] = "src/resty/dns/balancer.lua",
   },
 }

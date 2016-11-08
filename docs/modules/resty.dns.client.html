@@ -40,9 +40,9 @@
 
 <h2>Modules</h2>
 <ul class="nowrap">
-  <li><a href="../modules/dns.balancer.html">dns.balancer</a></li>
-  <li><strong>dns.client</strong></li>
-  <li><a href="../modules/dns.utils.html">dns.utils</a></li>
+  <li><a href="../modules/resty.dns.balancer.html">resty.dns.balancer</a></li>
+  <li><strong>resty.dns.client</strong></li>
+  <li><a href="../modules/resty.dns.utils.html">resty.dns.utils</a></li>
 </ul>
 <h2>Topics</h2>
 <ul class="">
@@ -53,7 +53,7 @@
 
 <div id="content">
 
-<h1>Module <code>dns.client</code></h1>
+<h1>Module <code>resty.dns.client</code></h1>
 <p>DNS client.</p>
 <p><p> Works with OpenResty only. Requires the <a href="https://github.com/openresty/lua-resty-dns"><code>lua-resty-dns</code></a> module.</p>
 
@@ -61,7 +61,7 @@
 
 <ol>
 <li>parsing the config files upon initialization uses blocking i/o, so use with
-care. See <a href="../modules/dns.client.html#init">init</a> for details.</li>
+care. See <a href="../modules/resty.dns.client.html#init">init</a> for details.</li>
 <li>All returned records are directly from the cache. <em>So do not modify them!</em>
 If you need to, copy them first.</li>
 <li>TTL for records is the TTL returned by the server at the time of fetching
@@ -83,7 +83,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 <h2><a href="#Caching">Caching</a></h2>
 <table class="function_list">
 	<tr>
-	<td class="name" nowrap><a href="#purge_cache">purge_cache (touched)</a></td>
+	<td class="name" nowrap><a href="#purgeCache">purgeCache (touched)</a></td>
 	<td class="summary">Cleanup the DNS client cache.</td>
 	</tr>
 </table>
@@ -94,15 +94,15 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 	<td class="summary">Initialize the client.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#resolve">resolve (qname, r_opts, dns_cache_only, r)</a></td>
+	<td class="name" nowrap><a href="#resolve">resolve (qname, r_opts, dnsCacheOnly, r)</a></td>
 	<td class="summary">Resolve a name.</td>
 	</tr>
 	<tr>
 	<td class="name" nowrap><a href="#stdError">stdError ()</a></td>
-	<td class="summary">Standardizes the <a href="../modules/dns.client.html#resolve">resolve</a> output to more standard Lua errors.</td>
+	<td class="summary">Standardizes the <a href="../modules/resty.dns.client.html#resolve">resolve</a> output to more standard Lua errors.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#toip">toip (qname, port, dns_cache_only, r)</a></td>
+	<td class="name" nowrap><a href="#toip">toip (qname, port, dnsCacheOnly, r)</a></td>
 	<td class="summary">Resolves to an IP and port number.</td>
 	</tr>
 </table>
@@ -132,8 +132,8 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
           </div>
     <dl class="function">
     <dt>
-    <a name = "purge_cache"></a>
-    <strong>purge_cache (touched)</strong>
+    <a name = "purgeCache"></a>
+    <strong>purgeCache (touched)</strong>
     </dt>
     <dd>
     Cleanup the DNS client cache.  Items will be checked on TTL only upon
@@ -146,7 +146,9 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">touched</span>
-         in seconds. Cleanup everything (also non-expired items) not touched in <code>touched</code> seconds. If omitted, only expired items (based on ttl) will be removed.
+         in seconds. Cleanup everything (also non-expired items) not
+ touched in <code>touched</code> seconds. If omitted, only expired items (based on ttl)
+ will be removed.
         </li>
     </ul>
 
@@ -174,20 +176,20 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 
 <p> Because OpenResty will close sockets on boundaries of contexts, the
  resolver objects can only be reused in limited situations. To reuse
- them see the <code>r</code> parameters of the <a href="../modules/dns.client.html#resolve">resolve</a> and <a href="../modules/dns.client.html#toip">toip</a> functions. Applicable
+ them see the <code>r</code> parameters of the <a href="../modules/resty.dns.client.html#resolve">resolve</a> and <a href="../modules/resty.dns.client.html#toip">toip</a> functions. Applicable
  for multiple consecutive calls in the same context.</p>
 
-<p> The <code>dns_cache_only</code> parameter found with <a href="../modules/dns.client.html#resolve">resolve</a> and <a href="../modules/dns.client.html#toip">toip</a> can be used in
+<p> The <code>dnsCacheOnly</code> parameter found with <a href="../modules/resty.dns.client.html#resolve">resolve</a> and <a href="../modules/resty.dns.client.html#toip">toip</a> can be used in
  contexts where the co-socket api is unavailable. When the flag is set
  only cached data is returned, which is possibly stale, but it will never
  use blocking io. Also; the stale data will not
- be invalidated from the cache when <code>dns_cache_only</code> is set.</p>
+ be invalidated from the cache when <code>dnsCacheOnly</code> is set.</p>
 
-<p> <strong>Housekeeping</strong>; when using <a href="../modules/dns.client.html#toip">toip</a> it has to do some housekeeping to apply
+<p> <strong>Housekeeping</strong>; when using <a href="../modules/resty.dns.client.html#toip">toip</a> it has to do some housekeeping to apply
  the (weighted) round-robin scheme. Those values will be stored in the
  dns record using field names starting with <code>__</code> (double underscores). So when
- using <a href="../modules/dns.client.html#resolve">resolve</a> it might return a record from the cache with those fields if
- it has been accessed by <a href="../modules/dns.client.html#toip">toip</a> before.
+ using <a href="../modules/resty.dns.client.html#resolve">resolve</a> it might return a record from the cache with those fields if
+ it has been accessed by <a href="../modules/resty.dns.client.html#toip">toip</a> before.
           </div>
     <dl class="function">
     <dt>
@@ -218,24 +220,24 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     <h3>Usage:</h3>
     <ul>
         <pre class="example"><span class="comment">-- config files to parse
-</span><span class="comment">-- <code>hosts</code> and <code>resolv_conf</code> can both be a filename, or a table with file-contents
+</span><span class="comment">-- <code>hosts</code> and <code>resolvConf</code> can both be a filename, or a table with file-contents
 </span><span class="comment">-- The contents of the <code>hosts</code> file will be inserted in the cache.
 </span><span class="comment">-- From <code>resolve_conf</code> the <code>nameservers</code>, <code>attempts</code> and <code>timeout</code> values will be used.
 </span><span class="keyword">local</span> hosts = {}  <span class="comment">-- initialize without any blocking i/o
-</span><span class="keyword">local</span> resolv_conf = {}  <span class="comment">-- initialize without any blocking i/o
+</span><span class="keyword">local</span> resolvConf = {}  <span class="comment">-- initialize without any blocking i/o
 </span>
 <span class="comment">-- Order in which to try different dns record types when resolving
 </span><span class="comment">-- 'last'; will try the last previously successful type for a hostname.
 </span><span class="keyword">local</span> order = { <span class="string">"last"</span>, <span class="string">"SRV"</span>, <span class="string">"A"</span>, <span class="string">"AAAA"</span>, <span class="string">"CNAME"</span> }
 
 <span class="comment">-- Cache ttl for empty and error responses
-</span><span class="keyword">local</span> bad_ttl = <span class="number">1.0</span>   <span class="comment">-- in seconds (can have fractions)
+</span><span class="keyword">local</span> badTtl = <span class="number">1.0</span>   <span class="comment">-- in seconds (can have fractions)
 </span>
 <span class="global">assert</span>(client.init({
          hosts = hosts,
-         resolv_conf = resolv_conf,
+         resolvConf = resolvConf,
          order = order,
-         bad_ttl = bad_ttl,
+         badTtl = badTtl,
        })
 )</pre>
     </ul>
@@ -243,13 +245,13 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </dd>
     <dt>
     <a name = "resolve"></a>
-    <strong>resolve (qname, r_opts, dns_cache_only, r)</strong>
+    <strong>resolve (qname, r_opts, dnsCacheOnly, r)</strong>
     </dt>
     <dd>
     <p>Resolve a name.<br/>
  If <code>r_opts.qtype</code> is given, then it will fetch that specific type only. If
  <code>r_opts.qtype</code> is not provided, then it will try to resolve
- the name using the record types, in the order as provided to <a href="../modules/dns.client.html#init">init</a>.</p>
+ the name using the record types, in the order as provided to <a href="../modules/resty.dns.client.html#init">init</a>.</p>
 
 <p> Note that unless explictly requesting a CNAME record (by setting <code>r_opts.qtype</code>) this
  function will dereference the CNAME records.</p>
@@ -286,7 +288,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
          Options table, see remark about the <code>qtype</code> field above and
  <a href="https://github.com/openresty/lua-resty-dns">OpenResty docs</a> for more options.
         </li>
-        <li><span class="parameter">dns_cache_only</span>
+        <li><span class="parameter">dnsCacheOnly</span>
          Only check the cache, won&rsquo;t do server lookups
  (will not invalidate any ttl expired data and will hence possibly return
  expired data)
@@ -316,7 +318,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     <strong>stdError ()</strong>
     </dt>
     <dd>
-    Standardizes the <a href="../modules/dns.client.html#resolve">resolve</a> output to more standard Lua errors.
+    Standardizes the <a href="../modules/resty.dns.client.html#resolve">resolve</a> output to more standard Lua errors.
  Both <code>nil+error+r</code> and successful lookups are passed through.
  A server error table is returned as <code>nil+error+r</code> (where <a href="https://www.lua.org/manual/5.1/manual.html#pdf-error">error</a> is a string
  extracted from the server error table).
@@ -344,11 +346,11 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </dd>
     <dt>
     <a name = "toip"></a>
-    <strong>toip (qname, port, dns_cache_only, r)</strong>
+    <strong>toip (qname, port, dnsCacheOnly, r)</strong>
     </dt>
     <dd>
     <p>Resolves to an IP and port number.
- Builds on top of <a href="../modules/dns.client.html#resolve">resolve</a>, but will also further dereference SRV type records.</p>
+ Builds on top of <a href="../modules/resty.dns.client.html#resolve">resolve</a>, but will also further dereference SRV type records.</p>
 
 <p> When calling multiple times on cached records, it will apply load-balancing
  based on a round-robin (RR) scheme. For SRV records this will be a <em>weighted</em>
@@ -397,7 +399,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
          (optional) default port number to return if none was found in
  the lookup chain (only SRV records carry port information)
         </li>
-        <li><span class="parameter">dns_cache_only</span>
+        <li><span class="parameter">dnsCacheOnly</span>
          Only check the cache, won&rsquo;t do server lookups (will
  not invalidate any ttl expired data and will hence possibly return expired data)
         </li>
@@ -428,7 +430,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     </dt>
     <dd>
     Implements tcp-connect method with dns resolution.
- This builds on top of <a href="../modules/dns.client.html#toip">toip</a>. If the name resolves to an SRV record,
+ This builds on top of <a href="../modules/resty.dns.client.html#toip">toip</a>. If the name resolves to an SRV record,
  the port returned by the DNS server will override the one provided.</p>
 
 <p> <strong>NOTE</strong>: can also be used for other connect methods, eg. http/redis
@@ -444,7 +446,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
          hostname to connect to
         </li>
         <li><span class="parameter">port</span>
-         port to connect to (will be overridden if <a href="../modules/dns.client.html#toip">toip</a> returns a port)
+         port to connect to (will be overridden if <a href="../modules/resty.dns.client.html#toip">toip</a> returns a port)
         </li>
         <li><span class="parameter">opts</span>
          the options table
@@ -467,7 +469,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     </dt>
     <dd>
     Implements udp-setpeername method with dns resolution.
- This builds on top of <a href="../modules/dns.client.html#toip">toip</a>. If the name resolves to an SRV record,
+ This builds on top of <a href="../modules/resty.dns.client.html#toip">toip</a>. If the name resolves to an SRV record,
  the port returned by the DNS server will override the one provided.
 
 
@@ -480,7 +482,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
          hostname to connect to
         </li>
         <li><span class="parameter">port</span>
-         port to connect to (will be overridden if <a href="../modules/dns.client.html#toip">toip</a> returns a port)
+         port to connect to (will be overridden if <a href="../modules/resty.dns.client.html#toip">toip</a> returns a port)
         </li>
     </ul>
 
@@ -501,7 +503,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.5</a></i>
-<i style="float:right;">Last updated 2016-11-08 16:31:24 </i>
+<i style="float:right;">Last updated 2016-11-08 21:54:44 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

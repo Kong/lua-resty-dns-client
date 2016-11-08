@@ -1,4 +1,4 @@
-local dnsutils = require "dns.utils"
+local dnsutils = require "resty.dns.utils"
 local splitlines = require("pl.stringx").splitlines
 local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname
@@ -16,7 +16,7 @@ end
 describe("testing parsing 'hosts'", function()
 
   it("tests parsing when the 'hosts' file does not exist", function()
-    local result, err = dnsutils.parse_hosts("non/existing/file")
+    local result, err = dnsutils.parseHosts("non/existing/file")
     assert.is.Nil(result)
     assert.is.string(err)
   end)
@@ -24,7 +24,7 @@ describe("testing parsing 'hosts'", function()
   it("tests parsing when the 'hosts' file is empty", function()
     local filename = tempfilename()
     writefile(filename, "")
-    local reverse, hosts = dnsutils.parse_hosts(filename)
+    local reverse, hosts = dnsutils.parseHosts(filename)
     os.remove(filename)
     assert.is.same({}, reverse)
     assert.is.same({}, hosts)
@@ -50,7 +50,7 @@ describe("testing parsing 'hosts'", function()
 127.0.0.2  www3.abcsearch.com #[Browseraid]
 127.0.0.3  www.abcsearch.com wwwsearch #[Restricted Zone site]
 ]])
-    local reverse, hosts = dnsutils.parse_hosts(hostsfile)
+    local reverse, hosts = dnsutils.parseHosts(hostsfile)
     assert.is.equal(hosts[1].ip, "127.0.0.1")
     assert.is.equal(hosts[1].canonical, "localhost")
     assert.is.Nil(hosts[1][1])  -- no aliases
@@ -111,7 +111,7 @@ describe("testing parsing 'resolv.conf'", function()
   end)
 
   it("tests parsing when the 'resolv.conf' file does not exist", function()
-    local result, err = dnsutils.parse_resolv_conf("non/existing/file")
+    local result, err = dnsutils.parseResolvConf("non/existing/file")
     assert.is.Nil(result)
     assert.is.string(err)
   end)
@@ -119,7 +119,7 @@ describe("testing parsing 'resolv.conf'", function()
   it("tests parsing when the 'resolv.conf' file is empty", function()
     local filename = tempfilename()
     writefile(filename, "")
-    local resolv, err = dnsutils.parse_resolv_conf(filename)
+    local resolv, err = dnsutils.parseResolvConf(filename)
     os.remove(filename)
     assert.is.same({}, resolv)
     assert.is.Nil(err)
@@ -159,7 +159,7 @@ options single-request-reopen
 options no-tld-query
 options use-vc
 ]])
-    local resolv, err = dnsutils.parse_resolv_conf(file)
+    local resolv, err = dnsutils.parseResolvConf(file)
     assert.is.Nil(err)
     assert.is.equal("myservice.com", resolv.domain)
     assert.is.same({ "8.8.8.8", "8.8.4.4", "8.8.8.8:1234" }, resolv.nameserver)
@@ -180,7 +180,7 @@ options use-vc
 search domaina.com domainb.com
 
 ]])
-    local resolv, err = dnsutils.parse_resolv_conf(file)
+    local resolv, err = dnsutils.parseResolvConf(file)
     assert.is.Nil(err)
     assert.is.Nil(resolv.domain)
     assert.is.same({ "domaina.com", "domainb.com" }, resolv.search)
@@ -196,12 +196,12 @@ nameserver 8.8.4.4 ; and a comment here
 
 options ndots:1
 ]])
-    local resolv, err = dnsutils.parse_resolv_conf(file)
+    local resolv, err = dnsutils.parseResolvConf(file)
     assert.is.Nil(err)
     
     envvars.LOCALDOMAIN = "domaina.com domainb.com"
     envvars.RES_OPTIONS = "ndots:2 debug"
-    resolv = dnsutils.apply_env(resolv)
+    resolv = dnsutils.applyEnv(resolv)
     
     assert.is.Nil(resolv.domain)  -- must be nil, mutually exclusive
     assert.is.same({ "domaina.com", "domainb.com" }, resolv.search)
@@ -219,22 +219,22 @@ nameserver 8.8.4.4 ; and a comment here
 
 options ndots:2
 ]])
-    local resolv, err = dnsutils.parse_resolv_conf(file)
+    local resolv, err = dnsutils.parseResolvConf(file)
     assert.is.Nil(err)
     
     envvars.LOCALDOMAIN = ""
     envvars.RES_OPTIONS = ""
-    resolv = dnsutils.apply_env(resolv)
+    resolv = dnsutils.applyEnv(resolv)
     
     assert.is.equals("myservice.com", resolv.domain)  -- must be nil, mutually exclusive
     
     assert.is.same({ ndots = 2 }, resolv.options)
   end)
 
-  it("tests pass-through error handling of 'apply_env'", function()
+  it("tests pass-through error handling of 'applyEnv'", function()
     local fname = "non/existing/file"
-    local r1, e1 = dnsutils.parse_resolv_conf(fname)
-    local r2, e2 = dnsutils.apply_env(dnsutils.parse_resolv_conf(fname))
+    local r1, e1 = dnsutils.parseResolvConf(fname)
+    local r2, e2 = dnsutils.applyEnv(dnsutils.parseResolvConf(fname))
     assert.are.same(r1, r2)
     assert.are.same(e1, e2)
   end)
@@ -268,51 +268,51 @@ describe("cached versions", function()
   end)
   
   it("tests caching the hosts file", function()
-    local val1r, val1 = dnsutils.gethosts()
-    local val2r, val2 = dnsutils.gethosts()
+    local val1r, val1 = dnsutils.getHosts()
+    local val2r, val2 = dnsutils.getHosts()
     assert.Not.equal(val1, val2) -- no ttl specified, so distinct tables
     assert.Not.equal(val1r, val2r) -- no ttl specified, so distinct tables
     
-    val1r, val1 = dnsutils.gethosts(1)
-    val2r, val2 = dnsutils.gethosts()
+    val1r, val1 = dnsutils.getHosts(1)
+    val2r, val2 = dnsutils.getHosts()
     assert.are.equal(val1, val2)   -- ttl specified, so same tables
     assert.are.equal(val1r, val2r) -- ttl specified, so same tables
     
     -- wait for cache to expire
     sleep(2)
 
-    val2r, val2 = dnsutils.gethosts()
+    val2r, val2 = dnsutils.getHosts()
     assert.Not.equal(val1, val2) -- ttl timed out, so distinct tables
     assert.Not.equal(val1r, val2r) -- ttl timed out, so distinct tables
   end)
   
   it("tests caching the resolv.conf file & variables", function()
-    local val1 = dnsutils.getresolv()
-    local val2 = dnsutils.getresolv()
+    local val1 = dnsutils.getResolv()
+    local val2 = dnsutils.getResolv()
     assert.Not.equal(val1, val2) -- no ttl specified, so distinct tables
     
-    val1 = dnsutils.getresolv(1)
-    val2 = dnsutils.getresolv()
+    val1 = dnsutils.getResolv(1)
+    val2 = dnsutils.getResolv()
     assert.are.equal(val1, val2)   -- ttl specified, so same tables
     
     -- wait for cache to expire
     sleep(2)
 
-    val2 = dnsutils.getresolv()
+    val2 = dnsutils.getResolv()
     assert.Not.equal(val1, val2)   -- ttl timed out, so distinct tables
   end)
 
 end)
 
-describe("hostname_type", function()
+describe("hostnameType", function()
   -- no check on "name" type as anything not ipv4 and not ipv6 will be labelled as 'name' anyway
   it("checks valid IPv4 address types", function()
-    assert.are.same("ipv4", dnsutils.hostname_type("123.123.123.123"))
-    assert.are.same("ipv4", dnsutils.hostname_type("1.2.3.4"))
+    assert.are.same("ipv4", dnsutils.hostnameType("123.123.123.123"))
+    assert.are.same("ipv4", dnsutils.hostnameType("1.2.3.4"))
   end)
   it("checks valid IPv6 address types", function()
-    assert.are.same("ipv6", dnsutils.hostname_type("::1"))
-    assert.are.same("ipv6", dnsutils.hostname_type("2345::6789"))
-    assert.are.same("ipv6", dnsutils.hostname_type("0001:0001:0001:0001:0001:0001:0001:0001"))
+    assert.are.same("ipv6", dnsutils.hostnameType("::1"))
+    assert.are.same("ipv6", dnsutils.hostnameType("2345::6789"))
+    assert.are.same("ipv6", dnsutils.hostnameType("0001:0001:0001:0001:0001:0001:0001:0001"))
   end)
 end)

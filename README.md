@@ -35,8 +35,10 @@ use the `rbusted` script.
 History
 =======
 
-###unreleased...
+###0.3.0 (xx-Nov-2016) Major breaking update
 
+- breaking: renamed a lot of things; method names, module names, etc. pretty
+  much breaks everything... also releasing under a new name
 - feature: udp function `setpeername` added (client)
 - fix: do not synchronize dns queries for ttl=0 requests (client)
 - fix: full test coverage and accompanying fixes (ring-balancer)

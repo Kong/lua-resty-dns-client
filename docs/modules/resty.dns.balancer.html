@@ -38,9 +38,9 @@
 
 <h2>Modules</h2>
 <ul class="nowrap">
-  <li><strong>dns.balancer</strong></li>
-  <li><a href="../modules/dns.client.html">dns.client</a></li>
-  <li><a href="../modules/dns.utils.html">dns.utils</a></li>
+  <li><strong>resty.dns.balancer</strong></li>
+  <li><a href="../modules/resty.dns.client.html">resty.dns.client</a></li>
+  <li><a href="../modules/resty.dns.utils.html">resty.dns.utils</a></li>
 </ul>
 <h2>Topics</h2>
 <ul class="">
@@ -51,7 +51,7 @@
 
 <div id="content">
 
-<h1>Module <code>dns.balancer</code></h1>
+<h1>Module <code>resty.dns.balancer</code></h1>
 <p>Ring-balancer.</p>
 <p> This loadbalancer is designed for consistent hashing approaches and
  to retain consistency on a maximum level while dealing with dynamic
@@ -66,10 +66,10 @@
  Adding/deleting hosts, etc (as long as done in the same order) is always
  deterministic.</p>
 
-<p> Updating the dns records is passive, meaning that when <a href="../modules/dns.balancer.html#getPeer">getPeer</a> accesses a
+<p> Updating the dns records is passive, meaning that when <a href="../modules/resty.dns.balancer.html#getPeer">getPeer</a> accesses a
  target, only then the check is done whether the record is stale, and if so
  it is updated. The one exception is the failed dns queries (because they
- have no slots assigned, and hence will never be hit by <a href="../modules/dns.balancer.html#getPeer">getPeer</a>), which will
+ have no slots assigned, and hence will never be hit by <a href="../modules/resty.dns.balancer.html#getPeer">getPeer</a>), which will
  be actively refreshed using a timer. </p>
 
 <p> Whenever dns resolution fails for a hostname, the host will relinguish all
@@ -95,7 +95,7 @@
 	<td class="summary">Adds a host to the balancer.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#getPeer">getPeer (hashvalue, cache_only)</a></td>
+	<td class="name" nowrap><a href="#getPeer">getPeer (hashValue, cacheOnly)</a></td>
 	<td class="summary">Gets the next ip address and port according to the loadbalancing scheme.</td>
 	</tr>
 	<tr>
@@ -125,12 +125,12 @@
  with 2 entries, with weight 10, will insert both entries with weight 10,
  and increase to overall balancer weight by 20. The one exception is that if
  it resolves to a record with <code>ttl=0</code>, then it will <strong>always</strong> only insert a single
- (unresolved) entry. The unresolved entry will be resolved by <a href="../modules/dns.balancer.html#getPeer">getPeer</a> when
+ (unresolved) entry. The unresolved entry will be resolved by <a href="../modules/resty.dns.balancer.html#getPeer">getPeer</a> when
  requested.</p>
 
 <p> Resolving will be done by the dns clients <code>resolve</code> method. Which will
  dereference CNAME record if set to, but it will not dereference SRV records.
- An unresolved SRV <code>target</code> field will also be resolved by <a href="../modules/dns.balancer.html#getPeer">getPeer</a> when requested.</p>
+ An unresolved SRV <code>target</code> field will also be resolved by <a href="../modules/resty.dns.balancer.html#getPeer">getPeer</a> when requested.</p>
 
 <p> Only the slots assigned to the newly added targets will loose their
  consistency, all other slots are guaranteed to remain the same.</p>
@@ -173,7 +173,7 @@
 </dd>
     <dt>
     <a name = "getPeer"></a>
-    <strong>getPeer (hashvalue, cache_only)</strong>
+    <strong>getPeer (hashValue, cacheOnly)</strong>
     </dt>
     <dd>
     Gets the next ip address and port according to the loadbalancing scheme.
@@ -189,12 +189,12 @@
 
     <h3>Parameters:</h3>
     <ul>
-        <li><span class="parameter">hashvalue</span>
+        <li><span class="parameter">hashValue</span>
          (optional) number for consistent hashing, round-robins if
- omitted. The hashvalue can be an integer from 1 to <code>wheelSize</code>, or a float
+ omitted. The hashValue can be an integer from 1 to <code>wheelSize</code>, or a float
  from 0 up to, but not including, 1.
         </li>
-        <li><span class="parameter">cache_only</span>
+        <li><span class="parameter">cacheOnly</span>
          If truthy, no dns lookups will be done, only cache.
         </li>
     </ul>
@@ -228,23 +228,23 @@
 <li><code>hosts</code> (optional) containing hostnames, ports and weights. If omitted,
 ports and weights default respectively to 80 and 10. The list will be sorted
 before being added, so the order of entry is deterministic.</li>
-<li><code>wheelsize</code> (optional) for total number of slots in the balancer, if omitted
+<li><code>wheelSize</code> (optional) for total number of slots in the balancer, if omitted
 the size of <code>order</code> is used, or 1000 if <code>order</code> is not provided. It is important
 to have enough slots to keep the ring properly randomly distributed. If there
 are to few slots for the number of targets then the load distribution might
 become to coarse. Consider the maximum number of targets expected, as new
 hosts can be dynamically added, and dns renewals might yield larger record
-sets. The <code>wheelsize</code> cannot be altered, only a new wheel can be created, but
+sets. The <code>wheelSize</code> cannot be altered, only a new wheel can be created, but
 then all consistency would be lost. On a similar note; making it too big,
 will have a performance impact when the wheel is modified as too many slots
 will have to be moved between targets. A value of 50 to 200 slots per entry
 seems about right.</li>
-<li><code>order</code> (optional) if given, a list of random numbers, size <code>wheelsize</code>, used to
+<li><code>order</code> (optional) if given, a list of random numbers, size <code>wheelSize</code>, used to
 randomize the wheel. This entry is solely to support multiple servers with
 the same consistency, as it allows to use the same randomization on each
 server, and hence the same slot assignment. Duplicates are not allowed in
 the list.</li>
-<li><code>dns</code> (required) a configured <a href="../modules/dns.client.html#">dns.client</a> object for querying the dns server.</li>
+<li><code>dns</code> (required) a configured <a href="../modules/resty.dns.client.html">dns.client</a> object for querying the dns server.</li>
 <li><code>requery</code> (optional) interval of requerying the dns server for previously
 failed queries. Defaults to 1 if omitted (in seconds)</li>
 <li><code>ttl0</code> (optional) Maximum lifetime for records inserted with ttl=0, to verify
@@ -290,7 +290,7 @@ the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
  their consistency, all other slots are guaranteed to remain in place.
  Will not throw an error if the hostname is not in the current list.</p>
 
-<p> See <a href="../modules/dns.balancer.html#addHost">addHost</a> for multi-server consistency.
+<p> See <a href="../modules/resty.dns.balancer.html#addHost">addHost</a> for multi-server consistency.
 
 
     <h3>Parameters:</h3>
@@ -320,7 +320,7 @@ the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.5</a></i>
-<i style="float:right;">Last updated 2016-11-08 16:31:24 </i>
+<i style="float:right;">Last updated 2016-11-08 21:54:44 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

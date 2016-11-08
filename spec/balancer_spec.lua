@@ -224,14 +224,14 @@ describe("Loadbalancer", function()
   setup(function()
     _G.package.loaded["dns.client"] = nil -- make sure module is reloaded
     _G._TEST = true  -- expose internals for test purposes
-    balancer = require "dns.balancer"
-    client = require "dns.client"
+    balancer = require "resty.dns.balancer"
+    client = require "resty.dns.client"
   end)
   
   before_each(function()
     assert(client.init {
       hosts = {}, 
-      resolv_conf = {
+      resolvConf = {
         "nameserver 8.8.8.8"
       },
     })
@@ -260,7 +260,7 @@ describe("Loadbalancer", function()
       local b = balancer.new { 
         hosts = {"mashape.com", "getkong.org", "gelato.io" },
         dns = client,
-        wheelsize = 10,
+        wheelSize = 10,
       }
       local count = 0
       for a,b,c in b:addressIter() do count = count + 1 end
@@ -309,10 +309,10 @@ describe("Loadbalancer", function()
           function() balancer.new({
               dns = client,
               hosts = {"mashape.com"},
-              wheelsize = 10,
+              wheelSize = 10,
               order = {1,2,3},
             }) end,
-          "mismatch between size of 'order' and 'wheelsize'"
+          "mismatch between size of 'order' and 'wheelSize'"
         )
       end)
       it("fails with a bad order list", function()
@@ -333,7 +333,7 @@ describe("Loadbalancer", function()
         local b = check_balancer(balancer.new { 
           hosts = {"mashape.com"},
           dns = client,
-          wheelsize = 10,
+          wheelSize = 10,
           order = {1,2,3,4,5,6,7,8,9,10},
           requery = 2,
           ttl0 = 5,
@@ -343,11 +343,11 @@ describe("Loadbalancer", function()
         dnsA({ 
           { name = "mashape.com", address = "1.2.3.4" },
         })
-        -- based on a given wheelsize
+        -- based on a given wheelSize
         local b = check_balancer(balancer.new { 
           hosts = {"mashape.com"},
           dns = client,
-          wheelsize = 10,
+          wheelSize = 10,
         })
         assert.are.equal(10, b.wheelSize)
         -- based on the order list size
@@ -361,7 +361,7 @@ describe("Loadbalancer", function()
         local b = check_balancer(balancer.new { 
           hosts = {"mashape.com"},
           dns = client,
-          wheelsize = 4,
+          wheelSize = 4,
           order = { 1,2,3,4 },
         })
         assert.are.equal(4, b.wheelSize)
@@ -369,12 +369,12 @@ describe("Loadbalancer", function()
       it("succeeds without 'hosts' option", function()
         local b = check_balancer(balancer.new { 
           dns = client,
-          wheelsize = 10,
+          wheelSize = 10,
         })
         assert.are.equal(10, #b.unassignedSlots)
         local b = check_balancer(balancer.new { 
           dns = client,
-          wheelsize = 10,
+          wheelSize = 10,
           hosts = {},  -- empty hosts table hould work too
         })
         assert.are.equal(10, #b.unassignedSlots)
@@ -392,7 +392,7 @@ describe("Loadbalancer", function()
         local b = balancer.new { 
           hosts = {"mashape.com", "getkong.org", "gelato.io" },
           dns = client,
-          wheelsize = 10,
+          wheelSize = 10,
         }
         check_balancer(b)
       end)
@@ -403,7 +403,7 @@ describe("Loadbalancer", function()
         -- throws an error
         local b = check_balancer(balancer.new { 
           dns = client,
-          wheelsize = 15,
+          wheelSize = 15,
         })
         local not_a_string = 10
         assert.has.error(
@@ -418,7 +418,7 @@ describe("Loadbalancer", function()
         -- throws an error
         local b = check_balancer(balancer.new { 
           dns = client,
-          wheelsize = 15,
+          wheelSize = 15,
         })
         local bad_weights = { -1, 0 ,0.5, 1.5, 100.4 }
         for _, weight in ipairs(bad_weights) do 
@@ -435,7 +435,7 @@ describe("Loadbalancer", function()
         -- weight should be 0, with no addresses
         local b = check_balancer(balancer.new { 
           dns = client,
-          wheelsize = 15,
+          wheelSize = 15,
         })
         ok, err = b:addHost("really.really.does.not.exist.mashape.com", 80, 10)
         assert.are.equal(b, ok)
@@ -455,7 +455,7 @@ describe("Loadbalancer", function()
         -- reconfigure the dns client to make sure query fails
         assert(client.init {
           hosts = {}, 
-          resolv_conf = {
+          resolvConf = {
             "nameserver 127.0.0.1:22000" -- make sure dns query fails
           },
         })
@@ -465,7 +465,7 @@ describe("Loadbalancer", function()
             { name = "mashape.com", port = 80, weight = 10 }, 
           },
           dns = client,
-          wheelsize = 100,
+          wheelSize = 100,
         })
         assert.equal(0, b.weight)
       end)
@@ -473,7 +473,7 @@ describe("Loadbalancer", function()
         -- returns nil + error
         local b = check_balancer(balancer.new { 
           dns = client,
-          wheelsize = 15,
+          wheelSize = 15,
         })
         dnsA({ 
           { name = "mashape.com", address = "1.2.3.4" },
@@ -503,7 +503,7 @@ describe("Loadbalancer", function()
         -- throws an error
         local b = check_balancer(balancer.new { 
           dns = client,
-          wheelsize = 15,
+          wheelSize = 15,
         })
         local not_a_string = 10
         assert.has.error(
@@ -518,7 +518,7 @@ describe("Loadbalancer", function()
         -- throws an error
         local b = check_balancer(balancer.new { 
           dns = client,
-          wheelsize = 15,
+          wheelSize = 15,
         })
         local ok, err = b:removeHost("not in there")
         assert.equal(b, ok)
@@ -542,7 +542,7 @@ describe("Loadbalancer", function()
           {name = "getkong.org", port = 321, weight = 50},
         },
         dns = client,
-        wheelsize = 15,
+        wheelSize = 15,
       })
       -- run down the wheel twice
       local res = {}
@@ -569,7 +569,7 @@ describe("Loadbalancer", function()
           {name = "getkong.org", port = 321, weight = 50},
         },
         dns = client,
-        wheelsize = 15,
+        wheelSize = 15,
       })
       -- run down the wheel, hitting all slots once
       local res = {}
@@ -600,7 +600,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = { { name = "mashape.com", port = 80, weight = 5 } },
         dns = client,
-        wheelsize = 10,
+        wheelSize = 10,
       })
       record.expire = gettime() - 1 -- expire current dns cache record
       local rec_new = dnsA({   -- create a new record
@@ -620,7 +620,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = {},  -- no hosts, so balancer is empty
         dns = client,
-        wheelsize = 10,
+        wheelSize = 10,
       })
       local ip, port, host = b:getPeer()
       assert.is_nil(ip)
@@ -643,7 +643,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = {"mashape.com"},
         dns = client,
-        wheelsize = 10,
+        wheelSize = 10,
       })
       local expected = {
         ["1.2.3.4:80"] = 5,
@@ -667,7 +667,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = {"mashape.com"},
         dns = client,
-        wheelsize = 19,
+        wheelSize = 19,
       })
       local expected = {
         ["1.2.3.1:80"] = 1,
@@ -699,7 +699,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = {"mashape.com"},
         dns = client,
-        wheelsize = 19,
+        wheelSize = 19,
       })
       local expected = count_slots(b)
       dnsA({ 
@@ -717,7 +717,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = {"mashape.com"},
         dns = client,
-        wheelsize = 19,
+        wheelSize = 19,
       })
       
       assert.are.same(expected, count_slots(b))
@@ -732,13 +732,13 @@ describe("Loadbalancer", function()
       local b = balancer.new { 
         hosts = {"mashape.com", "getkong.org"},
         dns = client,
-        wheelsize = 3,
+        wheelSize = 3,
       }
       local expected = count_slots(b)
       local b = check_balancer(balancer.new { 
         hosts = {"getkong.org", "mashape.com"},  -- changed host order
         dns = client,
-        wheelsize = 3,
+        wheelSize = 3,
       })
       assert.are.same(expected, count_slots(b))
     end)
@@ -753,7 +753,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = { { name = "mashape.com", weight = 5} },
         dns = client,
-        wheelsize = 10,
+        wheelSize = 10,
       })
       b:addHost("getkong.org", 8080, 10 )
       check_balancer(b)
@@ -775,7 +775,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = { { name = "mashape.com", port = 80, weight = 5 } },
         dns = client,
-        wheelsize = 2000,
+        wheelSize = 2000,
       })
       b:addHost("getkong.org", 8080, 10 )
       check_balancer(b)
@@ -797,7 +797,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new { 
         hosts = { { name = "mashape.com", port = 80, weight = 5 } },
         dns = client,
-        wheelsize = 2000,
+        wheelSize = 2000,
       })
       b:addHost("getkong.org", 8080, 10)
       check_balancer(b)
@@ -833,7 +833,7 @@ describe("Loadbalancer", function()
       })
       local b = check_balancer(balancer.new { 
         dns = client,
-        wheelsize = 20,
+        wheelSize = 20,
       })
       b:addHost("mashape.com", 80, 5)
       b:addHost("getkong.org", 8080, 10)
@@ -850,7 +850,7 @@ describe("Loadbalancer", function()
       })
       local b = check_balancer(balancer.new { 
         dns = client,
-        wheelsize = 60,
+        wheelSize = 60,
       })
       b:addHost("mashape.com", 80, 10)
       b:addHost("getkong.org", 80, 10)
@@ -906,7 +906,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 50 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
         ttl0 = 2,
       })
     
@@ -934,7 +934,7 @@ describe("Loadbalancer", function()
       })
       local b = check_balancer(balancer.new { 
         dns = client,
-        wheelsize = 60,
+        wheelSize = 60,
       })
       b:addHost("does.not.exist.mashape.com", 80, 10)
       b:addHost("getkong.org", 80, 10)
@@ -978,7 +978,7 @@ describe("Loadbalancer", function()
       })
       local b = check_balancer(balancer.new { 
         dns = client,
-        wheelsize = 120,
+        wheelSize = 120,
       })
       b:addHost("mashape.com", 80, 10)
       b:addHost("gelato.io", 80, 10)  --> port + weight will be ignored
@@ -1015,7 +1015,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
@@ -1046,7 +1046,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
@@ -1077,7 +1077,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
@@ -1108,7 +1108,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
@@ -1146,7 +1146,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
@@ -1184,7 +1184,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
@@ -1223,7 +1223,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
@@ -1255,7 +1255,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 10 }, 
         },
         dns = client,
-        wheelsize = 20,
+        wheelSize = 20,
         requery = 1,   -- shorten default requery time for the test
       })
 --print("balancer created, storing state1 + state2 here")
@@ -1265,7 +1265,7 @@ describe("Loadbalancer", function()
       -- reconfigure the dns client to make sure next query fails
       assert(client.init {
         hosts = {}, 
-        resolv_conf = {
+        resolvConf = {
           "nameserver 127.0.0.1:22000" -- make sure dns query fails
         },
       })
@@ -1284,7 +1284,7 @@ describe("Loadbalancer", function()
       -- reconfigure the dns client to make sure next query works again
       assert(client.init {
         hosts = {}, 
-        resolv_conf = {
+        resolvConf = {
           "nameserver 8.8.8.8"
         },
       })
@@ -1295,7 +1295,7 @@ describe("Loadbalancer", function()
       })
 --print("client reconfigured, local cache updated, and inserted the fake record again")      
 --print("waiting for timer to update the failed record...")
-      sleep(b.requery_interval + 1) --requery timer runs, so should be fixed after this
+      sleep(b.requeryInterval + 1) --requery timer runs, so should be fixed after this
 
       -- wheel should be back in original state
 --print("now checking the updated results")
@@ -1316,7 +1316,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 1 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
       -- Now the order reversed (weights exchanged)
       record = dnsA({ 
@@ -1331,7 +1331,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 99999 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
       })
     end)
     it("ttl of 0 inserts only a single unresolved address", function()
@@ -1377,7 +1377,7 @@ describe("Loadbalancer", function()
           { name = "getkong.org", port = 123, weight = 50 }, 
         },
         dns = client,
-        wheelsize = 100,
+        wheelSize = 100,
         ttl0 = 2,
       })
       -- get current state
@@ -1388,7 +1388,7 @@ describe("Loadbalancer", function()
       assert.equal(1, resolve_count) -- hit once, when adding the host to the balancer
       
       -- wait for expiring the 0-ttl setting
-      sleep(b.ttl0_interval + 1)  -- 0 ttl is requeried, to check for changed ttl
+      sleep(b.ttl0Interval + 1)  -- 0 ttl is requeried, to check for changed ttl
       
       ttl = 60 -- set our records ttl to 60 now, so we only get one extra hit now
       toip_count = 0  --reset counters

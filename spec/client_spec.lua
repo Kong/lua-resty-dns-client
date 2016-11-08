@@ -23,11 +23,11 @@ describe("DNS client", function()
   
   before_each(function()
       _G._TEST = true
-    client = require("dns.client")
+    client = require("resty.dns.client")
   end)
   
   after_each(function()
-    package.loaded["dns.client"] = nil
+    package.loaded["resty.dns.client"] = nil
     package.loaded["resty.dns.resolver"] = nil
     client = nil
     _G._TEST = nil
@@ -39,7 +39,7 @@ describe("DNS client", function()
       -- empty list fallsback on resolv.conf
       assert.has.no.error(function() client.init( {nameservers = {} } ) end)
 
-      assert.has.error(function() client.init( {nameservers = {}, resolv_conf = {} } ) end,
+      assert.has.error(function() client.init( {nameservers = {}, resolvConf = {} } ) end,
         "Invalid configuration, no dns servers found")    
     end)
 
@@ -67,7 +67,7 @@ describe("DNS client", function()
       local result, err = assert(client.init({
           nameservers = { "8.8.8.8:53" },
           hosts = {},  -- empty tables to parse to prevent defaulting to /etc/hosts
-          resolv_conf = {},   -- and resolv.conf files
+          resolvConf = {},   -- and resolv.conf files
         }))
       assert.is.True(result)
       assert.is.Nil(err)
@@ -757,8 +757,8 @@ describe("DNS client", function()
   
   it("verifies ttl and caching of errors and empty responses", function()
     --empty/error responses should be cached for a configurable time
-    local bad_ttl = 0.1
-    assert(client.init({bad_ttl = bad_ttl}))
+    local badTtl = 0.1
+    assert(client.init({badTtl = badTtl}))
 
     -- do a query so we get a resolver object to spy on
     local _, _, r = client.toip("google.com", 123, false)
@@ -780,7 +780,7 @@ describe("DNS client", function()
     assert.spy(r.query).was.called(1)
     
     -- wait for expiry of ttl and retry
-    sleep(bad_ttl+0.1)
+    sleep(badTtl+0.1)
     res2, err2, r = client.resolve(
       "really.reall.really.does.not.exist.mashape.com", 
       { qtype = client.TYPE_A }, 
