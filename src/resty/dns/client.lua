@@ -34,6 +34,10 @@ local math_fmod = math.fmod
 local math_random = math.random
 local table_remove = table.remove
 
+local dump = function(...)
+  print(require("pl.pretty").write({...}))
+end
+
 local empty = setmetatable({}, 
   {__newindex = function() error("The 'empty' table is read-only") end})
 
@@ -388,6 +392,7 @@ local function synchronizedQuery(qname, r_opts, r, expect_ttl_0, count)
     if expect_ttl_0 then
       -- we're not limiting the dns queries, but query on EVERY request
       local result, err = r:query(qname, r_opts)
+dump(result, err)
       return result, err, r
     else
       -- we're limiting to one request at a time
@@ -396,6 +401,7 @@ local function synchronizedQuery(qname, r_opts, r, expect_ttl_0, count)
       }
       queue[key] = item  -- insertion in queue; this is where the synchronization starts
       item.result, item.err = r:query(qname, r_opts)
+dump(item.result, item.err)
       -- query done, but by now many others might be waiting for our result.
       -- 1) stop new ones from adding to our lock/semaphore
       queue[key] = nil
@@ -812,6 +818,9 @@ local function toip(qname, port, dnsCacheOnly, r)
   if rec[1].type == _M.TYPE_SRV then
     local entry = rec[roundRobinW(rec)]
     -- our SRV entry might still contain a hostname, so recurse, with found port number
+    if qname == entry.target then
+      error("recursive dns call: SRV for "..tostring(qname).." targets itself")
+    end
     return toip(entry.target, entry.port, dnsCacheOnly, r)
   else
     -- must be A or AAAA
