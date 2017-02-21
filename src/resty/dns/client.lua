@@ -34,10 +34,6 @@ local math_fmod = math.fmod
 local math_random = math.random
 local table_remove = table.remove
 
-local dump = function(...)
-  print(require("pl.pretty").write({...}))
-end
-
 local empty = setmetatable({}, 
   {__newindex = function() error("The 'empty' table is read-only") end})
 
@@ -392,7 +388,6 @@ local function synchronizedQuery(qname, r_opts, r, expect_ttl_0, count)
     if expect_ttl_0 then
       -- we're not limiting the dns queries, but query on EVERY request
       local result, err = r:query(qname, r_opts)
-dump(result, err)
       return result, err, r
     else
       -- we're limiting to one request at a time
@@ -401,7 +396,6 @@ dump(result, err)
       }
       queue[key] = item  -- insertion in queue; this is where the synchronization starts
       item.result, item.err = r:query(qname, r_opts)
-dump(item.result, item.err)
       -- query done, but by now many others might be waiting for our result.
       -- 1) stop new ones from adding to our lock/semaphore
       queue[key] = nil
@@ -604,12 +598,32 @@ local function resolve(qname, r_opts, dnsCacheOnly, r, count)
         if not dnsCacheOnly then 
           cachesetsuccess(qname, qtype) -- set last succesful type resolved
         end
-        if qtype ~= _M.TYPE_CNAME then
-          return records, nil, r
-        else
+        if qtype == _M.TYPE_CNAME then
           -- dereference CNAME
           opts.qtype = nil
           return resolve(records[1].cname, opts, dnsCacheOnly, r, (count and count+1 or 1))
+        end
+        if qtype == _M.TYPE_SRV then
+          -- check for recursive records
+          local cnt = 0
+          for i, record in ipairs(records) do
+            if record.target == qname then
+              -- recursive record, pointing to itself
+              cnt = cnt + 1
+            end
+            if cnt == #records then
+              -- fully recursive SRV record, specific Kubernetes problem
+              -- which generates a SRV record for each host, pointing to 
+              -- itself, hence causing a recursion loop.
+              -- So we delete the record, set an error, so it falls through
+              -- and retries other record types in the main loop here.
+              records = nil
+              err = "recursive SRV record"
+            end
+          end
+        end
+        if records and qtype ~= _M.TYPE_CNAME then
+          return records, nil, r
         end
       end
     end
@@ -801,7 +815,7 @@ end
 -- @function toip
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in 
--- the lookup chain (only SRV records carry port information)
+-- the lookup chain (only SRV records carry port information, SRV with `port=0` will be ignored)
 -- @param dnsCacheOnly Only check the cache, won't do server lookups (will 
 -- not invalidate any ttl expired data and will hence possibly return expired data)
 -- @param r (optional) dns resolver object to use, it will also be returned. 
@@ -821,7 +835,8 @@ local function toip(qname, port, dnsCacheOnly, r)
     if qname == entry.target then
       error("recursive dns call: SRV for "..tostring(qname).." targets itself")
     end
-    return toip(entry.target, entry.port, dnsCacheOnly, r)
+    local srvport = (entry.port ~= 0 and entry.port) or port -- discard port if it is 0
+    return toip(entry.target, srvport, dnsCacheOnly, r)
   else
     -- must be A or AAAA
     return rec[roundRobin(rec)].address, port, r
