@@ -832,9 +832,6 @@ local function toip(qname, port, dnsCacheOnly, r)
   if rec[1].type == _M.TYPE_SRV then
     local entry = rec[roundRobinW(rec)]
     -- our SRV entry might still contain a hostname, so recurse, with found port number
-    if qname == entry.target then
-      error("recursive dns call: SRV for "..tostring(qname).." targets itself")
-    end
     local srvport = (entry.port ~= 0 and entry.port) or port -- discard port if it is 0
     return toip(entry.target, srvport, dnsCacheOnly, r)
   else
