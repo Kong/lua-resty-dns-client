@@ -509,7 +509,7 @@ describe("DNS client", function()
       assert.equal(host, record[1].name)
       assert.is_nil(err)
       
-      -- default order, SRV, A; the empty purged SRV record fails, and it falls
+      -- default order, SRV, A; the recursive SRV record fails, and it falls
       -- back to the IP4 address
       ip, port = client.toip(host)
       assert.is_string(ip)
