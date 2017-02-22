@@ -481,6 +481,41 @@ describe("DNS client", function()
       assert.is_number(port)
       assert.is_not.equal(0, port)
     end)
+    it("port passing if SRV port=0",function()
+      assert(client.init())
+      local ip, port, host 
+
+      host = "srvport0.thijsschreijer.nl"
+      ip, port = client.toip(host, 10)
+      assert.is_string(ip)
+      assert.is_number(port)
+      assert.is_equal(10, port)
+      
+      ip, port = client.toip(host)
+      assert.is_string(ip)
+      assert.is_nil(port)
+    end)
+    it("recursive SRV pointing to itself",function()
+      assert(client.init())
+      local ip, record, port, host 
+      host = "srvrecurse.thijsschreijer.nl"
+      
+      -- resolve SRV specific should return the record including its
+      -- recursive entry
+      record, err = client.resolve(host, { qtype = client.TYPE_SRV })
+      assert.is_table(record)
+      assert.equal(1, #record)
+      assert.equal(host, record[1].target)
+      assert.equal(host, record[1].name)
+      assert.is_nil(err)
+      
+      -- default order, SRV, A; the recursive SRV record fails, and it falls
+      -- back to the IP4 address
+      ip, port = client.toip(host)
+      assert.is_string(ip)
+      assert.is_equal("10.0.0.44", ip)
+      assert.is_nil(port)
+    end)
     it("resolving in correct record-type order",function()
       local function config()
         -- function to insert 2 records in the cache

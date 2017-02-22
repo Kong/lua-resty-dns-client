@@ -47,7 +47,8 @@
 
 <div id="content">
 
-    <h1>Overview</h1>
+
+<h1>Overview</h1>
 
 <p>Lua library containing a dns client, several utilities, and a load-balancer.</p>
 
@@ -57,19 +58,18 @@
 <h1>Features</h1>
 
 <ul>
-<li>resolves A, AAAA, CNAME and SRV records, including port</li>
-<li>parses <code>/etc/hosts</code></li>
-<li>parses <code>/resolv.conf</code> and applies <code>LOCALDOMAIN</code> and <code>RES_OPTIONS</code> variables</li>
-<li>caches dns query results in memory</li>
-<li>synchronizes requests (a single request for many requestors, eg. when cached ttl expires under heavy load)</li>
-<li><code>toip</code> applies a local (weighted) round-robin scheme on the query results</li>
-<li>ring-balancer for round-robin and consistent-hashing approaches</li>
+    <li>resolves A, AAAA, CNAME and SRV records, including port</li>
+    <li>parses <code>/etc/hosts</code></li>
+    <li>parses <code>/resolv.conf</code> and applies <code>LOCALDOMAIN</code> and <code>RES_OPTIONS</code> variables</li>
+    <li>caches dns query results in memory</li>
+    <li>synchronizes requests (a single request for many requestors, eg. when cached ttl expires under heavy load)</li>
+    <li><code>toip</code> applies a local (weighted) round-robin scheme on the query results</li>
+    <li>ring-balancer for round-robin and consistent-hashing approaches</li>
 </ul>
-
 
 <h1>Copyright and license</h1>
 
-<p>Copyright: 2016 Mashape, Inc.</p>
+<p>Copyright: (c) 2016-2017 Mashape, Inc.</p>
 
 <p>Author: Thijs Schreijer</p>
 
@@ -82,38 +82,47 @@ use the <code>rbusted</code> script.</p>
 
 <h1>History</h1>
 
+<h3>0.3.1 (22-Feb-2017) Bugfix</h3>
+
+<ul>
+    <li>Kubernetes dns returns an SRV record for individual nodes, where the target
+    is the same name again (hence causing a recursive loop). Now those entries
+    will be removed, and if nothing is left, it will fail the SRV lookup, causing
+    a fall-through to the next record type.</li>
+    <li>Kubernetes tends to return a port of 0 if none is provided/set, hence the
+    <code>toip()</code> function now ignores a <code>port=0</code> and falls back on the port passed
+    in.</li>
+</ul>
+
 <h3>0.3.0 (8-Nov-2016) Major breaking update</h3>
 
 <ul>
-<li>breaking: renamed a lot of things; method names, module names, etc. pretty
-much breaks everything&hellip; also releasing under a new name</li>
-<li>feature: udp function <code>setpeername</code> added (client)</li>
-<li>fix: do not synchronize dns queries for ttl=0 requests (client)</li>
-<li>fix: full test coverage and accompanying fixes (ring-balancer)</li>
-<li>feature: auto-retry for failed dns queries (ring-balancer)</li>
-<li>feature: updating weights is now supported without removing/re-adding (ring-balancer)</li>
-<li>change: auto-retry interval configurable for failed dns queries (ring-balancer)</li>
-<li>change: max life-time interval configurable for ttl=0 dns records (ring-balancer)</li>
+    <li>breaking: renamed a lot of things; method names, module names, etc. pretty
+    much breaks everything... also releasing under a new name</li>
+    <li>feature: udp function <code>setpeername</code> added (client)</li>
+    <li>fix: do not synchronize dns queries for ttl=0 requests (client)</li>
+    <li>fix: full test coverage and accompanying fixes (ring-balancer)</li>
+    <li>feature: auto-retry for failed dns queries (ring-balancer)</li>
+    <li>feature: updating weights is now supported without removing/re-adding (ring-balancer)</li>
+    <li>change: auto-retry interval configurable for failed dns queries (ring-balancer)</li>
+    <li>change: max life-time interval configurable for ttl=0 dns records (ring-balancer)</li>
 </ul>
-
 
 <h3>0.2.1 (24-Oct-2016) Bugfix</h3>
 
 <ul>
-<li>fix: <code>toip()</code> failed on SRV records with only 1 entry</li>
+    <li>fix: <code>toip()</code> failed on SRV records with only 1 entry</li>
 </ul>
-
 
 <h3>0.2 (18-Oct-2016) Added the balancer</h3>
 
 <ul>
-<li>fix: was creating resolver objects even if serving from cache</li>
-<li>change: change resolver order (SRV is now first by default) for dns servers that create both SRV and A records for each entry</li>
-<li>feature: make resolver order configurable</li>
-<li>feature: ring-balancer (experimental, no full test coverage yet)</li>
-<li>other: more test coverage for the dns client</li>
+    <li>fix: was creating resolver objects even if serving from cache</li>
+    <li>change: change resolver order (SRV is now first by default) for dns servers that create both SRV and A records for each entry</li>
+    <li>feature: make resolver order configurable</li>
+    <li>feature: ring-balancer (experimental, no full test coverage yet)</li>
+    <li>other: more test coverage for the dns client</li>
 </ul>
-
 
 <h3>0.1 (09-Sep-2016) Initial released version</h3>
 
@@ -121,8 +130,8 @@ much breaks everything&hellip; also releasing under a new name</li>
 </div> <!-- id="content" -->
 </div> <!-- id="main" -->
 <div id="about">
-<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.5</a></i>
-<i style="float:right;">Last updated 2016-11-08 22:07:36 </i>
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
+<i style="float:right;">Last updated 2017-02-22 13:40:23 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

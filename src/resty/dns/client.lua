@@ -598,12 +598,32 @@ local function resolve(qname, r_opts, dnsCacheOnly, r, count)
         if not dnsCacheOnly then 
           cachesetsuccess(qname, qtype) -- set last succesful type resolved
         end
-        if qtype ~= _M.TYPE_CNAME then
-          return records, nil, r
-        else
+        if qtype == _M.TYPE_CNAME then
           -- dereference CNAME
           opts.qtype = nil
           return resolve(records[1].cname, opts, dnsCacheOnly, r, (count and count+1 or 1))
+        end
+        if qtype == _M.TYPE_SRV then
+          -- check for recursive records
+          local cnt = 0
+          for i, record in ipairs(records) do
+            if record.target == qname then
+              -- recursive record, pointing to itself
+              cnt = cnt + 1
+            end
+            if cnt == #records then
+              -- fully recursive SRV record, specific Kubernetes problem
+              -- which generates a SRV record for each host, pointing to 
+              -- itself, hence causing a recursion loop.
+              -- So we delete the record, set an error, so it falls through
+              -- and retries other record types in the main loop here.
+              records = nil
+              err = "recursive SRV record"
+            end
+          end
+        end
+        if records and qtype ~= _M.TYPE_CNAME then
+          return records, nil, r
         end
       end
     end
@@ -795,7 +815,7 @@ end
 -- @function toip
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in 
--- the lookup chain (only SRV records carry port information)
+-- the lookup chain (only SRV records carry port information, SRV with `port=0` will be ignored)
 -- @param dnsCacheOnly Only check the cache, won't do server lookups (will 
 -- not invalidate any ttl expired data and will hence possibly return expired data)
 -- @param r (optional) dns resolver object to use, it will also be returned. 
@@ -812,7 +832,8 @@ local function toip(qname, port, dnsCacheOnly, r)
   if rec[1].type == _M.TYPE_SRV then
     local entry = rec[roundRobinW(rec)]
     -- our SRV entry might still contain a hostname, so recurse, with found port number
-    return toip(entry.target, entry.port, dnsCacheOnly, r)
+    local srvport = (entry.port ~= 0 and entry.port) or port -- discard port if it is 0
+    return toip(entry.target, srvport, dnsCacheOnly, r)
   else
     -- must be A or AAAA
     return rec[roundRobin(rec)].address, port, r
