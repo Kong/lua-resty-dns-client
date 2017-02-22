@@ -20,7 +20,7 @@ Features
 Copyright and license
 =====================
 
-Copyright: 2016 Mashape, Inc.
+Copyright: (c) 2016-2017 Mashape, Inc.
 
 Author: Thijs Schreijer
 
@@ -34,6 +34,16 @@ use the `rbusted` script.
 
 History
 =======
+
+###0.3.1 (22-Feb-2017) Bugfix
+
+- Kubernetes dns returns an SRV record for individual nodes, where the target
+  is the same name again (hence causing a recursive loop). Now those entries
+  will be removed, and if nothing is left, it will fail the SRV lookup, causing
+  a fall-through to the next record type.
+- Kubernetes tends to return a port of 0 if none is provided/set, hence the
+  `toip()` function now ignores a `port=0` and falls back on the port passed
+  in.
 
 ###0.3.0 (8-Nov-2016) Major breaking update
 
