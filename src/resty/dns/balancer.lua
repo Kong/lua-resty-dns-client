@@ -49,6 +49,11 @@ local table_sort = table.sort
 local table_remove = table.remove
 local math_floor = math.floor
 local math_random = math.random
+local ngx_log = ngx.log
+local ngx_ERR = ngx.ERR
+local ngx_DEBUG = ngx.DEBUG
+local ngx_WARN = ngx.WARN
+local log_prefix = "[ringbalancer] "
 
 local _M = {}
 
@@ -133,6 +138,9 @@ end
 -- can delete the address by calling `delete`.
 -- @see delete
 function objAddr:disable()
+  ngx_log(ngx_DEBUG, log_prefix, "disabling address: ", self.ip, ":", self.port,
+          "(host ", (self.host or empty).hostname, ")")
+
   -- weight to 0; force dropping all slots assigned, before actually removing
   self.host:addWeight(-self.weight)
   self.weight = 0
@@ -142,6 +150,9 @@ end
 -- The address must have been disabled before.
 -- @see disable
 function objAddr:delete()
+  ngx_log(ngx_DEBUG, log_prefix, "deleting address: ", self.ip, ":", self.port,
+          "(host ", (self.host or empty).hostname, ")")
+
   assert(#self.slots == 0, "Cannot delete address while it contains slots")
   self.host = nil
 end
@@ -149,6 +160,10 @@ end
 -- changes the weight of an address.
 -- requires redistributing slots afterwards
 function objAddr:change(newWeight)
+  ngx_log(ngx_DEBUG, log_prefix, "changing address weight: ", self.ip, ":", self.port,
+          "(host ", (self.host or empty).hostname, ") ",
+          self.weight, " -> ", newWeight)
+
   self.host:addWeight(newWeight - self.weight)
   self.weight = newWeight
 end
@@ -172,7 +187,9 @@ local newAddress = function(ip, port, weight, host)
   }
   for name, method in pairs(objAddr) do addr[name] = method end
   
-  host:addWeight(weight) 
+  host:addWeight(weight)
+
+  ngx_log(ngx_DEBUG, log_prefix, "new address for host '",host.hostname,"' created: ", ip, ":", port, " (weight ",weight,")")
   return addr
 end
 
@@ -228,12 +245,22 @@ sorts = setmetatable(sorts,{
 -- to 'addresss' objects.
 -- @return `true`, always succeeds
 function objHost:queryDns(cacheOnly)
+
+  ngx_log(ngx_DEBUG, log_prefix, "querying dns for ", self.hostname)
+
+  -- first thing we do is the dns query, this is the only place we possibly
+  -- yield (cosockets in the dns lib). So once that is done, we're 'atomic'
+  -- again, and we shouldn't have any nasty race conditions
   local dns = self.balancer.dns
+  local newQuery, err = dns.stdError(dns.resolve(self.hostname, nil, cacheOnly))
+
   local oldQuery = self.lastQuery or {}
   local oldSorted = self.lastSorted or {}
   
-  local newQuery, err = dns.stdError(dns.resolve(self.hostname, nil, cacheOnly))
   if err then
+    ngx_log(ngx_WARN, log_prefix, "querying dns for ", self.hostname, 
+            " failed: ", err)
+
     -- TODO: so we got an error, what to do? multiple options;
     -- 1) disable the current information (dropping all slots for this host)
     -- 2) keep running on existing info, until some timeout, and then do 1.
@@ -246,7 +273,11 @@ function objHost:queryDns(cacheOnly)
   
   -- we're using the dns' own cache to check for changes.
   -- if our previous result is the same table as the current result, then nothing changed
-  if oldQuery == newQuery then return true end  -- exit, nothing changed
+  if oldQuery == newQuery then
+    ngx_log(ngx_DEBUG, log_prefix, "no dns changes detected for ", self.hostname)
+
+    return true    -- exit, nothing changed
+  end
 
   if (newQuery[1] or empty).ttl == 0 then
     -- ttl = 0 means we need to lookup on every request.
@@ -259,8 +290,12 @@ function objHost:queryDns(cacheOnly)
     -- so we fix them at the `nodeWeight` property, as with A and AAAA records.
     if oldQuery.__ttl0Flag then
       -- still ttl 0 so nothing changed
+      ngx_log(ngx_DEBUG, log_prefix, "no dns changes detected for ", 
+              self.hostname, ", still using ttl=0")
       return true
     end
+    ngx_log(ngx_DEBUG, log_prefix, "ttl=0 detected for ", 
+            self.hostname)
     newQuery = {
         {
           type = dns.TYPE_SRV,
@@ -283,6 +318,8 @@ function objHost:queryDns(cacheOnly)
   if not rtype then
     -- we got an empty query table, so assume A record, because it's empty
     -- all existing addresses will be removed
+    ngx_log(ngx_DEBUG, log_prefix, "blank dns record for ", 
+              self.hostname, ", assuming A-record")
     rtype = dns.TYPE_A
   end
   local newSorted = sorts[rtype](newQuery)
@@ -291,6 +328,8 @@ function objHost:queryDns(cacheOnly)
 
   if rtype ~= (oldSorted[1] or empty).type then
     -- DNS recordtype changed; recycle everything
+    ngx_log(ngx_DEBUG, log_prefix, "dns record type changed for ", 
+            self.hostname, ", ", (oldSorted[1] or empty).type, " -> ",rtype)
     for i = #oldSorted, 1, -1 do  -- reverse order because we're deleting items
       delete[#delete+1] = self:removeAddress(oldSorted[i])
     end
@@ -310,10 +349,16 @@ function objHost:queryDns(cacheOnly)
       local oldEntry = oldSorted[oldSorted[key] or "__key_not_found__"]
       if not oldEntry then
         -- it's a new entry
+        ngx_log(ngx_DEBUG, log_prefix, "new dns record entry for ", 
+                self.hostname, ": ", (newEntry.target or newEntry.address),
+                ":", newEntry.port) -- port = nil for A or AAAA records
         self:addAddress(newEntry)
         dirty = true
       else
         -- it already existed (same ip, port and weight)
+        ngx_log(ngx_DEBUG, log_prefix, "unchanged dns record entry for ", 
+                self.hostname, ": ", (newEntry.target or newEntry.address),
+                ":", newEntry.port) -- port = nil for A or AAAA records
         done[key] = true
         dCount = dCount + 1
       end
@@ -323,6 +368,9 @@ function objHost:queryDns(cacheOnly)
       -- new query result
       for _, entry in ipairs(oldSorted) do
         if not done[entry.__balancerSortKey] then
+          ngx_log(ngx_DEBUG, log_prefix, "removed dns record entry for ", 
+                  self.hostname, ": ", (entry.target or entry.address),
+                  ":", entry.port) -- port = nil for A or AAAA records
           delete[#delete+1] = self:removeAddress(entry)
         end
       end
@@ -334,13 +382,18 @@ function objHost:queryDns(cacheOnly)
   self.lastSorted = newSorted
   
   if dirty then -- changes imply we need to redistribute slots
+    ngx_log(ngx_DEBUG, log_prefix, "updating wheel based on dns changes for ", 
+            self.hostname)
+
     self.balancer:redistributeSlots()
-    
+
     -- delete addresses that we've disabled before (can only be done after redistribution)
     for _, addr in ipairs(delete) do
       addr:delete()
     end
   end
+
+  ngx_log(ngx_DEBUG, log_prefix, "querying dns and updating for ", self.hostname, " completed")
   return true
 end
 
@@ -361,6 +414,8 @@ function objHost:change(newWeight)
     if lastQuery[1].type == dns.TYPE_SRV and not lastQuery.__ttl0Flag then
       -- this is an SRV record (and not a fake ttl=0 one), which 
       -- carries its own weight setting, so nothing to update
+      ngx_log(ngx_DEBUG, log_prefix, "ignoring weight change for ", self.hostname,
+              " as SRV records carry their own weight")
     else
       -- so here we have A, AAAA, or a fake SRV, which uses the `nodeWeight` property
       -- go update all our addresses
@@ -436,6 +491,8 @@ function objHost:getPeer(hashValue, cacheOnly, slot)
 
     if slot.address.host ~= self then
       -- our slot has been reallocated to another host, so recurse to start over
+      ngx_log(ngx_DEBUG, log_prefix, "slot previously assigned to ", self.hostname,
+              " was reassigned to another due to a dns update")
       return self.balancer:getPeer(hashValue, cacheOnly)
     end
   end
@@ -471,8 +528,10 @@ local newHost = function(hostname, port, weight, balancer)
   -- the slots in the queryDns method just below.
   balancer.hosts[#balancer.hosts+1] = host
 
+  ngx_log(ngx_DEBUG, log_prefix, "created a new host for: ", hostname)
+
   host:queryDns()
-  
+
   return host
 end
 
@@ -511,7 +570,6 @@ end
 
 -- Recalculates the weights. Updates the slot lists for all hostnames.
 -- Must be called whenever a weight might have changed; added/removed hosts.
--- @param slotList initial slotlist, to be used only upon creation of a balancer!
 -- @return balancer object
 function objBalancer:redistributeSlots()
   local totalWeight = self.weight
@@ -528,6 +586,8 @@ function objBalancer:redistributeSlots()
   local addList = {}      -- addresses that next additional slots
   local addListCount = {} -- how many extra slots the address needs
   local addCount = 0
+  local dropped, added = 0, 0
+
   for weight, address, host in self:addressIter() do
 
     local count
@@ -541,6 +601,7 @@ function objBalancer:redistributeSlots()
     if drop > 0 then
       -- we need to reclaim some slots
       address:dropSlots(slotList, drop)
+      dropped = dropped + drop
     elseif drop < 0 then
       -- this one needs extra slots, so record the changes needed
       addCount = addCount + 1
@@ -554,7 +615,13 @@ function objBalancer:redistributeSlots()
   -- second: add freed slots to the recorded addresses that were short of them
   for i, address in ipairs(addList) do
     address:addSlots(slotList, addListCount[i])
+    added = added + addListCount[i]
   end
+
+  ngx_log( #slotList == 0 and ngx_DEBUG or ngx_WARN, 
+          log_prefix, "redistributed slots, size=", self.wheelSize,
+          ", dropped=", dropped, ", assigned=", added,
+          ", left unassigned=", #slotList)
 
   return self
 end
@@ -613,6 +680,10 @@ function objBalancer:addHost(hostname, port, weight)
     newHost(hostname, port, weight, self)
   else
     -- this one already exists, update if different
+    ngx_log(ngx_DEBUG, log_prefix, "host ", hostname, ":", port,
+            " already exists, updating weight ",
+            host.nodeWeight, "-> ",weight)
+
     if host.nodeWeight ~= weight then
       -- weight changed, go update
       if host:change(weight) then
@@ -640,7 +711,9 @@ function objBalancer:removeHost(hostname, port)
   port = port or DEFAULT_PORT
   for i, host in ipairs(self.hosts) do
     if host.hostname == hostname and host.port == port then
-      
+
+      ngx_log(ngx_DEBUG, log_prefix, "removing host ", hostname, ":", port)
+
       -- set weights to 0
       host:disable()
   
@@ -704,6 +777,8 @@ end
 local function timerCallback(premature, self)
   if premature then return end
   
+  ngx_log(ngx_DEBUG, log_prefix, "executing requery timer")
+
   local all_ok = true
   for _, host in ipairs(self.hosts) do
     -- only retry the errorred ones
@@ -718,12 +793,14 @@ local function timerCallback(premature, self)
   
   if all_ok then
     -- shutdown recurring timer
+    ngx_log(ngx_DEBUG, log_prefix, "requery success, stopping timer")
     self.requeryRunning = false
   else
     -- not done yet, reschedule timer
+    ngx_log(ngx_DEBUG, log_prefix, "requery failure, rescheduling timer")
     local ok, err = ngx.timer.at(self.requeryInterval, timerCallback, self)
     if not ok then
-      ngx.log(ngx.ERR, "failed to create the timer: ", err)
+      ngx_log(ngx_ERR, "failed to create the timer: ", err)
     end
   end
 end
@@ -735,7 +812,7 @@ function objBalancer:startRequery()
   self.requeryRunning = true
   local ok, err = ngx.timer.at(self.requeryInterval, timerCallback, self)
   if not ok then
-    ngx.log(ngx.ERR, "failed to create the timer: ", err)
+    ngx_log(ngx_ERR, "failed to create the timer: ", err)
   end
 end
 
