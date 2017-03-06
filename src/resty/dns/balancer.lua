@@ -51,7 +51,7 @@ local math_floor = math.floor
 local math_random = math.random
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
-local ngx_DEBUG = ngx.DEBUG
+local ngx_DEBUG = ngx.WARN --ngx.DEBUG
 local ngx_WARN = ngx.WARN
 local log_prefix = "[ringbalancer] "
 
@@ -139,7 +139,7 @@ end
 -- @see delete
 function objAddr:disable()
   ngx_log(ngx_DEBUG, log_prefix, "disabling address: ", self.ip, ":", self.port,
-          "(host ", (self.host or empty).hostname, ")")
+          " (host ", (self.host or empty).hostname, ")")
 
   -- weight to 0; force dropping all slots assigned, before actually removing
   self.host:addWeight(-self.weight)
@@ -151,7 +151,7 @@ end
 -- @see disable
 function objAddr:delete()
   ngx_log(ngx_DEBUG, log_prefix, "deleting address: ", self.ip, ":", self.port,
-          "(host ", (self.host or empty).hostname, ")")
+          " (host ", (self.host or empty).hostname, ")")
 
   assert(#self.slots == 0, "Cannot delete address while it contains slots")
   self.host = nil
