@@ -439,9 +439,7 @@ describe("Loadbalancer", function()
           dns = client,
           wheelSize = 15,
         })
-        ok, err = b:addHost("really.really.does.not.exist.mashape.com", 80, 10)
-        assert.are.equal(b, ok)
-        assert.is_nil(err)
+        assert(b:addHost("really.really.does.not.exist.mashape.com", 80, 10))
         check_balancer(b)
         assert.equals(0, b.weight) -- has one failed host, so weight must be 0
         dnsA({ 
@@ -529,7 +527,30 @@ describe("Loadbalancer", function()
       end)
     end)
   end)
-  
+  it("ringbalancer with a running timer gets GC'ed", function()
+    local b = check_balancer(balancer.new {
+      dns = client,
+      wheelSize = 15,
+      requery = 0.1,
+    })
+    assert(b:addHost("this.will.not.be.found", 80, 10))
+
+    local tracker = setmetatable({ b }, {__mode = "v"})
+    local t = 0
+    while t<10 do
+      if t>0.5 then -- let the timer do its work, only dismiss after 0.5 seconds
+        b = nil -- mark it for GC
+      end
+      sleep(0.1)
+      collectgarbage()
+      if not next(tracker) then
+        break
+      end
+      t = t + 0.1
+    end
+    assert(t < 10, "timeout while waiting for balancer to be GC'ed")
+  end)
+
   describe("getting targets", function()
     it("gets an IP address and port number round-robin", function()
       dnsA({ 

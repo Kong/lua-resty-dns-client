@@ -49,6 +49,7 @@ local table_sort = table.sort
 local table_remove = table.remove
 local math_floor = math.floor
 local math_random = math.random
+local timer_at = ngx.timer.at
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
 local ngx_DEBUG = ngx.DEBUG
@@ -56,6 +57,30 @@ local ngx_WARN = ngx.WARN
 local log_prefix = "[ringbalancer] "
 
 local _M = {}
+
+--------------------------------------------------------
+-- GC'able timer implementation with 'self'
+--------------------------------------------------------
+local timer_registry = setmetatable({},{ __mode = "v" })
+local timer_id = 0
+
+local timer_callback = function(premature, cb, id, ...)
+  local self = timer_registry[id]
+  if not self then return end  -- GC'ed, nothing more to do
+  timer_registry[id] = nil
+  return cb(premature, self, ...)
+end
+
+local gctimer = function(t, cb, self, ...)
+  assert(type(cb) == "function", "expected arg #2 to be a function")
+  assert(type(self) == "table", "expected arg #3 to be a table")
+  timer_id = timer_id + 1
+  timer_registry[timer_id] = self
+  -- if in the call below we'd be passing `self` instead of the scalar `timer_id`, it
+  -- would prevent the whole `self` object from being garbage collected because
+  -- it is anchored on the timer.
+  return timer_at(t, timer_callback, cb, timer_id, ...)
+end
 
 
 -- ===========================================================================
@@ -461,7 +486,7 @@ function objHost:deleteAddresses()
   for i = #self.addresses, 1, -1 do -- deleting entries, hence reverse traversal
     if self.addresses[i].disabled then
       self.addresses[i]:delete()
-      table.remove(self.addresses, i)
+      table_remove(self.addresses, i)
     end
   end
 
@@ -811,7 +836,7 @@ local function timerCallback(premature, self)
   else
     -- not done yet, reschedule timer
     ngx_log(ngx_DEBUG, log_prefix, "requery failure, rescheduling timer")
-    local ok, err = ngx.timer.at(self.requeryInterval, timerCallback, self)
+    local ok, err = gctimer(self.requeryInterval, timerCallback, self)
     if not ok then
       ngx_log(ngx_ERR, "failed to create the timer: ", err)
     end
@@ -823,7 +848,7 @@ function objBalancer:startRequery()
   if self.requeryRunning then return end  -- already running, nothing to do here
   
   self.requeryRunning = true
-  local ok, err = ngx.timer.at(self.requeryInterval, timerCallback, self)
+  local ok, err = gctimer(self.requeryInterval, timerCallback, self)
   if not ok then
     ngx_log(ngx_ERR, "failed to create the timer: ", err)
   end
