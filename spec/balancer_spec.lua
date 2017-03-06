@@ -241,6 +241,8 @@ describe("Loadbalancer", function()
   
   after_each(function()
     snapshot:revert()  -- undo any spying/stubbing etc.
+    collectgarbage()
+    collectgarbage()
   end)
 
   describe("unit tests", function()
@@ -1401,6 +1403,63 @@ describe("Loadbalancer", function()
       -- finally check whether slots didn't move around
       updateWheelState(state, " %- mashape%.com @ ", " - 1.2.3.4 @ ")
       assert.same(state, copyWheel(b))
+    end)
+    it("recreate Kong issue #2131", function()
+      -- erasing does not remove the address from the host
+      -- so if the same address is added again, and then deleted again
+      -- then upon erasing it will find the previous erased address object,
+      -- and upon erasing again a nil-referencing issue then occurs
+      local ttl = 1
+      local record
+      local hostname = "dnstest.mashape.com"
+
+      -- mock the resolve/toip methods
+      local old_resolve = client.resolve
+      local old_toip = client.toip
+      finally(function()
+          client.resolve = old_resolve
+          client.toip = old_toip
+        end)
+      client.resolve = function(name, ...)
+        if name == hostname then
+          record = dnsA({
+            { name = hostname, address = "1.2.3.4", ttl = ttl },
+          })
+          return record
+        else
+          return old_resolve(name, ...)
+        end
+      end
+      client.toip = function(name, ...)
+        if name == hostname then
+          return "1.2.3.4", ...
+        else
+          return old_toip(name, ...)
+        end
+      end
+
+      -- create a new balancer
+      local b = check_balancer(balancer.new {
+        hosts = {
+          { name = hostname, port = 80, weight = 50 },
+        },
+        dns = client,
+        wheelSize = 10,
+        ttl0 = 1,
+      })
+
+      sleep(1.1) -- wait for ttl to expire
+      -- fetch a peer to reinvoke dns and update balancer, with a ttl=0
+      ttl = 0
+      b:getPeer()   --> force update internal from A to SRV
+      sleep(1.1) -- wait for ttl0, as provided to balancer, to expire
+      -- restore ttl to non-0, and fetch a peer to update balancer
+      ttl = 1
+      b:getPeer()   --> force update internal from SRV to A
+      sleep(1.1) -- wait for ttl to expire
+      -- fetch a peer to reinvoke dns and update balancer, with a ttl=0
+      ttl = 0
+      b:getPeer()   --> force update internal from A to SRV
     end)
   end)
 end)
