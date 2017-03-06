@@ -51,7 +51,7 @@ local math_floor = math.floor
 local math_random = math.random
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
-local ngx_DEBUG = ngx.WARN --ngx.DEBUG
+local ngx_DEBUG = ngx.DEBUG
 local ngx_WARN = ngx.WARN
 local log_prefix = "[ringbalancer] "
 
@@ -144,6 +144,7 @@ function objAddr:disable()
   -- weight to 0; force dropping all slots assigned, before actually removing
   self.host:addWeight(-self.weight)
   self.weight = 0
+  self.disabled = true
 end
 
 -- cleans up an address object.
@@ -184,6 +185,7 @@ local newAddress = function(ip, port, weight, host)
     host = host,          -- the host this address belongs to
     slots = {},           -- the slots assigned to this address
     index = nil,          -- reverse index in the ordered part of the containing balancer
+    disabled = false,     -- has this record been disabled? (before deleting)
   }
   for name, method in pairs(objAddr) do addr[name] = method end
   
@@ -324,14 +326,13 @@ function objHost:queryDns(cacheOnly)
   end
   local newSorted = sorts[rtype](newQuery)
   local dirty
-  local delete = {}
 
   if rtype ~= (oldSorted[1] or empty).type then
     -- DNS recordtype changed; recycle everything
     ngx_log(ngx_DEBUG, log_prefix, "dns record type changed for ", 
             self.hostname, ", ", (oldSorted[1] or empty).type, " -> ",rtype)
     for i = #oldSorted, 1, -1 do  -- reverse order because we're deleting items
-      delete[#delete+1] = self:removeAddress(oldSorted[i])
+      self:disableAddress(oldSorted[i])
     end
     for _, entry in ipairs(newSorted) do -- use sorted table for deterministic order
       self:addAddress(entry)
@@ -371,7 +372,7 @@ function objHost:queryDns(cacheOnly)
           ngx_log(ngx_DEBUG, log_prefix, "removed dns record entry for ", 
                   self.hostname, ": ", (entry.target or entry.address),
                   ":", entry.port) -- port = nil for A or AAAA records
-          delete[#delete+1] = self:removeAddress(entry)
+          self:disableAddress(entry)
         end
       end
       dirty = true
@@ -385,12 +386,10 @@ function objHost:queryDns(cacheOnly)
     ngx_log(ngx_DEBUG, log_prefix, "updating wheel based on dns changes for ", 
             self.hostname)
 
+    -- recalculate to move slots of disabled addresses
     self.balancer:redistributeSlots()
-
-    -- delete addresses that we've disabled before (can only be done after redistribution)
-    for _, addr in ipairs(delete) do
-      addr:delete()
-    end
+    -- delete addresses previously disabled
+    self:deleteAddresses()
   end
 
   ngx_log(ngx_DEBUG, log_prefix, "querying dns and updating for ", self.hostname, " completed")
@@ -443,16 +442,30 @@ end
 -- Looks up and disables an `address` object from the `host`.
 -- @param entry (table) DNS entry
 -- @return address object that was disabled
-function objHost:removeAddress(entry)
+function objHost:disableAddress(entry)
   -- first lookup address object
   for _, addr in ipairs(self.addresses) do
     if (addr.ip == (entry.address or entry.target)) and 
-        addr.port == (entry.port or self.port) then
+        addr.port == (entry.port or self.port) and
+        not addr.disabled then
       -- found it
       addr:disable()
       return addr
     end
   end
+end
+
+-- Looks up and deletes previously disabled `address` objects from the `host`.
+-- @return `true`
+function objHost:deleteAddresses()
+  for i = #self.addresses, 1, -1 do -- deleting entries, hence reverse traversal
+    if self.addresses[i].disabled then
+      self.addresses[i]:delete()
+      table.remove(self.addresses, i)
+    end
+  end
+
+  return true
 end
 
 -- disables a host, by setting all adressess to 0

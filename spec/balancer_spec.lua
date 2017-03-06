@@ -1404,7 +1404,11 @@ describe("Loadbalancer", function()
       updateWheelState(state, " %- mashape%.com @ ", " - 1.2.3.4 @ ")
       assert.same(state, copyWheel(b))
     end)
-    it("#only recreate Kong issue #2131", function()
+    it("recreate Kong issue #2131", function()
+      -- erasing does not remove the address from the host
+      -- so if the same address is added again, and then deleted again
+      -- then upon erasing it will find the previous erased address object,
+      -- and upon erasing again a nil-referencing issue then occurs
       local ttl = 1
       local record
       local hostname = "dnstest.mashape.com"
