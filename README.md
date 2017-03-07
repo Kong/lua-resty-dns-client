@@ -35,7 +35,14 @@ use the `rbusted` script.
 History
 =======
 
-###0.3.1 (22-Feb-2017) Bugfix
+###0.3.2 (6-Mar-2017) Bugfixes
+
+- Fix: Cleanup disabled addresses but did not delete them, causing errors when
+  they were repeatedly added/removed
+- Fix: potential racecondition when re-querying dns records
+- Fix: potential memoryleak when a balancer object was released with a running timer
+
+###0.3.1 (22-Feb-2017) Bugfixes
 
 - Kubernetes dns returns an SRV record for individual nodes, where the target
   is the same name again (hence causing a recursive loop). Now those entries
