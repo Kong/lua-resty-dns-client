@@ -616,6 +616,33 @@ describe("Loadbalancer", function()
       assert(15 == res["5.6.7.8:321"] or nil == res["5.6.7.8:321"], "mismatch")
       assert(15 == res["getkong.org:321"] or nil == res["getkong.org:321"], "mismatch")
     end)
+    it("gets an IP address and port number; consistent hashing wraps (modulo)", function()
+      local b = check_balancer(balancer.new {
+        hosts = {
+          {name = "1.2.3.1", port = 1, weight = 100},
+          {name = "1.2.3.2", port = 1, weight = 100},
+          {name = "1.2.3.3", port = 1, weight = 100},
+          {name = "1.2.3.4", port = 1, weight = 100},
+          {name = "1.2.3.5", port = 1, weight = 100},
+          {name = "1.2.3.6", port = 1, weight = 100},
+          {name = "1.2.3.7", port = 1, weight = 100},
+          {name = "1.2.3.8", port = 1, weight = 100},
+          {name = "1.2.3.9", port = 1, weight = 100},
+          {name = "1.2.3.10", port = 1, weight = 100},
+        },
+        dns = client,
+        wheelSize = 10,
+      })
+      -- run down the wheel, hitting all slots once
+      local res = {}
+      for n = 0, 9 do
+        local addr1, port1, host1 = b:getPeer(n)
+        local addr2, port2, host2 = b:getPeer(n+10) -- wraps around, modulo
+        assert.equal(addr1, addr2)
+        assert.equal(port1, port2)
+        assert.equal(host1, host2)
+      end
+    end)
     it("does not hit the resolver when 'cache_only' is set", function()
       local record = dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },

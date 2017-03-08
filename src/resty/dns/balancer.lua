@@ -39,6 +39,7 @@ local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not pr
 local TTL_0_RETRY = 60      -- Maximum life-time for hosts added with ttl=0, requery after it expires
 local REQUERY_INTERVAL = 1  -- Interval for requerying failed dns queries
 
+local bit = require "bit"
 local dns = require "resty.dns.client"
 local utils = require "resty.dns.utils"
 local empty = setmetatable({}, 
@@ -49,7 +50,12 @@ local table_sort = table.sort
 local table_remove = table.remove
 local math_floor = math.floor
 local math_random = math.random
+local ngx_md5 = ngx.md5_bin
+local string_byte = string.byte
 local timer_at = ngx.timer.at
+local lshift = bit.lshift
+local bxor = bit.bxor
+local bor = bit.bor
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
 local ngx_DEBUG = ngx.DEBUG
@@ -785,8 +791,7 @@ end
 -- the `toip` function).
 -- @function getPeer
 -- @param hashValue (optional) number for consistent hashing, round-robins if 
--- omitted. The hashValue can be an integer from 1 to `wheelSize`, or a float 
--- from 0 up to, but not including, 1.
+-- omitted. The hashValue must be an (evenly distributed) `integer >= 0`. See also `hash`.
 -- @param cacheOnly If truthy, no dns lookups will be done, only cache.
 -- @return `ip + port + hostname`, or `nil+error`
 function objBalancer:getPeer(hashValue, cacheOnly)
@@ -795,15 +800,13 @@ function objBalancer:getPeer(hashValue, cacheOnly)
     return nil, "No peers are available"
   end
   
-  if not hashValue then
-    -- get the next one
+  if hashValue then
+    pointer = 1 + (hashValue % self.wheelSize)
+  else
+    -- no hash, so get the next one, round-robin like
     pointer = (self.pointer or 0) + 1
     if pointer > self.wheelSize then pointer = 1 end
     self.pointer = pointer
-  elseif hashValue < 1 then
-    pointer = math_floor(self.wheelSize * hashValue)
-  else
-    pointer = hashValue
   end
   
   local slot = self.wheel[pointer]
@@ -979,6 +982,18 @@ _M.new = function(opts)
   end
 
   return self
+end
+
+
+--- Creates a hash value from a string.
+-- The string will be hashed using MD5, and then shortened to a 2-byte
+-- unsigned integer (0-65535). The returned hash value can be used as input
+-- for the `getpeer` function.
+-- @param str (string) value to create the hash from
+-- @return numeric hash, 2-byte unsigned integer
+_M.hash = function(str)
+  local a1, b1, a2, b2, a3, b3, a4, b4 = string_byte(ngx_md5(str), 1, 8)
+  return bor(lshift(bxor(a1,a2,a3,a4),8), bxor(b1,b2,b3,b4))
 end
 
 return _M
