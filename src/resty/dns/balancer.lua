@@ -64,6 +64,11 @@ local log_prefix = "[ringbalancer] "
 
 local _M = {}
 
+local ok, new_tab = pcall(require, "table.new")
+if not ok then
+    new_tab = function (narr, nrec) return {} end
+end
+
 --------------------------------------------------------
 -- GC'able timer implementation with 'self'
 --------------------------------------------------------
@@ -916,17 +921,20 @@ _M.new = function(opts)
   local self = {
     -- properties
     hosts = {},    -- a table, index by both the hostname and index, the value being a host object
-    weight = 0  ,  -- total weight of all hosts
-    wheel = {},    -- wheel with entries (fully randomized)
-    slots = {},    -- list of slots in no particular order
+    weight = 0,    -- total weight of all hosts
+    wheel = nil,   -- wheel with entries (fully randomized)
+    slots = nil,   -- list of slots in no particular order
     wheelSize = opts.wheelSize or 1000, -- number of entries in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
-    unassignedSlots = {}, -- list to hold unassigned slots (initially, and when all hosts fail)
+    unassignedSlots = nil, -- list to hold unassigned slots (initially, and when all hosts fail)
     requeryRunning = false,  -- requery timer is not running, see `startRequery`
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY -- refreshing ttl=0 records
   }
   for name, method in pairs(objBalancer) do self[name] = method end
+  self.wheel = new_tab(self.wheelSize, 0)
+  self.slots = new_tab(self.wheelSize, 0)
+  self.unassignedSlots = new_tab(self.wheelSize, 0)
 
   -- Create a list of entries, and randomize them.
   -- 'slots' is just for tracking the individual entries, no notion of order is necessary
