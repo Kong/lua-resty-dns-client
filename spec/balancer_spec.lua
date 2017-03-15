@@ -23,7 +23,7 @@ local dnsSRV = function(records)
   -- if single table, then insert into a new list
   if not records[1] then records = { records } end
   
-  for i, record in ipairs(records) do
+  for _, record in ipairs(records) do
     record.type = client.TYPE_SRV
     
     -- check required input
@@ -54,7 +54,7 @@ local dnsA = function(records)
   -- if single table, then insert into a new list
   if not records[1] then records = { records } end
   
-  for i, record in ipairs(records) do
+  for _, record in ipairs(records) do
     record.type = client.TYPE_A
     
     -- check required input
@@ -82,7 +82,7 @@ local dnsAAAA = function(records)
   -- if single table, then insert into a new list
   if not records[1] then records = { records } end
   
-  for i, record in ipairs(records) do
+  for _, record in ipairs(records) do
     record.type = client.TYPE_AAAA
     
     -- check required input
@@ -109,7 +109,7 @@ end
 local check_list = function(t)
   local size = 0
   local keys = 0
-  for i, v in pairs(t) do
+  for i, _ in pairs(t) do
     if (type(i) == "number") then
       if (i > size) then size = i end
     else
@@ -153,28 +153,28 @@ local check_balancer = function(balancer)
   if balancer.weight == 0 then
     -- all hosts failed, so the balancer slots have no content
     assert.are.equal(balancer.wheelSize, #balancer.unassignedSlots)
-    for i, slot in ipairs(balancer.wheel) do
+    for _, slot in ipairs(balancer.wheel) do
       assert.is_nil(slot.address)
     end
   else
     -- addresses
     local addrlist = {}
-    for i, slot in ipairs(balancer.wheel) do -- calculate slots per address based on the wheel
+    for _, slot in ipairs(balancer.wheel) do -- calculate slots per address based on the wheel
       addrlist[slot.address] = (addrlist[slot.address] or 0) + 1
     end
     for addr, count in pairs(addrlist) do
       assert.are.equal(#addr.slots, count)
     end
-    for i, host in ipairs(balancer.hosts) do -- remove slots per address based on hosts (results in 0)
-      for n, addr in ipairs(host.addresses) do
+    for _, host in ipairs(balancer.hosts) do -- remove slots per address based on hosts (results in 0)
+      for _, addr in ipairs(host.addresses) do
         if addr.weight > 0 then
-          for j, slot in ipairs(addr.slots) do
+          for _ in ipairs(addr.slots) do
             addrlist[addr] = addrlist[addr] - 1
           end
         end
       end
     end
-    for addr, count in pairs(addrlist) do
+    for _, count in pairs(addrlist) do
       assert.are.equal(0, count)
     end
   end
@@ -184,7 +184,7 @@ end
 -- creates a hash table with "address:port" keys and as value the number of slots
 local function count_slots(balancer)
   local r = {}
-  for i, slot in ipairs(balancer.wheel) do
+  for _, slot in ipairs(balancer.wheel) do
     local key = tostring(slot.address.ip)
     if key:find(":",1,true) then
       key = "["..key.."]:"..slot.address.port
@@ -265,7 +265,7 @@ describe("Loadbalancer", function()
         wheelSize = 10,
       }
       local count = 0
-      for a,b,c in b:addressIter() do count = count + 1 end
+      for _,_,_ in b:addressIter() do count = count + 1 end
       assert.equals(6, count)
     end)
   
@@ -332,7 +332,7 @@ describe("Loadbalancer", function()
           { name = "mashape.com", address = "1.2.3.4" },
           { name = "mashape.com", address = "1.2.3.5" },
         })
-        local b = check_balancer(balancer.new { 
+        check_balancer(balancer.new { 
           hosts = {"mashape.com"},
           dns = client,
           wheelSize = 10,
@@ -353,14 +353,14 @@ describe("Loadbalancer", function()
         })
         assert.are.equal(10, b.wheelSize)
         -- based on the order list size
-        local b = check_balancer(balancer.new { 
+        b = check_balancer(balancer.new { 
           hosts = {"mashape.com"},
           dns = client,
           order = { 1,2,3 },
         })
         assert.are.equal(3, b.wheelSize)
         -- based on the order list size and wheel size
-        local b = check_balancer(balancer.new { 
+        b = check_balancer(balancer.new { 
           hosts = {"mashape.com"},
           dns = client,
           wheelSize = 4,
@@ -374,7 +374,7 @@ describe("Loadbalancer", function()
           wheelSize = 10,
         })
         assert.are.equal(10, #b.unassignedSlots)
-        local b = check_balancer(balancer.new { 
+        b = check_balancer(balancer.new { 
           dns = client,
           wheelSize = 10,
           hosts = {},  -- empty hosts table hould work too
@@ -478,7 +478,7 @@ describe("Loadbalancer", function()
         dnsA({ 
           { name = "mashape.com", address = "1.2.3.4" },
         })
-        ok, err = b:addHost("mashape.com", 80, 10)
+        local ok, err = b:addHost("mashape.com", 80, 10)
         assert.are.equal(b, ok)
         assert.is_nil(err)
         check_balancer(b)
@@ -569,7 +569,7 @@ describe("Loadbalancer", function()
       })
       -- run down the wheel twice
       local res = {}
-      for n = 1, 15*2 do
+      for _ = 1, 15*2 do
         local addr, port, host = b:getPeer()
         res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
         res[host..":"..port] = (res[host..":"..port] or 0) + 1
@@ -604,9 +604,9 @@ describe("Loadbalancer", function()
       assert.equal(10, res["1.2.3.4:123"])
       assert.equal(5, res["5.6.7.8:321"])
       -- hit one slot 15 times
-      local res = {}
+      res = {}
       local hash = 6  -- just pick one
-      for n = 1, 15 do
+      for _ = 1, 15 do
         local addr, port, host = b:getPeer(hash)
         res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
         res[host..":"..port] = (res[host..":"..port] or 0) + 1
@@ -634,7 +634,6 @@ describe("Loadbalancer", function()
         wheelSize = 10,
       })
       -- run down the wheel, hitting all slots once
-      local res = {}
       for n = 0, 9 do
         local addr1, port1, host1 = b:getPeer(n)
         local addr2, port2, host2 = b:getPeer(n+10) -- wraps around, modulo
@@ -642,6 +641,36 @@ describe("Loadbalancer", function()
         assert.equal(port1, port2)
         assert.equal(host1, host2)
       end
+    end)
+    it("gets an IP address and port number; consistent hashing with retries", function()
+      local b = check_balancer(balancer.new {
+        hosts = {
+          {name = "1.2.3.1", port = 1, weight = 100},
+          {name = "1.2.3.2", port = 1, weight = 100},
+          {name = "1.2.3.3", port = 1, weight = 100},
+          {name = "1.2.3.4", port = 1, weight = 100},
+          {name = "1.2.3.5", port = 1, weight = 100},
+          {name = "1.2.3.6", port = 1, weight = 100},
+          {name = "1.2.3.7", port = 1, weight = 100},
+          {name = "1.2.3.8", port = 1, weight = 100},
+          {name = "1.2.3.9", port = 1, weight = 100},
+          {name = "1.2.3.10", port = 1, weight = 100},
+        },
+        dns = client,
+        wheelSize = 10,
+      })
+      -- run down the wheel, slot 0, increasing retry
+      local res = {}
+      for n = 0, 9 do
+        local addr, port, _ = b:getPeer(0, nil, n)
+        assert.string(addr)
+        assert.number(port)
+        local key = addr..":"..port
+        res[key] = (res[key] or 0) + 1
+      end
+      local count = 0
+      for _,_ in pairs(res) do count = count + 1 end
+      assert.equal(10, count) -- 10 unique entries
     end)
     it("does not hit the resolver when 'cache_only' is set", function()
       local record = dnsA({ 
@@ -653,11 +682,11 @@ describe("Loadbalancer", function()
         wheelSize = 10,
       })
       record.expire = gettime() - 1 -- expire current dns cache record
-      local rec_new = dnsA({   -- create a new record
+      dnsA({   -- create a new record
         { name = "mashape.com", address = "5.6.7.8" },
       })
       -- create a spy to check whether dns was queried
-      local s = spy.on(client, "resolve")
+      spy.on(client, "resolve")
       local hash = nil
       local cache_only = true
       local ip, port, host = b:getPeer(hash, cache_only)
@@ -677,7 +706,7 @@ describe("Loadbalancer", function()
       assert.equals("No peers are available", port)
       assert.is_nil(host)
       
-      local ip, port, host = b:getPeer(6) -- just pick a hash
+      ip, port, host = b:getPeer(6) -- just pick a hash
       assert.is_nil(ip)
       assert.equals("No peers are available", port)
       assert.is_nil(host)
@@ -764,7 +793,7 @@ describe("Loadbalancer", function()
         { name = "mashape.com", address = "1.2.3.10" },
         { name = "mashape.com", address = "1.2.3.7" },
       })
-      local b = check_balancer(balancer.new { 
+      b = check_balancer(balancer.new { 
         hosts = {"mashape.com"},
         dns = client,
         wheelSize = 19,
@@ -785,7 +814,7 @@ describe("Loadbalancer", function()
         wheelSize = 3,
       }
       local expected = count_slots(b)
-      local b = check_balancer(balancer.new { 
+      b = check_balancer(balancer.new { 
         hosts = {"getkong.org", "mashape.com"},  -- changed host order
         dns = client,
         wheelSize = 3,
@@ -853,18 +882,18 @@ describe("Loadbalancer", function()
       check_balancer(b)
       
       -- copy the first 500 slots, they should not move
-      expected1 = {}
+      local expected1 = {}
       icopy(expected1, b.hosts[1].addresses[1].slots, 1, 1, 500)
-      expected2 = {}
+      local expected2 = {}
       icopy(expected2, b.hosts[1].addresses[2].slots, 1, 1, 500)
       
       b:removeHost("getkong.org")
       check_balancer(b)
       
       -- copy the new first 500 slots as well
-      expected1a = {}
+      local expected1a = {}
       icopy(expected1a, b.hosts[1].addresses[1].slots, 1, 1, 500)
-      expected2a = {}
+      local expected2a = {}
       icopy(expected2a, b.hosts[1].addresses[2].slots, 1, 1, 500)
 
       -- compare previous copy against current first 500 slots to make sure they are the same
@@ -960,7 +989,7 @@ describe("Loadbalancer", function()
         ttl0 = 2,
       })
     
-      count = count_slots(b)
+      local count = count_slots(b)
       assert.same({
           ["mashape.com:80"] = 50,
           ["9.9.9.9:123"] = 50,
@@ -995,7 +1024,7 @@ describe("Loadbalancer", function()
       }, count)
       
       record.expire = gettime() - 1 -- expire record now
-      for i = 1, b.wheelSize do b:getPeer() end -- hit them all to force renewal
+      for _ = 1, b.wheelSize do b:getPeer() end -- hit them all to force renewal
       
       count = count_slots(b)
       assert.same({
@@ -1006,7 +1035,7 @@ describe("Loadbalancer", function()
       -- update the failed record
       b:addHost("does.not.exist.mashape.com", 80, 20)
       -- reinsert a cache entry
-      local record = dnsA({ 
+      dnsA({ 
         { name = "does.not.exist.mashape.com", address = "1.2.3.4" },
       })
       sleep(2)  -- wait for timer to re-resolve the record
@@ -1069,13 +1098,13 @@ describe("Loadbalancer", function()
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
-      local rec_new = dnsA({   -- create a new record (identical)
+      dnsA({   -- create a new record (identical)
         { name = "mashape.com", address = "1.2.3.4" },
         { name = "mashape.com", address = "1.2.3.5" },
       })
       -- create a spy to check whether dns was queried
-      local s = spy.on(client, "resolve")
-      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+      spy.on(client, "resolve")
+      for _ = 1, b.wheelSize do -- call all, to make sure we hit the expired one
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
@@ -1100,13 +1129,13 @@ describe("Loadbalancer", function()
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
-      local rec_new = dnsAAAA({   -- create a new record (identical)
+      dnsAAAA({   -- create a new record (identical)
         { name = "mashape.com", address = "::1" },
         { name = "mashape.com", address = "::2" },
       })
       -- create a spy to check whether dns was queried
-      local s = spy.on(client, "resolve")
-      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+      spy.on(client, "resolve")
+      for _ = 1, b.wheelSize do -- call all, to make sure we hit the expired one
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
@@ -1131,14 +1160,14 @@ describe("Loadbalancer", function()
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
-      local rec_new = dnsSRV({    -- create a new record (identical)
+      dnsSRV({    -- create a new record (identical)
         { name = "gelato.io", target = "1.2.3.6", port = 8001, weight = 5 },
         { name = "gelato.io", target = "1.2.3.6", port = 8002, weight = 5 },
         { name = "gelato.io", target = "1.2.3.6", port = 8003, weight = 5 },
       })
       -- create a spy to check whether dns was queried
-      local s = spy.on(client, "resolve")
-      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+      spy.on(client, "resolve")
+      for _ = 1, b.wheelSize do -- call all, to make sure we hit the expired one
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("gelato.io",nil, nil)
@@ -1162,13 +1191,13 @@ describe("Loadbalancer", function()
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
-      local rec_new = dnsA({   -- create a new record, different type
+      dnsA({   -- create a new record, different type
         { name = "mashape.com", address = "1.2.3.4" },
         { name = "mashape.com", address = "1.2.3.5" },
       })
       -- create a spy to check whether dns was queried
-      local s = spy.on(client, "resolve")
-      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+      spy.on(client, "resolve")
+      for _ = 1, b.wheelSize do -- call all, to make sure we hit the expired one
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
@@ -1200,13 +1229,13 @@ describe("Loadbalancer", function()
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
-      local rec_new = dnsA({   -- create a new record, different type
+      dnsA({   -- create a new record, different type
         { name = "mashape.com", address = "1.2.3.6" },
         { name = "mashape.com", address = "1.2.3.7" },
       })
       -- create a spy to check whether dns was queried
-      local s = spy.on(client, "resolve")
-      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+      spy.on(client, "resolve")
+      for _ = 1, b.wheelSize do -- call all, to make sure we hit the expired one
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
@@ -1238,13 +1267,13 @@ describe("Loadbalancer", function()
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
-      local rec_new = dnsA({   -- create a new record, different type
+      dnsA({   -- create a new record, different type
         { name = "mashape.com", address = "1.2.3.5" },
         { name = "mashape.com", address = "1.2.3.6" },
       })
       -- create a spy to check whether dns was queried
-      local s = spy.on(client, "resolve")
-      for i = 1, b.wheelSize do -- call all, to make sure we hit the expired one
+      spy.on(client, "resolve")
+      for _ = 1, b.wheelSize do -- call all, to make sure we hit the expired one
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
@@ -1282,7 +1311,7 @@ describe("Loadbalancer", function()
         { name = "mashape.com", address = "1.2.3.6" },  -- target updated
       })
       -- run entire wheel to make sure the expired one is requested, and updated
-      for i = 1, b.wheelSize do b:getPeer() end 
+      for _ = 1, b.wheelSize do b:getPeer() end 
       -- all old 'mashape.com @ 1.2.3.5' should now be 'mashape.com @ 1.2.3.6'
       -- and more important; all others should not have moved slot positions!
       updateWheelState(state, " %- 1%.2%.3%.5 @ ", " - 1.2.3.6 @ ")
@@ -1324,7 +1353,7 @@ describe("Loadbalancer", function()
       record.expire = gettime() -1 -- expire current dns cache record
 --print("dns client reconfigured, local cache updated (empty now). Running whole wheel...")
       -- run entire wheel to make sure the expired one is requested, so it can fail
-      for i = 1, b.wheelSize do b:getPeer() end
+      for _ = 1, b.wheelSize do b:getPeer() end
 --print("ran down whole wheel. Now updating previous state2 to be the expected one")
       -- all slots are now getkong.org
       updateWheelState(state2, " %- 1%.2%.3%.4 @ 80 %(mashape%.com%)", " - 9.9.9.9 @ 123 (getkong.org)")
@@ -1340,7 +1369,7 @@ describe("Loadbalancer", function()
       })
       -- refetch the cache, since the 'init' call above caused it to be replaced
       dnscache = client.getcache()  
-      local record = dnsA({ 
+      dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
       })
 --print("client reconfigured, local cache updated, and inserted the fake record again")      
@@ -1360,7 +1389,7 @@ describe("Loadbalancer", function()
       dnsA({ 
         { name = "getkong.org", address = "9.9.9.9" },
       })
-      local b = check_balancer(balancer.new { 
+      check_balancer(balancer.new { 
         hosts = { 
           { name = "mashape.com", port = 80, weight = 99999 }, 
           { name = "getkong.org", port = 123, weight = 1 }, 
@@ -1375,7 +1404,7 @@ describe("Loadbalancer", function()
       dnsA({ 
         { name = "getkong.org", address = "9.9.9.9" },
       })
-      local b = check_balancer(balancer.new { 
+      check_balancer(balancer.new { 
         hosts = { 
           { name = "mashape.com", port = 80, weight = 1 }, 
           { name = "getkong.org", port = 123, weight = 99999 }, 
@@ -1433,7 +1462,7 @@ describe("Loadbalancer", function()
       -- get current state
       local state = copyWheel(b)
       -- run it down, count the dns queries done
-      for i = 1, b.wheelSize do b:getPeer() end 
+      for _ = 1, b.wheelSize do b:getPeer() end 
       assert.equal(b.wheelSize/2, toip_count)  -- one resolver hit for each slot entry
       assert.equal(1, resolve_count) -- hit once, when adding the host to the balancer
       
@@ -1444,7 +1473,7 @@ describe("Loadbalancer", function()
       toip_count = 0  --reset counters
       resolve_count = 0
       -- run it down, count the dns queries done
-      for i = 1, b.wheelSize do b:getPeer() end 
+      for _ = 1, b.wheelSize do b:getPeer() end 
       assert.equal(0, toip_count)
       assert.equal(1, resolve_count) -- hit once, when updating the 0-ttl entry
       

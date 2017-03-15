@@ -50,12 +50,10 @@ local table_sort = table.sort
 local table_remove = table.remove
 local math_floor = math.floor
 local math_random = math.random
+local string_sub = string.sub
 local ngx_md5 = ngx.md5_bin
-local string_byte = string.byte
 local timer_at = ngx.timer.at
-local lshift = bit.lshift
 local bxor = bit.bxor
-local bor = bit.bor
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
 local ngx_DEBUG = ngx.DEBUG
@@ -66,7 +64,7 @@ local _M = {}
 
 local ok, new_tab = pcall(require, "table.new")
 if not ok then
-    new_tab = function (narr, nrec) return {} end
+    new_tab = function() return {} end
 end
 
 --------------------------------------------------------
@@ -637,7 +635,7 @@ function objBalancer:redistributeSlots()
   local addCount = 0
   local dropped, added = 0, 0
 
-  for weight, address, host in self:addressIter() do
+  for weight, address, _ in self:addressIter() do
 
     local count
     if weightLeft == 0 then
@@ -798,14 +796,17 @@ end
 -- @param hashValue (optional) number for consistent hashing, round-robins if 
 -- omitted. The hashValue must be an (evenly distributed) `integer >= 0`. See also `hash`.
 -- @param cacheOnly If truthy, no dns lookups will be done, only cache.
+-- @param retryCount should be 0 (or `nil`) on the initial try, 1 on the first
+-- retry, etc. If provided, it will be added to the `hashValue` to make it fall-through.
 -- @return `ip + port + hostname`, or `nil+error`
-function objBalancer:getPeer(hashValue, cacheOnly)
+function objBalancer:getPeer(hashValue, cacheOnly, retryCount)
   local pointer
   if self.weight == 0 then
     return nil, "No peers are available"
   end
   
   if hashValue then
+    hashValue = hashValue + (retryCount or 0) -- must update here because we're passing it to getPeer
     pointer = 1 + (hashValue % self.wheelSize)
   else
     -- no hash, so get the next one, round-robin like
@@ -993,15 +994,27 @@ _M.new = function(opts)
 end
 
 
---- Creates a hash value from a string.
--- The string will be hashed using MD5, and then shortened to a 2-byte
--- unsigned integer (0-65535). The returned hash value can be used as input
--- for the `getpeer` function.
+--- Creates a MD5 hash value from a string.
+-- The string will be hashed using MD5, and then shortened to 4 bytes.
+-- The returned hash value can be used as input for the `getpeer` function.
 -- @param str (string) value to create the hash from
--- @return numeric hash, 2-byte unsigned integer
-_M.hash = function(str)
-  local a1, b1, a2, b2, a3, b3, a4, b4 = string_byte(ngx_md5(str), 1, 8)
-  return bor(lshift(bxor(a1,a2,a3,a4),8), bxor(b1,b2,b3,b4))
+-- @return 32-bit numeric hash
+_M.hash_md5 = function(str)
+  local md5 = ngx_md5(str)
+  return bxor(
+    tonumber(string_sub(md5, 1, 4), 16),
+    tonumber(string_sub(md5, 5, 8), 16)
+  )
 end
+
+
+--- Creates a CRC32 hash value from a string.
+-- The string will be hashed using CRC32. The returned hash value can be
+-- used as input for the `getpeer` function. This is simply a shortcut to
+-- `ngx.crc32_short`.
+-- @param str (string) value to create the hash from
+-- @return 32-bit numeric hash
+_M.hash_crc32 = ngx.crc32_short
+
 
 return _M
