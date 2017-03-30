@@ -795,11 +795,11 @@ end
 -- @function getPeer
 -- @param hashValue (optional) number for consistent hashing, round-robins if 
 -- omitted. The hashValue must be an (evenly distributed) `integer >= 0`. See also `hash`.
--- @param cacheOnly If truthy, no dns lookups will be done, only cache.
 -- @param retryCount should be 0 (or `nil`) on the initial try, 1 on the first
 -- retry, etc. If provided, it will be added to the `hashValue` to make it fall-through.
+-- @param cacheOnly If truthy, no dns lookups will be done, only cache.
 -- @return `ip + port + hostname`, or `nil+error`
-function objBalancer:getPeer(hashValue, cacheOnly, retryCount)
+function objBalancer:getPeer(hashValue, retryCount, cacheOnly)
   local pointer
   if self.weight == 0 then
     return nil, "No peers are available"

@@ -35,19 +35,24 @@ use the `rbusted` script.
 History
 =======
 
-###0.3.3 (xxx) Bugfixes
+### 0.4.0 (30-Mar-2017) Bugfixes
 
+- Change: BREAKING! modified hash treatment, must now be an integer > 0
+- Added: BREAKING! a retry counter to fall-through on hashed-retries (changes
+  the `getpeer` signature)
 - Fix: the MAXNS (3) was not honoured, so more than 3 nameservers would be parsed
   from the `resolv.conf` file. Fixes [Kong issue #2290](https://github.com/Mashape/kong/issues/2290).
+- Added: two convenience hash functions
+- Performance: some improvements (pre-allocated tables for the slot lists)
 
-###0.3.2 (6-Mar-2017) Bugfixes
+### 0.3.2 (6-Mar-2017) Bugfixes
 
 - Fix: Cleanup disabled addresses but did not delete them, causing errors when
   they were repeatedly added/removed
 - Fix: potential racecondition when re-querying dns records
 - Fix: potential memoryleak when a balancer object was released with a running timer
 
-###0.3.1 (22-Feb-2017) Bugfixes
+### 0.3.1 (22-Feb-2017) Bugfixes
 
 - Kubernetes dns returns an SRV record for individual nodes, where the target
   is the same name again (hence causing a recursive loop). Now those entries
@@ -57,7 +62,7 @@ History
   `toip()` function now ignores a `port=0` and falls back on the port passed
   in.
 
-###0.3.0 (8-Nov-2016) Major breaking update
+### 0.3.0 (8-Nov-2016) Major breaking update
 
 - breaking: renamed a lot of things; method names, module names, etc. pretty
   much breaks everything... also releasing under a new name
@@ -69,11 +74,11 @@ History
 - change: auto-retry interval configurable for failed dns queries (ring-balancer)
 - change: max life-time interval configurable for ttl=0 dns records (ring-balancer)
 
-###0.2.1 (24-Oct-2016) Bugfix
+### 0.2.1 (24-Oct-2016) Bugfix
  
 - fix: `toip()` failed on SRV records with only 1 entry
 
-###0.2 (18-Oct-2016) Added the balancer
+### 0.2 (18-Oct-2016) Added the balancer
  
 - fix: was creating resolver objects even if serving from cache
 - change: change resolver order (SRV is now first by default) for dns servers that create both SRV and A records for each entry
@@ -81,4 +86,4 @@ History
 - feature: ring-balancer (experimental, no full test coverage yet)
 - other: more test coverage for the dns client
    
-###0.1 (09-Sep-2016) Initial released version
+### 0.1 (09-Sep-2016) Initial released version

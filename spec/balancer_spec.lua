@@ -662,7 +662,7 @@ describe("Loadbalancer", function()
       -- run down the wheel, slot 0, increasing retry
       local res = {}
       for n = 0, 9 do
-        local addr, port, _ = b:getPeer(0, nil, n)
+        local addr, port, _ = b:getPeer(0, n)
         assert.string(addr)
         assert.number(port)
         local key = addr..":"..port
@@ -689,7 +689,7 @@ describe("Loadbalancer", function()
       spy.on(client, "resolve")
       local hash = nil
       local cache_only = true
-      local ip, port, host = b:getPeer(hash, cache_only)
+      local ip, port, host = b:getPeer(hash, nil, cache_only)
       assert.spy(client.resolve).Not.called_with("mashape.com",nil, nil)
       assert.equal("1.2.3.4", ip)  -- initial un-updated ip address
       assert.equal(80, port)
