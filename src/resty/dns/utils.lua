@@ -35,6 +35,10 @@ _M.DEFAULT_HOSTS = _DEFAULT_HOSTS
 -- @field DEFAULT_RESOLV_CONF Defaults to `/etc/resolv.conf`
 _M.DEFAULT_RESOLV_CONF = _DEFAULT_RESOLV_CONF
 
+--- Maximum number of nameservers to parse from the `resolv.conf` file
+-- @field MAXNS Defaults to 3
+_M.MAXNS = 3
+
 --- Parsing configuration files and variables
 -- @section parsing
 
@@ -144,7 +148,9 @@ _M.parseResolvConf = function(filename)
       local option, details = data:match("^%s*(%a+)%s+(.-)%s*$")
       if option == "nameserver" then
         result.nameserver = result.nameserver or {}
-        tinsert(result.nameserver, details:lower())
+        if #result.nameserver < _M.MAXNS then
+          tinsert(result.nameserver, details:lower())
+        end
       elseif option == "domain" then
         result.search = nil  -- mutually exclusive, last one wins
         result.domain = details:lower()
