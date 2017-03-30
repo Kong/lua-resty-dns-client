@@ -39,6 +39,7 @@ local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not pr
 local TTL_0_RETRY = 60      -- Maximum life-time for hosts added with ttl=0, requery after it expires
 local REQUERY_INTERVAL = 1  -- Interval for requerying failed dns queries
 
+local bit = require "bit"
 local dns = require "resty.dns.client"
 local utils = require "resty.dns.utils"
 local empty = setmetatable({}, 
@@ -49,7 +50,10 @@ local table_sort = table.sort
 local table_remove = table.remove
 local math_floor = math.floor
 local math_random = math.random
+local string_sub = string.sub
+local ngx_md5 = ngx.md5_bin
 local timer_at = ngx.timer.at
+local bxor = bit.bxor
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
 local ngx_DEBUG = ngx.DEBUG
@@ -57,6 +61,11 @@ local ngx_WARN = ngx.WARN
 local log_prefix = "[ringbalancer] "
 
 local _M = {}
+
+local ok, new_tab = pcall(require, "table.new")
+if not ok then
+    new_tab = function() return {} end
+end
 
 --------------------------------------------------------
 -- GC'able timer implementation with 'self'
@@ -626,7 +635,7 @@ function objBalancer:redistributeSlots()
   local addCount = 0
   local dropped, added = 0, 0
 
-  for weight, address, host in self:addressIter() do
+  for weight, address, _ in self:addressIter() do
 
     local count
     if weightLeft == 0 then
@@ -785,25 +794,25 @@ end
 -- the `toip` function).
 -- @function getPeer
 -- @param hashValue (optional) number for consistent hashing, round-robins if 
--- omitted. The hashValue can be an integer from 1 to `wheelSize`, or a float 
--- from 0 up to, but not including, 1.
+-- omitted. The hashValue must be an (evenly distributed) `integer >= 0`. See also `hash`.
 -- @param cacheOnly If truthy, no dns lookups will be done, only cache.
+-- @param retryCount should be 0 (or `nil`) on the initial try, 1 on the first
+-- retry, etc. If provided, it will be added to the `hashValue` to make it fall-through.
 -- @return `ip + port + hostname`, or `nil+error`
-function objBalancer:getPeer(hashValue, cacheOnly)
+function objBalancer:getPeer(hashValue, cacheOnly, retryCount)
   local pointer
   if self.weight == 0 then
     return nil, "No peers are available"
   end
   
-  if not hashValue then
-    -- get the next one
+  if hashValue then
+    hashValue = hashValue + (retryCount or 0) -- must update here because we're passing it to getPeer
+    pointer = 1 + (hashValue % self.wheelSize)
+  else
+    -- no hash, so get the next one, round-robin like
     pointer = (self.pointer or 0) + 1
     if pointer > self.wheelSize then pointer = 1 end
     self.pointer = pointer
-  elseif hashValue < 1 then
-    pointer = math_floor(self.wheelSize * hashValue)
-  else
-    pointer = hashValue
   end
   
   local slot = self.wheel[pointer]
@@ -913,17 +922,20 @@ _M.new = function(opts)
   local self = {
     -- properties
     hosts = {},    -- a table, index by both the hostname and index, the value being a host object
-    weight = 0  ,  -- total weight of all hosts
-    wheel = {},    -- wheel with entries (fully randomized)
-    slots = {},    -- list of slots in no particular order
+    weight = 0,    -- total weight of all hosts
+    wheel = nil,   -- wheel with entries (fully randomized)
+    slots = nil,   -- list of slots in no particular order
     wheelSize = opts.wheelSize or 1000, -- number of entries in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
-    unassignedSlots = {}, -- list to hold unassigned slots (initially, and when all hosts fail)
+    unassignedSlots = nil, -- list to hold unassigned slots (initially, and when all hosts fail)
     requeryRunning = false,  -- requery timer is not running, see `startRequery`
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY -- refreshing ttl=0 records
   }
   for name, method in pairs(objBalancer) do self[name] = method end
+  self.wheel = new_tab(self.wheelSize, 0)
+  self.slots = new_tab(self.wheelSize, 0)
+  self.unassignedSlots = new_tab(self.wheelSize, 0)
 
   -- Create a list of entries, and randomize them.
   -- 'slots' is just for tracking the individual entries, no notion of order is necessary
@@ -980,5 +992,29 @@ _M.new = function(opts)
 
   return self
 end
+
+
+--- Creates a MD5 hash value from a string.
+-- The string will be hashed using MD5, and then shortened to 4 bytes.
+-- The returned hash value can be used as input for the `getpeer` function.
+-- @param str (string) value to create the hash from
+-- @return 32-bit numeric hash
+_M.hash_md5 = function(str)
+  local md5 = ngx_md5(str)
+  return bxor(
+    tonumber(string_sub(md5, 1, 4), 16),
+    tonumber(string_sub(md5, 5, 8), 16)
+  )
+end
+
+
+--- Creates a CRC32 hash value from a string.
+-- The string will be hashed using CRC32. The returned hash value can be
+-- used as input for the `getpeer` function. This is simply a shortcut to
+-- `ngx.crc32_short`.
+-- @param str (string) value to create the hash from
+-- @return 32-bit numeric hash
+_M.hash_crc32 = ngx.crc32_short
+
 
 return _M
