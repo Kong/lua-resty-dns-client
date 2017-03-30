@@ -135,6 +135,7 @@ domain myservice.com
 nameserver 8.8.8.8 
 nameserver 8.8.4.4 ; and a comment here
 nameserver 8.8.8.8:1234 ; this one has a port number (limited systems support this)
+nameserver 1.2.3.4 ; this one is 4th, so should be ignored
 
 # search is commented out, test below for a mutually exclusive one
 #search domaina.com domainb.com

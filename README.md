@@ -35,6 +35,11 @@ use the `rbusted` script.
 History
 =======
 
+###0.3.3 (xxx) Bugfixes
+
+- Fix: the MAXNS (3) was not honoured, so more than 3 nameservers would be parsed
+  from the `resolv.conf` file. Fixes [Kong issue #2290](https://github.com/Mashape/kong/issues/2290).
+
 ###0.3.2 (6-Mar-2017) Bugfixes
 
 - Fix: Cleanup disabled addresses but did not delete them, causing errors when
