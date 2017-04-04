@@ -33,6 +33,7 @@ local math_max = math.max
 local math_fmod = math.fmod
 local math_random = math.random
 local table_remove = table.remove
+local table_insert = table.insert
 
 local empty = setmetatable({}, 
   {__newindex = function() error("The 'empty' table is read-only") end})
@@ -502,15 +503,34 @@ local function lookup(qname, r_opts, dnsCacheOnly, r)
   local answers, err
   answers, err, r = synchronizedQuery(qname, r_opts, r, expect_ttl_0)
   if not answers then return answers, err, r end
-  
+
   -- check our answers and store them in the cache
-  -- A, AAAA, SRV records may be accompanied by CNAME records
+  -- eg. A, AAAA, SRV records may be accompanied by CNAME records
   -- store them all, leaving only the requested type in so we can return that set
+  local others = {}
   for i = #answers, 1, -1 do -- we're deleting entries, so reverse the traversal
     local answer = answers[i]
-    if answer.type ~= qtype then
-      cacheinsert({answer}) -- insert in cache before removing it
+    if (answer.type ~= qtype) or (answer.name ~= qname) then
+      local key = answer.type..":"..answer.name
+      local lst = others[key]
+      if not lst then
+        lst = {}
+        others[key] = lst
+      end
+      table_insert(lst, 1, answer)  -- pos 1: preserve order
       table_remove(answers, i)
+    end
+  end
+  if next(others) then
+    for key, lst in pairs(others) do
+      -- only store if not already cached (this is only a 'by-product')
+      if not cachelookup(lst[1].name, lst[1].type) then
+        cacheinsert(lst)
+      end
+      -- set success-type, only if not set (this is only a 'by-product')
+      if not cachegetsuccess(lst[1].name) then
+        cachesetsuccess(lst[1].name, lst[1].type)
+      end
     end
   end
 
@@ -595,7 +615,7 @@ local function resolve(qname, r_opts, dnsCacheOnly, r, count)
       -- NOTE: if the name exists, but the type doesn't match, we get 
       -- an empty table. Hence check the length!
       if records and (#records > 0) then
-        if not dnsCacheOnly then 
+        if not dnsCacheOnly then
           cachesetsuccess(qname, qtype) -- set last succesful type resolved
         end
         if qtype == _M.TYPE_CNAME then

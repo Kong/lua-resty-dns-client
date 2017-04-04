@@ -170,24 +170,32 @@ describe("DNS client", function()
     local typ = client.TYPE_A
     local answers = assert(client.resolve(host))
 
-    assert.are.not_equal(host, answers[1].name)
-    assert.are.equal(typ, answers[1].type)
-    assert.are.equal(#answers, 1)
-    
     -- check first CNAME
     local key1 = client.TYPE_CNAME..":"..host
     local entry1 = client.getcache()[key1]
-    assert.are.equal(host, entry1[1].name)
-    assert.are.equal(client.TYPE_CNAME, entry1[1].type)
+    assert.are.equal(host, entry1[1].name)       -- the 1st record is the original 'smtp.thijsschreijer.nl'
+    assert.are.equal(client.TYPE_CNAME, entry1[1].type) -- and that is a CNAME
   
     -- check second CNAME
     local key2 = client.TYPE_CNAME..":"..entry1[1].cname
     local entry2 = client.getcache()[key2]
-    assert.are.equal(entry1[1].cname, entry2[1].name)
-    assert.are.equal(client.TYPE_CNAME, entry2[1].type)
-    
+    assert.are.equal(entry1[1].cname, entry2[1].name) -- the 2nd is the middle 'thuis.thijsschreijer.nl'
+    assert.are.equal(client.TYPE_CNAME, entry2[1].type) -- and that is also a CNAME
+
     -- check second target to match final record
     assert.are.equal(entry2[1].cname, answers[1].name)
+    assert.are.not_equal(host, answers[1].name)  -- we got final name 'wdnaste.duckdns.org'
+    assert.are.equal(typ, answers[1].type)       -- we got a final A type record
+    assert.are.equal(#answers, 1)
+
+    -- check last successful lookup references
+    local lastsuccess3 = client.getcache()[answers[1].name]
+    local lastsuccess2 = client.getcache()[entry2[1].name]
+    local lastsuccess1 = client.getcache()[entry1[1].name]
+    assert.are.equal(client.TYPE_A, lastsuccess3)
+    assert.are.equal(client.TYPE_CNAME, lastsuccess2)
+    assert.are.equal(client.TYPE_CNAME, lastsuccess1)
+
   end)
 
   it("fetching multiple SRV records (un-typed)", function()
@@ -196,7 +204,7 @@ describe("DNS client", function()
     local host = "srvtest.thijsschreijer.nl"
     local typ = client.TYPE_SRV
 
-    -- un-typed; so fetch using `resolve` method instead of `resolve_type`.
+    -- un-typed lookup
     local answers = assert(client.resolve(host))
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
@@ -213,7 +221,7 @@ describe("DNS client", function()
     local host = "cname2srv.thijsschreijer.nl"
     local typ = client.TYPE_SRV
 
-    -- un-typed; so fetch using `resolve` method instead of `resolve_type`.
+    -- un-typed lookup
     local answers = assert(client.resolve(host))
 
     -- first check CNAME

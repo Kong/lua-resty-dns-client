@@ -35,6 +35,11 @@ use the `rbusted` script.
 History
 =======
 
+### unreleased (xx-xxx-2017)
+
+- fix: cname record caching causing excessive dns queries
+  See [Kong issue 2303](https://github.com/Mashape/kong/issues/2303)
+
 ### 0.4.0 (30-Mar-2017) Bugfixes
 
 - Change: BREAKING! modified hash treatment, must now be an integer > 0
