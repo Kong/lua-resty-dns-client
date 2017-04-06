@@ -187,6 +187,26 @@ search domaina.com domainb.com
     assert.is.same({ "domaina.com", "domainb.com" }, resolv.search)
   end)
 
+  it("tests parsing 'resolv.conf' with max search entries MAXSEARCH", function()
+    local file = splitlines(
+    [[
+
+search domain1.com domain2.com domain3.com domain4.com domain5.com domain6.com domain7.com
+
+]])
+    local resolv, err = dnsutils.parseResolvConf(file)
+    assert.is.Nil(err)
+    assert.is.Nil(resolv.domain)
+    assert.is.same({
+        "domain1.com", 
+        "domain2.com",
+        "domain3.com", 
+        "domain4.com",
+        "domain5.com", 
+        "domain6.com",
+      }, resolv.search)
+  end)
+
   it("tests parsing 'resolv.conf' with environment variables", function()
     local file = splitlines(
     [[# this is just a comment line

@@ -39,6 +39,10 @@ _M.DEFAULT_RESOLV_CONF = _DEFAULT_RESOLV_CONF
 -- @field MAXNS Defaults to 3
 _M.MAXNS = 3
 
+--- Maximum number of entries to parse from `search` parameter in the `resolv.conf` file
+-- @field MAXSEARCH Defaults to 6
+_M.MAXSEARCH = 6
+
 --- Parsing configuration files and variables
 -- @section parsing
 
@@ -159,7 +163,9 @@ _M.parseResolvConf = function(filename)
         local search = {}
         result.search = search
         for host in details:gmatch("%S+") do
-          tinsert(search, host:lower())
+          if #search < _M.MAXSEARCH then
+            tinsert(search, host:lower())
+          end
         end
       elseif option == "sortlist" then
         local list = {}
