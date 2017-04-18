@@ -134,7 +134,8 @@ end
 -- will be ignored. Might return `nil + error` if the file cannot be read.
 -- @param filename (optional) File to parse (defaults to `'/etc/resolv.conf'` if 
 -- omitted) or a table with the file contents in lines.
--- @return a table with fields `nameserver` (table), `domain` (string), `search` (table), `sortlist` (table) and `options` (table)
+-- @return a table with fields `nameserver` (table), `domain` (string), `search` (table),
+-- `sortlist` (table) and `options` (table)
 -- @see applyEnv
 _M.parseResolvConf = function(filename)
   local lines

@@ -35,10 +35,21 @@ use the `rbusted` script.
 History
 =======
 
+### unreleased (xx-xxx-2017)
+
+- Removed: BREAKING! stdError function removed.
+- Added: implemented the `search` and `ndots` options.
+- Change: `resolve` no longer returns empty results or dns errors as a table
+  but as lua errors (`nil + error`).
+- Change: `toip()` and `resolve()` have an extra result; history. A table with
+  the list of tried names/types/results.
+- Fix: timeout and retrans options from `resolv.conf` were ignored by the
+  `client` module.
+
 ### 0.4.1 (21-Apr-2017) Bugfix
 
-- fix: cname record caching causing excessive dns queries
-  See [Kong issue #2303](https://github.com/Mashape/kong/issues/2303)
+- Fix: cname record caching causing excessive dns queries,
+  see [Kong issue #2303](https://github.com/Mashape/kong/issues/2303).
 
 ### 0.4.0 (30-Mar-2017) Bugfixes
 

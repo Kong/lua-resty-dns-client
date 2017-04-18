@@ -288,7 +288,7 @@ function objHost:queryDns(cacheOnly)
   -- yield (cosockets in the dns lib). So once that is done, we're 'atomic'
   -- again, and we shouldn't have any nasty race conditions
   local dns = self.balancer.dns
-  local newQuery, err = dns.stdError(dns.resolve(self.hostname, nil, cacheOnly))
+  local newQuery, err = dns.resolve(self.hostname, nil, cacheOnly)
 
   local oldQuery = self.lastQuery or {}
   local oldSorted = self.lastSorted or {}
