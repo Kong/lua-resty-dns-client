@@ -34,6 +34,7 @@ local math_fmod = math.fmod
 local math_random = math.random
 local table_remove = table.remove
 local table_insert = table.insert
+local table_concat = table.concat
 
 local empty = setmetatable({}, 
   {__newindex = function() error("The 'empty' table is read-only") end})
@@ -41,12 +42,11 @@ local empty = setmetatable({},
 -- resolver options
 local config
 
--- recursion level before erroring out
-local maxDnsRecursion = 20
--- ttl (in seconds) for an empty/error dns result
-local badTtl = 1
--- default order to query
-local orderValids = {"LAST", "SRV", "A", "AAAA", "CNAME"}
+
+local defined_hosts        -- hash table to lookup names originating from the hosts file
+local emptyTtl             -- ttl (in seconds) for empty and 'name error' (3) errors
+local badTtl               -- ttl (in seconds) for a other dns error results
+local orderValids = {"LAST", "SRV", "A", "AAAA", "CNAME"} -- default order to query
 for _,v in ipairs(orderValids) do orderValids[v:upper()] = v end
 
 -- create module table
@@ -129,10 +129,13 @@ local cacheinsert = function(entry, qname, qtype)
     for i = 2, #entry do
       ttl = math_min(ttl, entry[i].ttl)
     end
-  else
-    -- list-part is empty, so no entries to grab data from
-    -- (this is an empty response, or an error response)
+  elseif entry.errcode and entry.errcode ~= 3 then
+    -- an error, but no 'name error' (3)
     ttl = badTtl
+    key = qtype..":"..qname
+  else
+    -- empty or a 'name error' (3)
+    ttl = emptyTtl
     key = qtype..":"..qname
   end
  
@@ -246,7 +249,7 @@ local poolMaxRetry
 -- @usage -- config files to parse
 -- -- `hosts` and `resolvConf` can both be a filename, or a table with file-contents
 -- -- The contents of the `hosts` file will be inserted in the cache.
--- -- From `resolve_conf` the `nameservers`, `attempts` and `timeout` values will be used.
+-- -- From `resolv.conf` the `nameserver`, `search`, `ndots`, `attempts` and `timeout` values will be used.
 -- local hosts = {}  -- initialize without any blocking i/o
 -- local resolvConf = {}  -- initialize without any blocking i/o
 --
@@ -254,12 +257,28 @@ local poolMaxRetry
 -- -- 'last'; will try the last previously successful type for a hostname.
 -- local order = { "last", "SRV", "A", "AAAA", "CNAME" } 
 --
--- -- Cache ttl for empty and error responses
+-- -- Cache ttl for empty and 'name error' (3) responses
+-- local emptyTtl = 30.0   -- in seconds (can have fractions)
+--
+-- -- Cache ttl for other error responses
 -- local badTtl = 1.0   -- in seconds (can have fractions)
 --
+-- -- `ndots`, same as the `resolv.conf` option, if not given it is taken from
+-- -- `resolv.conf` or otherwise set to 1
+-- local ndots = 1
+--
+-- -- `search`, same as the `resolv.conf` option, if not given it is taken from
+-- -- `resolv.conf`, or set to the `domain` option, or no search is performed
+-- local search = {
+--   "mydomain.com",
+--   "site.domain.org",
+-- }
+-- 
 -- assert(client.init({
 --          hosts = hosts, 
 --          resolvConf = resolvConf,
+--          ndots = ndots,
+--          search = search,
 --          order = order,
 --          badTtl = badTtl,
 --        })
@@ -269,6 +288,7 @@ _M.init = function(options)
   local resolv, hosts, err
   options = options or {}
   cache = {}  -- clear cache on re-initialization
+  defined_hosts = {}  -- reset hosts hash table
   
   local order = options.order or orderValids
   typeOrder = {} -- clear existing upvalue
@@ -279,8 +299,10 @@ _M.init = function(options)
   end
   assert(#typeOrder > 0, "Invalid order list; cannot be empty")
   
+  
+  -- Deal with the `hosts` file
+  
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
-  local resolvconffile = options.resolvConf or utils.DEFAULT_RESOLV_CONF
 
   if ((type(hostsfile) == "string") and (fileexists(hostsfile)) or
      (type(hostsfile) == "table")) then
@@ -302,6 +324,7 @@ _M.init = function(options)
           class = 1,
           ttl = ttl,
         }})
+      defined_hosts[name..":".._M.TYPE_A] = true 
     end
     if address.ipv6 then 
       cacheinsert({{  -- NOTE: nested list! cache is a list of lists
@@ -311,8 +334,14 @@ _M.init = function(options)
           class = 1,
           ttl = ttl,
         }})
+      defined_hosts[name..":".._M.TYPE_AAAA] = true 
     end
   end
+
+
+  -- Deal with the `resolv.conf` file
+
+  local resolvconffile = options.resolvConf or utils.DEFAULT_RESOLV_CONF
 
   if ((type(resolvconffile) == "string") and (fileexists(resolvconffile)) or
      (type(resolvconffile) == "table")) then
@@ -322,6 +351,7 @@ _M.init = function(options)
     log(log_WARN, "Resolv.conf file not found: "..tostring(resolvconffile))  
     resolv = {}
   end
+  if not resolv.options then resolv.options = {} end
 
   if #(options.nameservers or {}) == 0 and resolv.nameserver then
     options.nameservers = {}
@@ -338,17 +368,25 @@ _M.init = function(options)
   end
   assert(#(options.nameservers or {}) > 0, "Invalid configuration, no dns servers found")
   
-  options.retrans = options.retrans or resolv.attempts or 5 -- 5 is openresty default
+  options.retrans = options.retrans or resolv.options.attempts or 5 -- 5 is openresty default
   
   if not options.timeout then
-    if resolv.timeout then
-      options.timeout = resolv.timeout * 1000
+    if resolv.options.timeout then
+      options.timeout = resolv.options.timeout * 1000
     else
       options.timeout = 2000  -- 2000 is openresty default
     end
   end
+
+  -- setup the search order
+  options.ndots = options.ndots or resolv.options.ndots or 1
+  options.search = options.search or resolv.search or { resolv.domain }
+  
+  
+  -- other options
   
   badTtl = options.badTtl or 1
+  emptyTtl = options.emptyTtl or 30
   
   -- options.no_recurse = -- not touching this one for now
   
@@ -425,7 +463,63 @@ local function synchronizedQuery(qname, r_opts, r, expect_ttl_0, count)
   end
 end
 
-local function check_ipv6(qname, r)
+local msg_mt = {
+  __tostring = function(self)
+    return table_concat(self, "/")
+  end
+}
+
+local try_list_mt = {
+  __tostring = function(self)
+    local l, i = {}, 0
+    for _, entry in ipairs(self) do
+      l[i+1] = entry.qname
+      l[i+2] = ":"
+      l[i+3] = entry.qtype
+      local m = tostring(entry.msg)
+      if m == "" then
+        i = i + 4
+      else
+        l[i+4] = " - "
+        l[i+5] = m
+        i = i + 6
+      end
+      l[i]="\n"
+    end
+    return table_concat(l)
+  end
+}
+
+-- adds a try to a list of tries.
+-- The list keeps track of all queries tried so far. The array part lists the
+-- order of attempts, whilst the `<qname>:<qtype>` key contains the index of that try.
+-- @param self (optional) the list to add to, if omitted a new one will be created and returned
+-- @param qname name being looked up
+-- @param qtype query type being done
+-- @param status (optional) message to be recorded
+-- @return the list
+local function try_add(self, qname, qtype, status)
+  self = self or setmetatable({}, try_list_mt)
+  local k = tostring(qname) .. ":" .. tostring(qtype)
+  local i = #self + 1
+  self[i] = {
+    qname = qname,
+    qtype = qtype,
+    msg = setmetatable({ status }, msg_mt),
+  }
+  self[k] = i
+  return self
+end
+
+-- adds a status to the last entry in the `msg` table.
+local function try_status(self, status)
+  local entry = self[#self]
+  local msg = entry.msg
+  msg[#msg + 1] = status
+  return self
+end
+
+local function check_ipv6(qname, r, try_list)
   local check = qname
   if check:sub(1,1) == ":" then check = "0"..check end
   if check:sub(-1,-1) == ":" then check = check.."0" end
@@ -440,11 +534,13 @@ local function check_ipv6(qname, r)
     -- not a valid IPv6 address
     -- return a "server error" as a bad IPv4 would be looked up on 
     -- the server and return a server error as well, for consistency.
+    try_status(try_list, "bad IPv6")
     record = {
       errcode = 3,
       errstr = "name error",
     }
   else
+    try_status(try_list, "IPv6")
     record = {{
       address = qname,
       type = _M.TYPE_AAAA,
@@ -454,10 +550,11 @@ local function check_ipv6(qname, r)
     }}
   end
   cacheinsert(record, qname, _M.TYPE_AAAA)
-  return record, nil, r
+  return record, nil, r, try_list
 end
 
-local function check_ipv4(qname, r)
+local function check_ipv4(qname, r, try_list)
+  try_status(try_list, "IPv4")
   local record = {{
     address = qname,
     type = _M.TYPE_A,
@@ -466,43 +563,51 @@ local function check_ipv4(qname, r)
     ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
   }}
   cacheinsert(record, qname, _M.TYPE_A)
-  return record, nil, r
+  return record, nil, r, try_list
 end
 
 -- will lookup in the cache, or alternatively query dns servers and populate the cache.
 -- only looks up the requested type.
--- @return query result + nil + r, or r + nil + error
-local function lookup(qname, r_opts, dnsCacheOnly, r)
+-- It will always add an entry for the requested name in the `try_list`.
+-- @return query result + nil + r + try_list, or nil + error + r + try_list
+local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
   local qtype = r_opts.qtype
+  
   local record, expect_ttl_0 = cachelookup(qname, qtype, dnsCacheOnly)
   if record then  -- cache hit
-    return record, nil, r
+    try_list = try_add(try_list, qname, qtype, "cache hit")
+    return record, nil, r, try_list
   end
+  try_list = try_add(try_list, qname, qtype)
   if not expect_ttl_0 then -- so no record, and no expected ttl, so not seen
     -- this one recently, this is the only time we do the expensive checks
     -- for ip addresses, as they will be inserted with a ttl of 10years and 
     -- hence never hit this code branch again
     if (qtype == _M.TYPE_AAAA) and qname:find(":") then
-      return check_ipv6(qname, r)    -- IPv6 or invalid
+      return check_ipv6(qname, r, try_list)    -- IPv6 or invalid
     end
     if (qtype == _M.TYPE_A) and qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
-      return check_ipv4(qname, r)    -- IPv4 address
+      return check_ipv4(qname, r, try_list)    -- IPv4 address
     end
   end
   if dnsCacheOnly then
     -- no active lookups allowed, so return error
     -- NOTE: this error response should never be cached, because it is caused 
     -- by the limited nginx context where we can't use sockets to do the lookup
+    try_status(try_list, "cache only lookup failed")
     return {
       errcode = 4,                                         -- standard is "server failure"
       errstr = "server failure, cache only lookup failed", -- extended description
-    }, nil, r
+    }, nil, r, try_list
   end
   
   -- not found in our cache, so perform query on dns servers
   local answers, err
   answers, err, r = synchronizedQuery(qname, r_opts, r, expect_ttl_0)
-  if not answers then return answers, err, r end
+  if not answers then
+    try_status(try_list, tostring(err))
+    return answers, err, r, try_list
+  end
 
   -- check our answers and store them in the cache
   -- eg. A, AAAA, SRV records may be accompanied by CNAME records
@@ -522,7 +627,7 @@ local function lookup(qname, r_opts, dnsCacheOnly, r)
     end
   end
   if next(others) then
-    for key, lst in pairs(others) do
+    for _, lst in pairs(others) do
       -- only store if not already cached (this is only a 'by-product')
       if not cachelookup(lst[1].name, lst[1].type) then
         cacheinsert(lst)
@@ -535,8 +640,76 @@ local function lookup(qname, r_opts, dnsCacheOnly, r)
   end
 
   -- now insert actual target record in cache
+  try_status(try_list, "queried")
   cacheinsert(answers, qname, qtype)
-  return answers, nil, r
+  return answers, nil, r, try_list
+end
+
+-- iterator that iterates over all names and types to look up based on the
+-- provided name, the `typeOrder`, `hosts`, `ndots` and `search` settings
+-- @param qname the name to look up
+-- @param qtype (optional) the type to look for, if omitted it will try the 
+-- full `typeOrder` list
+-- @return in order all the fully qualified names + types to look up
+local function search_iter(qname, qtype)
+  local _, dots = qname:gsub("%.", "")
+
+  local type_list, type_start, type_end
+  if qtype then
+    type_list = { qtype }
+    type_start = 0
+  else
+    type_list = typeOrder
+    type_start = 0   -- just start at the beginning
+  end
+  type_end = #type_list
+  
+  local i_type = type_start
+  local search = config.search
+  local i_search, search_start, search_end
+  local type_done = {}
+  local type_current
+  
+  return  function()
+            while true do
+              -- advance the type-loop
+              -- we need a while loop to make sure we skip LAST if already done
+              while (not type_current) or type_done[type_current] do
+                i_type = i_type + 1        -- advance type-loop
+                if i_type > type_end then
+                  return                   -- we reached the end, done iterating
+                end
+
+                type_current = type_list[i_type]
+                if type_current == _M.TYPE_LAST then
+                  type_current = cachegetsuccess(qname)
+                end
+
+                if type_current then
+                  -- configure the search-loop
+                  if (dots < config.ndots) and (not defined_hosts[qname..":"..type_current]) then
+                    search_start = 0
+                    search_end = #search + 1  -- +1: bare qname at the end
+                  else
+                    search_start = -1         -- -1: bare qname as first entry
+                    search_end = #search
+                  end
+                  i_search = search_start    -- reset the search-loop
+                end
+              end
+
+              -- advance the search-loop
+              i_search = i_search + 1
+              if i_search <= search_end then
+                -- got the next one, return full search name and type
+                local domain = search[i_search]
+                return domain and qname.."."..domain or qname, type_current
+              end
+
+              -- finished the search-loop for this type, move to next type
+              type_done[type_current] = true   -- mark current type as done
+            end
+          end
 end
 
 --- Resolve a name. 
@@ -572,108 +745,93 @@ end
 -- @param r (optional) dns resolver object to use, it will also be returned. 
 -- In case of multiple calls, this allows to reuse the resolver object 
 -- instead of recreating a new one on each call.
--- @return `list of records + nil + r`, or `nil + err + r`. The list can be empty if 
--- the name is present on the server, but has a different record type. Any 
--- dns server errors are returned in a hashtable (see 
--- [OpenResty docs](https://github.com/openresty/lua-resty-dns)).
-local function resolve(qname, r_opts, dnsCacheOnly, r, count)
-  if count and (count > maxDnsRecursion) then
-    return nil, "maximum dns recursion level reached", r
-  end
+-- @param try_list (optional) list of tries to add to
+-- @return `list of records + nil + r + try_list`, or `nil + err + r + try_list`.
+local function resolve(qname, r_opts, dnsCacheOnly, r, try_list)
+
   qname = qname:lower()
-  local opts
-  
+  local qtype = (r_opts or empty).qtype
+  local err, records
+  local opts = {}
   if r_opts then
-    if r_opts.qtype then
-      -- type was provided, just resolve it and return
-      return lookup(qname, r_opts, dnsCacheOnly, r)
-    end
-    -- options table, but no type, preserve options given
-    opts = {}
-    for k,v in pairs(r_opts) do
-      opts[k] = v
-    end
-  else
-    opts = {}
+    for k,v in pairs(r_opts) do opts[k] = v end  -- copy the options table
   end
   
   -- go try a sequence of record types
-  local last = cachegetsuccess(qname)  -- check if we have a previous succesful one
-  local records, err
-  local alreadyTried = { [_M.TYPE_LAST] = true }
-  for _, qtype in ipairs(typeOrder) do
-    if (qtype == _M.TYPE_LAST) and last then
-      qtype = last
-    end
-    if alreadyTried[qtype] then
-      -- already tried this one, based on 'last', no use in trying again
+  for try_name, try_type in search_iter(qname, qtype) do
+    
+    if try_list and try_list[try_name..":"..try_type] then
+      -- recursion, been here before
+      records = nil
+      err = "recursion detected"
+      -- insert an entry, error will be appended at the end of the search loop
+      try_add(try_list, try_name, try_type)
     else
-      opts.qtype = qtype
-      alreadyTried[qtype] = true
-      
-      records, err, r = lookup(qname, opts, dnsCacheOnly, r)
-      -- NOTE: if the name exists, but the type doesn't match, we get 
-      -- an empty table. Hence check the length!
-      if records and (#records > 0) then
-        if not dnsCacheOnly then
-          cachesetsuccess(qname, qtype) -- set last succesful type resolved
+      -- go look it up
+      opts.qtype = try_type
+      records, err, r, try_list = lookup(try_name, opts, dnsCacheOnly, r, try_list)
+    end
+    
+    if not records then
+      -- nothing to do, an error
+      -- fall through to the next entry in our search sequence
+    elseif records.errcode then
+      -- dns error: fall through to the next entry in our search sequence
+      err = ("dns server error: %s %s"):format(records.errcode, records.errstr)
+      records = nil
+    elseif #records == 0 then
+      -- empty: fall through to the next entry in our search sequence
+      err = "dns server error: 3 name error" -- ensure same error message as "not found"
+      records = nil
+    else
+      -- we got some records
+      if not dnsCacheOnly and not qtype then
+        -- only set the last succes, if we're not searching for a specific type
+        -- and we're not limited by a cache-only request
+        cachesetsuccess(qname, try_type) -- set last succesful type resolved
+        cachesetsuccess(try_name, try_type) -- set last succesful type resolved
+      end
+      if try_type == _M.TYPE_CNAME then
+        if try_type == qtype then
+          -- a CNAME was explicitly requested, so no dereferencing
+          return records, nil, r, try_list
         end
-        if qtype == _M.TYPE_CNAME then
-          -- dereference CNAME
-          opts.qtype = nil
-          return resolve(records[1].cname, opts, dnsCacheOnly, r, (count and count+1 or 1))
-        end
-        if qtype == _M.TYPE_SRV then
-          -- check for recursive records
-          local cnt = 0
-          for i, record in ipairs(records) do
-            if record.target == qname then
-              -- recursive record, pointing to itself
-              cnt = cnt + 1
-            end
-            if cnt == #records then
-              -- fully recursive SRV record, specific Kubernetes problem
-              -- which generates a SRV record for each host, pointing to 
-              -- itself, hence causing a recursion loop.
-              -- So we delete the record, set an error, so it falls through
-              -- and retries other record types in the main loop here.
-              records = nil
-              err = "recursive SRV record"
-            end
+        -- dereference CNAME
+        opts.qtype = nil
+        try_status(try_list, "dereferencing")
+        return resolve(records[1].cname, opts, dnsCacheOnly, r, try_list)
+      end
+      if qtype ~= _M.TYPE_SRV and try_type == _M.TYPE_SRV then
+        -- check for recursive records, but NOT when requesting SRV explicitly
+        local cnt = 0
+        for _, record in ipairs(records) do
+          if record.target == try_name then
+            -- recursive record, pointing to itself
+            cnt = cnt + 1
           end
         end
-        if records and qtype ~= _M.TYPE_CNAME then
-          return records, nil, r
+        if cnt == #records then
+          -- fully recursive SRV record, specific Kubernetes problem
+          -- which generates a SRV record for each host, pointing to 
+          -- itself, hence causing a recursion loop.
+          -- So we delete the record, set an error, so it falls through
+          -- and retries other record types in the main loop here.
+          records = nil
+          err = "recursion detected"
         end
       end
+      if records then
+        return records, nil, r, try_list
+      end
     end
+    -- we had some error, record it in the status list
+    try_status(try_list, err)
   end
   -- we failed, clear cache and return last error
   if not dnsCacheOnly then
     cachesetsuccess(qname, nil)
   end
-  return records, err, r
-end
-
---- Standardizes the `resolve` output to more standard Lua errors.
--- Both `nil+error+r` and successful lookups are passed through.
--- A server error table is returned as `nil+error+r` (where `error` is a string 
--- extracted from the server error table).
--- An empty response is returned as `response+error+r` (where `error` is 
--- 'dns query returned no results').
--- @function stdError
--- @return a valid (non-empty) query result + nil + r, or nil + error + r
--- @usage
--- local result, err, r = client.stdError(client.resolve("my.hostname.com"))
--- 
--- if err then error(err) end         --> only passes if there is at least 1 result returned
--- if not result then error(err) end  --> does not error on an empty result table
-local function stdError(result, err, r)
-  if not result then return result, err, r end
-  assert(type(result) == "table", "Expected table or nil")
-  if result.errcode then return nil, ("dns server error; %s %s"):format(result.errcode, result.errstr), r end
-  if #result == 0 then return result, "dns query returned no results", r end
-  return result, nil, r
+  return nil, err, r, try_list
 end
 
 -- returns the index of the record next up in the round-robin scheme.
@@ -841,22 +999,24 @@ end
 -- @param r (optional) dns resolver object to use, it will also be returned. 
 -- In case of multiple calls, this allows to reuse the resolver object instead 
 -- of recreating a new one on each call.
--- @return `ip address + port + r`, or in case of an error `nil + error + r`
-local function toip(qname, port, dnsCacheOnly, r)
+-- @param try_list (optional) list of tries to add to
+-- @return `ip address + port + r + try_list`, or in case of an error `nil + error + r + try_list`
+local function toip(qname, port, dnsCacheOnly, r, try_list)
   local rec, err
-  rec, err, r = stdError(resolve(qname, nil, dnsCacheOnly, r))
+  rec, err, r, try_list = resolve(qname, nil, dnsCacheOnly, r, try_list)
   if err then
-    return nil, err, r
+    return nil, err, r, try_list
   end
 
   if rec[1].type == _M.TYPE_SRV then
     local entry = rec[roundRobinW(rec)]
     -- our SRV entry might still contain a hostname, so recurse, with found port number
     local srvport = (entry.port ~= 0 and entry.port) or port -- discard port if it is 0
-    return toip(entry.target, srvport, dnsCacheOnly, r)
+    try_status(try_list, "dereferencing SRV")
+    return toip(entry.target, srvport, dnsCacheOnly, r, try_list)
   else
     -- must be A or AAAA
-    return rec[roundRobin(rec)].address, port, r
+    return rec[roundRobin(rec)].address, port, r, try_list
   end
 end
 
@@ -915,13 +1075,13 @@ end
 -- export local functions
 _M.resolve = resolve
 _M.toip = toip
-_M.stdError = stdError
 _M.connect = connect
 _M.setpeername = setpeername
 
--- export the local cache in case we're testing
+-- export the locals in case we're testing
 if _TEST then 
   _M.getcache = function() return cache end 
+  _M._search_iter = search_iter -- export as different name!
 end 
 
 return _M

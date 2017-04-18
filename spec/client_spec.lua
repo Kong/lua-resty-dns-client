@@ -2,6 +2,11 @@ local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname
 local pretty = require("pl.pretty").write
 
+
+-- empty records and not found errors should be identical, hence we
+-- define a constant for that error message
+local NOT_FOUND_ERROR = "dns server error: 3 name error"
+
 local gettime, sleep
 if ngx then
   gettime = ngx.now
@@ -75,6 +80,223 @@ describe("DNS client", function()
     end)
 
   end)
+
+
+  describe("iterating searches", function()
+
+    describe("without type", function()
+      it("works with a 'search' option", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "search one.com two.com",
+              "options ndots:1",
+            }
+          }))
+        local list = {}
+        for qname, qtype in client._search_iter("host", nil) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+            'host.one.com:33',
+            'host.two.com:33',
+            'host:33',
+            'host.one.com:1',
+            'host.two.com:1',
+            'host:1',
+            'host.one.com:28',
+            'host.two.com:28',
+            'host:28',
+            'host.one.com:5',
+            'host.two.com:5',
+            'host:5',
+          }, list)
+      end)
+
+      it("works with a 'domain' option", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "domain local.domain.com",
+              "options ndots:1",
+            }
+          }))
+        local list = {}
+        for qname, qtype in client._search_iter("host", nil) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+          'host.local.domain.com:33',
+          'host:33',
+          'host.local.domain.com:1',
+          'host:1',
+          'host.local.domain.com:28',
+          'host:28',
+          'host.local.domain.com:5',
+          'host:5',
+        }, list)
+      end)
+
+      it("handles last successful type", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "search one.com two.com",
+              "options ndots:1",
+            }
+          }))
+        -- insert a last successful type
+        client.getcache()["host"] = client.TYPE_CNAME
+        local list = {}
+        for qname, qtype in client._search_iter("host", nil) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+            'host.one.com:5',
+            'host.two.com:5',
+            'host:5',
+            'host.one.com:33',
+            'host.two.com:33',
+            'host:33',
+            'host.one.com:1',
+            'host.two.com:1',
+            'host:1',
+            'host.one.com:28',
+            'host.two.com:28',
+            'host:28',
+          }, list)
+      end)
+
+    end)
+
+    describe("with type", function()
+      it("works with a 'search' option", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "search one.com two.com",
+              "options ndots:1",
+            }
+          }))
+        local list = {}
+        -- search using IPv6 type
+        for qname, qtype in client._search_iter("host", client.TYPE_AAAA) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+            'host.one.com:28',
+            'host.two.com:28',
+            'host:28',
+          }, list)
+      end)
+
+      it("works with a 'domain' option", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "domain local.domain.com",
+              "options ndots:1",
+            }
+          }))
+        local list = {}
+        -- search using IPv6 type
+        for qname, qtype in client._search_iter("host", client.TYPE_AAAA) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+          'host.local.domain.com:28',
+          'host:28',
+        }, list)
+      end)
+
+      it("ignores last successful type", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "search one.com two.com",
+              "options ndots:1",
+            }
+          }))
+        -- insert a last successful type
+        client.getcache()["host"] = client.TYPE_CNAME
+        local list = {}
+        -- search using IPv6 type
+        for qname, qtype in client._search_iter("host", client.TYPE_AAAA) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+            'host.one.com:28',
+            'host.two.com:28',
+            'host:28',
+          }, list)
+      end)
+
+    end)
+
+    it("honours 'ndots'", function()
+      assert(client.init({
+          resolvConf = {
+            "nameserver 8.8.8.8",
+            "search one.com two.com",
+            "options ndots:1",
+          }
+        }))
+      local list = {}
+      -- now use a name with a dot in it
+      for qname, qtype in client._search_iter("local.host", nil) do
+        table.insert(list, tostring(qname)..":"..tostring(qtype))
+      end
+      assert.same({
+          'local.host:33',
+          'local.host.one.com:33',
+          'local.host.two.com:33',
+          'local.host:1',
+          'local.host.one.com:1',
+          'local.host.two.com:1',
+          'local.host:28',
+          'local.host.one.com:28',
+          'local.host.two.com:28',
+          'local.host:5',
+          'local.host.one.com:5',
+          'local.host.two.com:5',
+        }, list)
+    end)
+
+    it("hosts file always resolves first, overriding `ndots`", function()
+      assert(client.init({
+          resolvConf = {
+            "nameserver 8.8.8.8",
+            "search one.com two.com",
+            "options ndots:1",
+          },
+          hosts = {
+            "127.0.0.1 host",
+            "::1 host",
+          },
+
+        }))
+      local list = {}
+      for qname, qtype in client._search_iter("host", nil) do
+        table.insert(list, tostring(qname)..":"..tostring(qtype))
+      end
+      assert.same({
+          'host.one.com:33',
+          'host.two.com:33',
+          'host:33',
+          'host:1',
+          'host.one.com:1',
+          'host.two.com:1',
+          'host:28',
+          'host.one.com:28',
+          'host.two.com:28',
+          'host.one.com:5',
+          'host.two.com:5',
+          'host:5',
+        }, list)
+    end)
+
+  end)
+
 
   it("fetching a TXT record", function()
     assert(client.init())
@@ -241,24 +463,34 @@ describe("DNS client", function()
   end)
 
   it("fetching non-type-matching records", function()
-    assert(client.init())
+    assert(client.init({
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
 
     local host = "srvtest.thijsschreijer.nl"
     local typ = client.TYPE_A   --> the entry is SRV not A
 
-    local answers = assert(client.resolve(host, {qtype = typ}))
-    assert.are.equal(#answers, 0)  -- returns empty table
+    local answers, err, r, history = client.resolve(host, {qtype = typ})
+    assert.is_nil(answers)  -- returns nil
+    assert.equal(NOT_FOUND_ERROR, err)
   end)
 
   it("fetching non-existing records", function()
-    assert(client.init())
+    assert(client.init({
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
 
     local host = "IsNotHere.thijsschreijer.nl"
 
-    local answers = assert(client.resolve(host))
-    assert.are.equal(#answers, 0)  -- returns server error table
-    assert.is.not_nil(answers.errcode)
-    assert.is.not_nil(answers.errstr)    
+    local answers, err, r, history = client.resolve(host)
+    assert.is_nil(answers)
+    assert.equal(NOT_FOUND_ERROR, err)    
   end)
 
   it("fetching IPv4 address", function()
@@ -284,17 +516,23 @@ describe("DNS client", function()
   end)
 
   it("fetching invalid IPv6 address", function()
-    assert(client.init())
+    assert(client.init({
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
 
     local host = "1::2:3::4"  -- 2x double colons
 
-    local answers = assert(client.resolve(host))
-    assert.are.equal(#answers, 0)  -- returns server error table
-    assert.are.equal(3, answers.errcode)
-    assert.are.equal("name error", answers.errstr)    
+    local answers, err, r, history = client.resolve(host)
+    assert.is_nil(answers)
+    assert.equal(NOT_FOUND_ERROR, err)
+    assert(tostring(history):find("bad IPv6", nil, true))
   end)
   
   it("fetching records from cache only, expired and ttl = 0",function()
+    assert(client.init())
     local expired_entry = {
       {
         type = client.TYPE_A,
@@ -319,7 +557,12 @@ describe("DNS client", function()
   end)
 
   it("recursive lookups failure", function()
-    assert(client.init())
+    assert(client.init({
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
     local entry1 = {
       {
         type = client.TYPE_CNAME,
@@ -347,9 +590,9 @@ describe("DNS client", function()
     client.getcache()[entry2[1].type..":"..entry2[1].name] = entry2
 
     -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
-    local result, err = client.resolve("hello.world", nil, true)
+    local result, err, r, history = client.resolve("hello.world", nil, true)
     assert.is_nil(result)
-    assert.are.equal("maximum dns recursion level reached", err)
+    assert.are.equal("recursion detected", err)
   end)
 
   it("resolving from the /etc/hosts file", function()
@@ -461,7 +704,7 @@ describe("DNS client", function()
       -- repeated lookups, as the first will simply serve the first entry
       -- and the only second will setup the round-robin scheme, this is 
       -- specific for the SRV record type, due to the weights
-      for i = 1 , 10 do
+      for _ = 1 , 10 do
         local ip, port = assert(client.toip(host))
         assert.equal("1.2.3.4", ip)
         assert.equal(321, port)
@@ -503,14 +746,19 @@ describe("DNS client", function()
       assert.is_string(ip)
       assert.is_nil(port)
     end)
-    it("recursive SRV pointing to itself",function()
-      assert(client.init())
-      local ip, record, port, host 
+    it("#only recursive SRV pointing to itself",function()
+      assert(client.init({
+            resolvConf = {
+              -- resolv.conf without `search` and `domain` options
+              "nameserver 8.8.8.8",
+            },
+          }))
+      local ip, record, port, host, r, history
       host = "srvrecurse.thijsschreijer.nl"
       
       -- resolve SRV specific should return the record including its
       -- recursive entry
-      record, err = client.resolve(host, { qtype = client.TYPE_SRV })
+      record, err, r, history = client.resolve(host, { qtype = client.TYPE_SRV })
       assert.is_table(record)
       assert.equal(1, #record)
       assert.equal(host, record[1].target)
@@ -519,7 +767,7 @@ describe("DNS client", function()
       
       -- default order, SRV, A; the recursive SRV record fails, and it falls
       -- back to the IP4 address
-      ip, port = client.toip(host)
+      ip, port, r, history = client.toip(host)
       assert.is_string(ip)
       assert.is_equal("10.0.0.44", ip)
       assert.is_nil(port)
@@ -603,7 +851,12 @@ describe("DNS client", function()
       assert.is.string(port)  -- error message
     end)
     it("recursive lookups failure", function()
-      assert(client.init())
+      assert(client.init({
+            resolvConf = {
+              -- resolv.conf without `search` and `domain` options
+              "nameserver 8.8.8.8",
+            },
+          }))
       local entry1 = {
         {
           type = client.TYPE_CNAME,
@@ -631,9 +884,9 @@ describe("DNS client", function()
       client.getcache()[entry2[1].type..":"..entry2[1].name] = entry2
 
       -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
-      local ip, port = client.toip("hello.world", 123, true)
+      local ip, port, r, history = client.toip("hello.world", 123, true)
       assert.is_nil(ip)
-      assert.are.equal("maximum dns recursion level reached", port)
+      assert.are.equal("recursion detected", port)
     end)
     it("passing through the resolver-object", function()
       assert(client.init())
@@ -668,7 +921,12 @@ describe("DNS client", function()
     local ip = "1.4.2.3"
     local name = "thijsschreijer.nl"
     local prep = function(ttl, expired)
-      assert(client.init())
+      assert(client.init({
+            resolvConf = {
+              -- resolv.conf without `search` and `domain` options
+              "nameserver 8.8.8.8",
+            },
+          }))
       if expired then
         expired = (-ttl - 2) -- expired by 2 seconds
       else
@@ -768,69 +1026,88 @@ describe("DNS client", function()
     end)
   end)
 
-  describe("stdError() function", function()
-    it("Tests a valid record passed through", function()
-      local rec = { { address = "1.2.3.4" } }
-      local res, err = client.stdError(rec, nil)
-      assert.are.equal(rec, res)
-      assert.is_nil(err)
-    end)
-    it("server error returned as Lua error", function()
-      local rec = {
-        errcode = 3,
-        errstr = "name error",
-      }
-      local res, err = client.stdError(rec, nil)
-      assert.are.equal(err, "dns server error; 3 name error")
-      assert.is_nil(res)
-    end)
-    it("Lua error passed through", function()
-      local rec = "this is an error"
-      local res, err = client.stdError(nil, rec)
-      assert.are.equal(rec, err)
-      assert.is_nil(res)
-    end)
-    it("empty response returned with message", function()
-      local rec = {}
-      local res, err = client.stdError(rec, nil)
-      assert.are.equal(rec, res)
-      assert.are.equal(err, "dns query returned no results")
-    end)
-  end)
-  
-  it("verifies ttl and caching of errors and empty responses", function()
+  it("verifies ttl and caching of empty responses and name errors", function()
     --empty/error responses should be cached for a configurable time
-    local badTtl = 0.1
-    assert(client.init({badTtl = badTtl}))
+    local emptyTtl = 0.1
+    assert(client.init({
+          emptyTtl = emptyTtl,
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
 
     -- do a query so we get a resolver object to spy on
-    local _, _, r = client.toip("google.com", 123, false)
+    local _, _, r, history = client.toip("google.com", 123, false)
     spy.on(r, "query")
     
+    -- make a first request, populating the cache
     local res1, res2, err1, err2
-    res1, err1, r = client.resolve(
+    res1, err1, r, history = client.resolve(
       "really.reall.really.does.not.exist.mashape.com", 
       { qtype = client.TYPE_A }, 
       false, r)
     assert.spy(r.query).was.called(1)
-    assert.equal(3, res1.errcode)
+    assert.equal(NOT_FOUND_ERROR, err1)
     
-    res2, err2, r = client.resolve(
+    -- make a second request, result from cache, spy still called only once
+    res2, err2, r, history = client.resolve(
       "really.reall.really.does.not.exist.mashape.com", 
       { qtype = client.TYPE_A }, 
       false, r)
     assert.are.equal(res1, res2)
     assert.spy(r.query).was.called(1)
     
-    -- wait for expiry of ttl and retry
-    sleep(badTtl+0.1)
+    -- wait for expiry of ttl and retry, spy should be called twice now
+    sleep(emptyTtl+0.1)
     res2, err2, r = client.resolve(
       "really.reall.really.does.not.exist.mashape.com", 
       { qtype = client.TYPE_A }, 
       false, r)
-    assert.are.Not.equal(res1, res2)
     assert.spy(r.query).was.called(2) 
-  
+  end)
+
+  it("verifies ttl and caching of (other) dns errors", function()
+    --empty responses should be cached for a configurable time
+    local badTtl = 0.1
+    assert(client.init({
+          badTtl = badTtl,
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
+
+    -- do a query so we get a resolver object to spy on
+    local _, _, r, history = client.toip("google.com", 123, false)
+    r.query = function() return { errcode = 5, errstr = "refused" } end
+    spy.on(r, "query")
+    
+    -- initial request to populate the cache
+    local res1, res2, err1, err2
+    res1, err1, r = client.resolve(
+      "realname.com", 
+      { qtype = client.TYPE_A }, 
+      false, r)
+    assert.spy(r.query).was.called(1)
+    assert.equal("dns server error: 5 refused", err1)
+    
+    -- try again, from cache, spu should still be called only once
+    res2, err2, r = client.resolve(
+      "realname.com", 
+      { qtype = client.TYPE_A }, 
+      false, r)
+    assert.are.equal(err1, err2)
+    assert.spy(r.query).was.called(1)
+    
+    -- wait for expiry of ttl and retry, spy should be called twice now
+    sleep(badTtl+0.1)
+    res2, err2, r = client.resolve(
+      "realname.com", 
+      { qtype = client.TYPE_A }, 
+      false, r)
+    assert.are.equal(err1, err2)
+    assert.spy(r.query).was.called(2)
   end)
 
   describe("verifies the polling of dns queries, retries, and wait times", function()
@@ -940,7 +1217,14 @@ describe("DNS client", function()
 
     it("timeout while waiting", function()
       -- basically the local function _synchronized_query
-      assert(client.init({timeout = 2000, retrans = 1, }))
+      assert(client.init({
+        timeout = 2000,
+        retrans = 1,
+        resolvConf = {
+          -- resolv.conf without `search` and `domain` options
+          "nameserver 8.8.8.8",
+        },
+      }))
       
       -- insert a stub thats waits and returns a fixed record
       local name = "thijsschreijer.nl"
