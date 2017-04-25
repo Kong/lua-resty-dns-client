@@ -45,7 +45,7 @@ describe("DNS client", function()
       assert.has.no.error(function() client.init( {nameservers = {} } ) end)
 
       assert.has.error(function() client.init( {nameservers = {}, resolvConf = {} } ) end,
-        "Invalid configuration, no dns servers found")    
+        "Invalid configuration, no valid nameservers found")    
     end)
 
     it("fails with order being empty", function()

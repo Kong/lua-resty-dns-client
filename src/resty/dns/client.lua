@@ -253,6 +253,9 @@ local poolMaxRetry
 -- local hosts = {}  -- initialize without any blocking i/o
 -- local resolvConf = {}  -- initialize without any blocking i/o
 --
+-- -- when getting nameservers from `resolv.conf`, get ipv6 servers?
+-- local enable_ipv6 = false
+--
 -- -- Order in which to try different dns record types when resolving
 -- -- 'last'; will try the last previously successful type for a hostname.
 -- local order = { "last", "SRV", "A", "AAAA", "CNAME" } 
@@ -281,6 +284,7 @@ local poolMaxRetry
 --          search = search,
 --          order = order,
 --          badTtl = badTtl,
+--          enable_ipv6 = enable_ipv6,
 --        })
 -- )
 _M.init = function(options)
@@ -357,16 +361,19 @@ _M.init = function(options)
     options.nameservers = {}
     -- some systems support port numbers in nameserver entries, so must parse those
     for i, address in ipairs(resolv.nameserver) do
-      local ip, port = address:match("^([^:]+)%:*(%d*)$")
-      port = tonumber(port)
-      if port then
-        options.nameservers[i] = { ip, port }
+      local ip, port, t = utils.parseHostname(address)
+      if t == "ipv6" and not options.enable_ipv6 then
+        -- should not add this one
       else
-        options.nameservers[i] = ip
+        if port then
+          options.nameservers[#options.nameservers+1] = { ip, port }
+        else
+          options.nameservers[#options.nameservers+1] = ip
+        end
       end
     end
   end
-  assert(#(options.nameservers or {}) > 0, "Invalid configuration, no dns servers found")
+  assert(#(options.nameservers or {}) > 0, "Invalid configuration, no valid nameservers found")
   
   options.retrans = options.retrans or resolv.options.attempts or 5 -- 5 is openresty default
   

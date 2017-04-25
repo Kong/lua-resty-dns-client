@@ -302,4 +302,24 @@ _M.hostnameType = function(name)
   return "name"
 end
 
+--- parses a hostname with an optional port.
+-- Does not validate the name/ip.
+-- @param name the string to check (this may contain a port number)
+-- @return `name/ip` + `port (or nil)` + `type` (one of: `"ipv4"`, `"ipv6"`, or `"name"`)
+_M.parseHostname = function(name)
+  local t = _M.hostnameType(name)
+  if t == "ipv4" then
+    local ip, port = name:match("^([^:]+)%:*(%d*)$")
+    return ip, tonumber(port), t
+  elseif t == "ipv6" then
+    if name:match("%[") then  -- brackets, so possibly a port
+      local ip, port = name:match("^%[([^%]]+)%]*%:*(%d*)$")
+      return "["..ip.."]", tonumber(port), t
+    end
+    return "["..name.."]", nil, t  -- no brackets also means no port
+  end
+  local host, port = name:match("^(.-)%:*(%d*)$")
+  return host, tonumber(port), t
+end
+
 return _M

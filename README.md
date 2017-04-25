@@ -35,7 +35,7 @@ use the `rbusted` script.
 History
 =======
 
-### unreleased (xx-xxx-2017)
+### 0.5.0 (25-Apr-2017) implement SEARCH and NDOTS
 
 - Removed: BREAKING! stdError function removed.
 - Added: implemented the `search` and `ndots` options.
@@ -45,6 +45,9 @@ History
   the list of tried names/types/results.
 - Fix: timeout and retrans options from `resolv.conf` were ignored by the
   `client` module.
+- Fix: nameservers with an ipv6 address would not be used properly. Also
+  added a flag `enable_ipv6` (default == `false`) to enable the useage of
+  ipv6 nameservers.
 
 ### 0.4.1 (21-Apr-2017) Bugfix
 

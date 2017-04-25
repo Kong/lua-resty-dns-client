@@ -133,7 +133,7 @@ describe("testing parsing 'resolv.conf'", function()
 domain myservice.com
 
 nameserver 8.8.8.8 
-nameserver 8.8.4.4 ; and a comment here
+nameserver 2602:306:bca8:1ac0::1 ; and a comment here
 nameserver 8.8.8.8:1234 ; this one has a port number (limited systems support this)
 nameserver 1.2.3.4 ; this one is 4th, so should be ignored
 
@@ -163,7 +163,7 @@ options use-vc
     local resolv, err = dnsutils.parseResolvConf(file)
     assert.is.Nil(err)
     assert.is.equal("myservice.com", resolv.domain)
-    assert.is.same({ "8.8.8.8", "8.8.4.4", "8.8.8.8:1234" }, resolv.nameserver)
+    assert.is.same({ "8.8.8.8", "2602:306:bca8:1ac0::1", "8.8.8.8:1234" }, resolv.nameserver)
     assert.is.same({ "list1", "list2" }, resolv.sortlist)
     assert.is.same({ ndots = 2, timeout = 3, attempts = 4, debug = true, rotate = true, 
         ["no-check-names"] = true, inet6 = true, ["ip6-bytestring"] = true,
@@ -335,5 +335,24 @@ describe("hostnameType", function()
     assert.are.same("ipv6", dnsutils.hostnameType("::1"))
     assert.are.same("ipv6", dnsutils.hostnameType("2345::6789"))
     assert.are.same("ipv6", dnsutils.hostnameType("0001:0001:0001:0001:0001:0001:0001:0001"))
+  end)
+end)
+
+describe("parseHostname", function()
+  it("parses valid IPv4 address types", function()
+    assert.are.same({"123.123.123.123", nil, "ipv4"}, {dnsutils.parseHostname("123.123.123.123")})
+    assert.are.same({"1.2.3.4", 567, "ipv4"}, {dnsutils.parseHostname("1.2.3.4:567")})
+  end)
+  it("parses valid IPv6 address types", function()
+    assert.are.same({"[::1]", nil, "ipv6"}, {dnsutils.parseHostname("::1")})
+    assert.are.same({"[::1]", nil, "ipv6"}, {dnsutils.parseHostname("[::1]")})
+    assert.are.same({"[::1]", 123, "ipv6"}, {dnsutils.parseHostname("[::1]:123")})
+    assert.are.same({"[2345::6789]", nil, "ipv6"}, {dnsutils.parseHostname("2345::6789")})
+    assert.are.same({"[2345::6789]", nil, "ipv6"}, {dnsutils.parseHostname("[2345::6789]")})
+    assert.are.same({"[2345::6789]", 321, "ipv6"}, {dnsutils.parseHostname("[2345::6789]:321")})
+  end)
+  it("parses valid name address types", function()
+    assert.are.same({"somename", nil, "name"}, {dnsutils.parseHostname("somename")})
+    assert.are.same({"somename", 123, "name"}, {dnsutils.parseHostname("somename:123")})
   end)
 end)

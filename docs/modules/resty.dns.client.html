@@ -93,15 +93,11 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 	<td class="summary">Initialize the client.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#resolve">resolve (qname, r_opts, dnsCacheOnly, r)</a></td>
+	<td class="name" nowrap><a href="#resolve">resolve (qname, r_opts, dnsCacheOnly, r, try_list)</a></td>
 	<td class="summary">Resolve a name.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#stdError">stdError ()</a></td>
-	<td class="summary">Standardizes the <a href="../modules/resty.dns.client.html#resolve">resolve</a> output to more standard Lua errors.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#toip">toip (qname, port, dnsCacheOnly, r)</a></td>
+	<td class="name" nowrap><a href="#toip">toip (qname, port, dnsCacheOnly, r, try_list)</a></td>
 	<td class="summary">Resolves to an IP and port number.</td>
 	</tr>
 </table>
@@ -221,22 +217,42 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
         <pre class="example"><span class="comment">-- config files to parse
 </span><span class="comment">-- <code>hosts</code> and <code>resolvConf</code> can both be a filename, or a table with file-contents
 </span><span class="comment">-- The contents of the <code>hosts</code> file will be inserted in the cache.
-</span><span class="comment">-- From <code>resolve_conf</code> the <code>nameservers</code>, <code>attempts</code> and <code>timeout</code> values will be used.
+</span><span class="comment">-- From <code>resolv.conf</code> the <code>nameserver</code>, <code>search</code>, <code>ndots</code>, <code>attempts</code> and <code>timeout</code> values will be used.
 </span><span class="keyword">local</span> hosts = {}  <span class="comment">-- initialize without any blocking i/o
 </span><span class="keyword">local</span> resolvConf = {}  <span class="comment">-- initialize without any blocking i/o
 </span>
+<span class="comment">-- when getting nameservers from <code>resolv.conf</code>, get ipv6 servers?
+</span><span class="keyword">local</span> enable_ipv6 = <span class="keyword">false</span>
+
 <span class="comment">-- Order in which to try different dns record types when resolving
 </span><span class="comment">-- 'last'; will try the last previously successful type for a hostname.
 </span><span class="keyword">local</span> order = { <span class="string">"last"</span>, <span class="string">"SRV"</span>, <span class="string">"A"</span>, <span class="string">"AAAA"</span>, <span class="string">"CNAME"</span> }
 
-<span class="comment">-- Cache ttl for empty and error responses
+<span class="comment">-- Cache ttl for empty and 'name error' (3) responses
+</span><span class="keyword">local</span> emptyTtl = <span class="number">30.0</span>   <span class="comment">-- in seconds (can have fractions)
+</span>
+<span class="comment">-- Cache ttl for other error responses
 </span><span class="keyword">local</span> badTtl = <span class="number">1.0</span>   <span class="comment">-- in seconds (can have fractions)
 </span>
+<span class="comment">-- <code>ndots</code>, same as the <code>resolv.conf</code> option, if not given it is taken from
+</span><span class="comment">-- <code>resolv.conf</code> or otherwise set to 1
+</span><span class="keyword">local</span> ndots = <span class="number">1</span>
+
+<span class="comment">-- <code>search</code>, same as the <code>resolv.conf</code> option, if not given it is taken from
+</span><span class="comment">-- <code>resolv.conf</code>, or set to the <code>domain</code> option, or no search is performed
+</span><span class="keyword">local</span> search = {
+  <span class="string">"mydomain.com"</span>,
+  <span class="string">"site.domain.org"</span>,
+}
+
 <span class="global">assert</span>(client.init({
          hosts = hosts,
          resolvConf = resolvConf,
+         ndots = ndots,
+         search = search,
          order = order,
          badTtl = badTtl,
+         enable_ipv6 = enable_ipv6,
        })
 )</pre>
     </ul>
@@ -244,7 +260,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </dd>
     <dt>
     <a name = "resolve"></a>
-    <strong>resolve (qname, r_opts, dnsCacheOnly, r)</strong>
+    <strong>resolve (qname, r_opts, dnsCacheOnly, r, try_list)</strong>
     </dt>
     <dd>
     <p>Resolve a name.<br/>
@@ -296,55 +312,24 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  In case of multiple calls, this allows to reuse the resolver object
  instead of recreating a new one on each call.
         </li>
+        <li><span class="parameter">try_list</span>
+         (optional) list of tries to add to
+        </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-         <code>list of records + nil + r</code>, or <code>nil + err + r</code>. The list can be empty if
- the name is present on the server, but has a different record type. Any
- dns server errors are returned in a hashtable (see
- <a href="https://github.com/openresty/lua-resty-dns">OpenResty docs</a>).
+        <code>list of records + nil + r + try_list</code>, or <code>nil + err + r + try_list</code>.
     </ol>
 
 
 
-
-</dd>
-    <dt>
-    <a name = "stdError"></a>
-    <strong>stdError ()</strong>
-    </dt>
-    <dd>
-    Standardizes the <a href="../modules/resty.dns.client.html#resolve">resolve</a> output to more standard Lua errors.
- Both <code>nil+error+r</code> and successful lookups are passed through.
- A server error table is returned as <code>nil+error+r</code> (where <a href="https://www.lua.org/manual/5.1/manual.html#pdf-error">error</a> is a string
- extracted from the server error table).
- An empty response is returned as <code>response+error+r</code> (where <a href="https://www.lua.org/manual/5.1/manual.html#pdf-error">error</a> is
- &lsquo;dns query returned no results&rsquo;).
-
-
-
-    <h3>Returns:</h3>
-    <ol>
-
-        a valid (non-empty) query result + nil + r, or nil + error + r
-    </ol>
-
-
-
-    <h3>Usage:</h3>
-    <ul>
-        <pre class="example"><span class="keyword">local</span> result, err, r = client.stdError(client.resolve(<span class="string">"my.hostname.com"</span>))
-
-<span class="keyword">if</span> err <span class="keyword">then</span> <span class="global">error</span>(err) <span class="keyword">end</span>         <span class="comment">--&gt; only passes if there is at least 1 result returned
-</span><span class="keyword">if</span> <span class="keyword">not</span> result <span class="keyword">then</span> <span class="global">error</span>(err) <span class="keyword">end</span>  <span class="comment">--&gt; does not error on an empty result table</span></pre>
-    </ul>
 
 </dd>
     <dt>
     <a name = "toip"></a>
-    <strong>toip (qname, port, dnsCacheOnly, r)</strong>
+    <strong>toip (qname, port, dnsCacheOnly, r, try_list)</strong>
     </dt>
     <dd>
     <p>Resolves to an IP and port number.
@@ -405,12 +390,15 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  In case of multiple calls, this allows to reuse the resolver object instead
  of recreating a new one on each call.
         </li>
+        <li><span class="parameter">try_list</span>
+         (optional) list of tries to add to
+        </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
 
-        <code>ip address + port + r</code>, or in case of an error <code>nil + error + r</code>
+        <code>ip address + port + r + try_list</code>, or in case of an error <code>nil + error + r + try_list</code>
     </ol>
 
 
@@ -500,7 +488,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2017-04-21 10:40:30 </i>
+<i style="float:right;">Last updated 2017-04-26 02:23:12 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
