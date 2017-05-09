@@ -25,8 +25,9 @@ local semaphore = require("ngx.semaphore").new
 
 local resolver = require("resty.dns.resolver")
 local time = ngx.now
-local log = ngx.log
+local ngx_log = ngx.log
 local log_WARN = ngx.WARN
+local log_DEBUG = ngx.DEBUG
 
 local math_min = math.min
 local math_max = math.max
@@ -34,6 +35,7 @@ local math_fmod = math.fmod
 local math_random = math.random
 local table_remove = table.remove
 local table_insert = table.insert
+local string_lower = string.lower
 
 local empty = setmetatable({}, 
   {__newindex = function() error("The 'empty' table is read-only") end})
@@ -59,6 +61,11 @@ for k,v in pairs(resolver) do
 end
 -- insert our own special value for "last success"
 _M.TYPE_LAST = -1
+
+
+local function log(level, ...)
+  return ngx_log(level, "[dns-client] ", ...)
+end
 
 -- ==============================================
 --    In memory DNS cache
@@ -425,7 +432,7 @@ local function synchronizedQuery(qname, r_opts, r, expect_ttl_0, count)
   end
 end
 
-local function check_ipv6(qname, r)
+local function check_ipv6(qname, qtype, r)
   local check = qname
   if check:sub(1,1) == ":" then check = "0"..check end
   if check:sub(-1,-1) == ":" then check = check.."0" end
@@ -436,15 +443,17 @@ local function check_ipv6(qname, r)
     check = check:gsub("::", ins, 1)  -- replace only 1 occurence!
   end
   local record
-  if not check:match("^%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?$") then
-    -- not a valid IPv6 address
-    -- return a "server error" as a bad IPv4 would be looked up on 
-    -- the server and return a server error as well, for consistency.
+  if (not qtype == _M.TYPE_AAAA) or
+     (not check:match("^%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?$")) then
+    -- not a valid IPv6 address, or a bad type (non ipv6)
+    -- return a "server error"
+    log(log_DEBUG, "bad ipv6 query: '", qname, "' with type ", qtype)
     record = {
       errcode = 3,
       errstr = "name error",
     }
   else
+    log(log_DEBUG, "ipv6 query: '", qname, "' with type ", qtype)
     record = {{
       address = qname,
       type = _M.TYPE_AAAA,
@@ -453,19 +462,31 @@ local function check_ipv6(qname, r)
       ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
     }}
   end
-  cacheinsert(record, qname, _M.TYPE_AAAA)
+  cacheinsert(record, qname, qtype)
   return record, nil, r
 end
 
-local function check_ipv4(qname, r)
-  local record = {{
-    address = qname,
-    type = _M.TYPE_A,
-    class = 1,
-    name = qname,
-    ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
-  }}
-  cacheinsert(record, qname, _M.TYPE_A)
+local function check_ipv4(qname, qtype, r)
+  local record
+  if qtype == _M.TYPE_A then
+    log(log_DEBUG, "ipv4 query: '", qname, "' with type ", qtype)
+    record = {{
+      address = qname,
+      type = _M.TYPE_A,
+      class = 1,
+      name = qname,
+      ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
+    }}
+  else
+    -- bad query type for this ipv4 address
+    -- return a "server error"
+    log(log_DEBUG, "bad ipv4 query: '", qname, "' with type ", qtype)
+    record = {
+      errcode = 3,
+      errstr = "name error",
+    }
+  end
+  cacheinsert(record, qname, qtype)
   return record, nil, r
 end
 
@@ -476,23 +497,27 @@ local function lookup(qname, r_opts, dnsCacheOnly, r)
   local qtype = r_opts.qtype
   local record, expect_ttl_0 = cachelookup(qname, qtype, dnsCacheOnly)
   if record then  -- cache hit
+--    log(log_DEBUG, "cache-hit while querying '", qname, "' for type ", qtype)
     return record, nil, r
   end
   if not expect_ttl_0 then -- so no record, and no expected ttl, so not seen
     -- this one recently, this is the only time we do the expensive checks
     -- for ip addresses, as they will be inserted with a ttl of 10years and 
     -- hence never hit this code branch again
-    if (qtype == _M.TYPE_AAAA) and qname:find(":") then
-      return check_ipv6(qname, r)    -- IPv6 or invalid
+    if qname:find(":") then
+      return check_ipv6(qname, qtype, r)    -- IPv6 or invalid
     end
-    if (qtype == _M.TYPE_A) and qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
-      return check_ipv4(qname, r)    -- IPv4 address
+    if qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
+      return check_ipv4(qname, qtype, r)    -- IPv4 address
     end
+--  else
+--    log(log_DEBUG, "expecting ttl=0: '", qname, "' for type ", qtype)
   end
   if dnsCacheOnly then
     -- no active lookups allowed, so return error
     -- NOTE: this error response should never be cached, because it is caused 
     -- by the limited nginx context where we can't use sockets to do the lookup
+    log(log_DEBUG, "cache only lookup failed: '", qname, "' for type ", qtype)
     return {
       errcode = 4,                                         -- standard is "server failure"
       errstr = "server failure, cache only lookup failed", -- extended description
@@ -500,9 +525,14 @@ local function lookup(qname, r_opts, dnsCacheOnly, r)
   end
   
   -- not found in our cache, so perform query on dns servers
+  local t_start = time()
   local answers, err
   answers, err, r = synchronizedQuery(qname, r_opts, r, expect_ttl_0)
-  if not answers then return answers, err, r end
+  log(log_DEBUG, "querying '", qname, "' for type ", qtype, " took ", (time() - t_start) * 1000)
+  if not answers then
+    log(log_DEBUG, "querying: '", qname, "' for type ", qtype, " error: ", err)
+    return answers, err, r
+  end
 
   -- check our answers and store them in the cache
   -- eg. A, AAAA, SRV records may be accompanied by CNAME records
@@ -510,7 +540,13 @@ local function lookup(qname, r_opts, dnsCacheOnly, r)
   local others = {}
   for i = #answers, 1, -1 do -- we're deleting entries, so reverse the traversal
     local answer = answers[i]
+
+    -- remove case sensitiveness
+    answer.name = string_lower(answer.name)
+
+    -- validate type and name
     if (answer.type ~= qtype) or (answer.name ~= qname) then
+      log(log_DEBUG, "removing: ",answer.type,":",answer.name, " (name or type mismatch)")
       local key = answer.type..":"..answer.name
       local lst = others[key]
       if not lst then
@@ -522,7 +558,7 @@ local function lookup(qname, r_opts, dnsCacheOnly, r)
     end
   end
   if next(others) then
-    for key, lst in pairs(others) do
+    for _, lst in pairs(others) do
       -- only store if not already cached (this is only a 'by-product')
       if not cachelookup(lst[1].name, lst[1].type) then
         cacheinsert(lst)
@@ -535,6 +571,8 @@ local function lookup(qname, r_opts, dnsCacheOnly, r)
   end
 
   -- now insert actual target record in cache
+  log(log_DEBUG, "querying '", qname, "' for type ", qtype,
+    ": entries ", #answers, " error ", answers.errcode, " ", answers.errstr)
   cacheinsert(answers, qname, qtype)
   return answers, nil, r
 end
@@ -580,7 +618,7 @@ local function resolve(qname, r_opts, dnsCacheOnly, r, count)
   if count and (count > maxDnsRecursion) then
     return nil, "maximum dns recursion level reached", r
   end
-  qname = qname:lower()
+  qname = string_lower(qname)
   local opts
   
   if r_opts then
@@ -626,7 +664,7 @@ local function resolve(qname, r_opts, dnsCacheOnly, r, count)
         if qtype == _M.TYPE_SRV then
           -- check for recursive records
           local cnt = 0
-          for i, record in ipairs(records) do
+          for _, record in ipairs(records) do
             if record.target == qname then
               -- recursive record, pointing to itself
               cnt = cnt + 1

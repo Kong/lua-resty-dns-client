@@ -35,6 +35,12 @@ use the `rbusted` script.
 History
 =======
 
+### 0.4.2 (xx-May-2017) Bugfix
+
+- Fix: do not try to lookup ip addresses for non- A or AAAA records
+- Fix: normalize names to lowercase to prevent case issues
+- Added: more verbose logging (debug level)
+
 ### 0.4.1 (21-Apr-2017) Bugfix
 
 - fix: cname record caching causing excessive dns queries
