@@ -35,6 +35,10 @@ use the `rbusted` script.
 History
 =======
 
+### 0.5.x (xx-xxx-2017) Bugfixes
+
+- Fix: no longer lookup ip adresses as names if the query type is not A or AAAA
+
 ### 0.5.0 (25-Apr-2017) implement SEARCH and NDOTS
 
 - Removed: BREAKING! stdError function removed.
