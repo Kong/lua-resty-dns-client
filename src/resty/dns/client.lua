@@ -25,7 +25,7 @@ local semaphore = require("ngx.semaphore").new
 
 local resolver = require("resty.dns.resolver")
 local time = ngx.now
-local log = ngx.log
+local ngx_log = ngx.log
 local log_WARN = ngx.WARN
 
 local math_min = math.min
@@ -59,6 +59,10 @@ for k,v in pairs(resolver) do
 end
 -- insert our own special value for "last success"
 _M.TYPE_LAST = -1
+
+local function log(level, ...)
+  return ngx_log(level, "[dns-client] ", ...)
+end
 
 -- ==============================================
 --    In memory DNS cache
@@ -360,15 +364,15 @@ _M.init = function(options)
   if #(options.nameservers or {}) == 0 and resolv.nameserver then
     options.nameservers = {}
     -- some systems support port numbers in nameserver entries, so must parse those
-    for i, address in ipairs(resolv.nameserver) do
+    for _, address in ipairs(resolv.nameserver) do
       local ip, port, t = utils.parseHostname(address)
       if t == "ipv6" and not options.enable_ipv6 then
         -- should not add this one
       else
         if port then
-          options.nameservers[#options.nameservers+1] = { ip, port }
+          options.nameservers[#options.nameservers + 1] = { ip, port }
         else
-          options.nameservers[#options.nameservers+1] = ip
+          options.nameservers[#options.nameservers + 1] = ip
         end
       end
     end
@@ -526,7 +530,17 @@ local function try_status(self, status)
   return self
 end
 
-local function check_ipv6(qname, r, try_list)
+local function check_ipv6(qname, qtype, r, try_list)
+  try_list = try_add(try_list, qname, qtype, "IPv6")
+
+  -- check cache and always use "cacheonly" to not alter it as IP addresses are
+  -- long lived in the cache anyway
+  local record = cachelookup(qname, qtype, true)
+  if record then
+    try_status(try_list, "cached")
+    return record, nil, r, try_list
+  end
+
   local check = qname
   if check:sub(1,1) == ":" then check = "0"..check end
   if check:sub(-1,-1) == ":" then check = check.."0" end
@@ -536,18 +550,9 @@ local function check_ipv6(qname, r, try_list)
     local ins = ":"..string.rep("0:", 8 - count)
     check = check:gsub("::", ins, 1)  -- replace only 1 occurence!
   end
-  local record
-  if not check:match("^%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?$") then
-    -- not a valid IPv6 address
-    -- return a "server error" as a bad IPv4 would be looked up on 
-    -- the server and return a server error as well, for consistency.
-    try_status(try_list, "bad IPv6")
-    record = {
-      errcode = 3,
-      errstr = "name error",
-    }
-  else
-    try_status(try_list, "IPv6")
+  if qtype == _M.TYPE_AAAA and
+     check:match("^%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?:%x%x?%x?%x?$") then
+    try_status(try_list, "validated")
     record = {{
       address = qname,
       type = _M.TYPE_AAAA,
@@ -555,21 +560,49 @@ local function check_ipv6(qname, r, try_list)
       name = qname,
       ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
     }}
+  else
+    -- not a valid IPv6 address, or a bad type (non ipv6)
+    -- return a "server error"
+    try_status(try_list, "bad IPv6")
+    record = {
+      errcode = 3,
+      errstr = "name error",
+    }
   end
-  cacheinsert(record, qname, _M.TYPE_AAAA)
+  cacheinsert(record, qname, qtype)
   return record, nil, r, try_list
 end
 
-local function check_ipv4(qname, r, try_list)
-  try_status(try_list, "IPv4")
-  local record = {{
-    address = qname,
-    type = _M.TYPE_A,
-    class = 1,
-    name = qname,
-    ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
-  }}
-  cacheinsert(record, qname, _M.TYPE_A)
+local function check_ipv4(qname, qtype, r, try_list)
+  try_list = try_add(try_list, qname, qtype, "IPv4")
+
+  -- check cache and always use "cacheonly" to not alter it as IP addresses are
+  -- long lived in the cache anyway
+  local record = cachelookup(qname, qtype, true)
+  if record then
+    try_status(try_list, "cached")
+    return record, nil, r, try_list
+  end
+
+  if qtype == _M.TYPE_A then
+    try_status(try_list, "validated")
+    record = {{
+      address = qname,
+      type = _M.TYPE_A,
+      class = 1,
+      name = qname,
+      ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
+    }}
+  else
+    -- bad query type for this ipv4 address
+    -- return a "server error"
+    try_status(try_list, "bad IPv4")
+    record = {
+      errcode = 3,
+      errstr = "name error",
+    }
+  end
+  cacheinsert(record, qname, qtype)
   return record, nil, r, try_list
 end
 
@@ -586,17 +619,6 @@ local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
     return record, nil, r, try_list
   end
   try_list = try_add(try_list, qname, qtype)
-  if not expect_ttl_0 then -- so no record, and no expected ttl, so not seen
-    -- this one recently, this is the only time we do the expensive checks
-    -- for ip addresses, as they will be inserted with a ttl of 10years and 
-    -- hence never hit this code branch again
-    if (qtype == _M.TYPE_AAAA) and qname:find(":") then
-      return check_ipv6(qname, r, try_list)    -- IPv6 or invalid
-    end
-    if (qtype == _M.TYPE_A) and qname:match("^%d%d?%d?%.%d%d?%d?%.%d%d?%d?%.%d%d?%d?$") then
-      return check_ipv4(qname, r, try_list)    -- IPv4 address
-    end
-  end
   if dnsCacheOnly then
     -- no active lookups allowed, so return error
     -- NOTE: this error response should never be cached, because it is caused 
@@ -611,6 +633,10 @@ local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
   -- not found in our cache, so perform query on dns servers
   local answers, err
   answers, err, r = synchronizedQuery(qname, r_opts, r, expect_ttl_0)
+--print("============================================================")
+--print("Lookup: ",qname,":",r_opts.qtype)
+--print("Error : ", tostring(err))
+--print(require("pl.pretty").write(answers or {}))
   if not answers then
     try_status(try_list, tostring(err))
     return answers, err, r, try_list
@@ -623,6 +649,7 @@ local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
   for i = #answers, 1, -1 do -- we're deleting entries, so reverse the traversal
     local answer = answers[i]
     if (answer.type ~= qtype) or (answer.name ~= qname) then
+--print("removing: ",answer.type,":",answer.name, " (name or type mismatch)")
       local key = answer.type..":"..answer.name
       local lst = others[key]
       if not lst then
@@ -649,6 +676,9 @@ local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
   -- now insert actual target record in cache
   try_status(try_list, "queried")
   cacheinsert(answers, qname, qtype)
+--print("------------------------------------------------------------")
+--print(require("pl.pretty").write(answers or {}))
+--print("============================================================")
   return answers, nil, r, try_list
 end
 
@@ -764,6 +794,27 @@ local function resolve(qname, r_opts, dnsCacheOnly, r, try_list)
     for k,v in pairs(r_opts) do opts[k] = v end  -- copy the options table
   end
   
+  -- check for qname being an ip address
+  local name_type = utils.hostnameType(qname)
+  if name_type ~= "name" then
+    if name_type == "ipv4" then
+      -- if no qtype is given, we're supposed to search, and hence we add TYPE_A as type
+      records, err, r, try_list = check_ipv4(qname, qtype or _M.TYPE_A, r, try_list)
+    else
+      -- must be 'ipv6'
+      -- if no qtype is given, we're supposed to search, and hence we add TYPE_AAAA as type
+      records, err, r, try_list = check_ipv6(qname, qtype or _M.TYPE_AAAA, r, try_list)
+    end
+    if records.errcode then
+      -- the query type didn't match the ip address, or a bad ip address
+      return nil, 
+             ("dns server error: %s %s"):format(records.errcode, records.errstr),
+             r, try_list
+    end
+    -- valid ip
+    return records, nil, r, try_list
+  end
+
   -- go try a sequence of record types
   for try_name, try_type in search_iter(qname, qtype) do
     
@@ -997,6 +1048,12 @@ end
 --   - `127.0.0.1, 80`
 --   - `127.0.0.1, 80`   (completes WRR 1st level, 2nd run, with different order as WRR is randomized)
 --
+-- __Debugging__:
+--
+-- This function both takes and returns a `try_list`. This is an internal object
+-- representing the entire resolution history for a call. To prevent unnecessary
+-- string concatenations on a hot code path, it is not logged in this module.
+-- If you need to log it, just log `tostring(try_list)` from the caller code.
 -- @function toip
 -- @param qname hostname to resolve
 -- @param port (optional) default port number to return if none was found in 

@@ -27,7 +27,7 @@ describe("DNS client", function()
   local client
   
   before_each(function()
-      _G._TEST = true
+    _G._TEST = true
     client = require("resty.dns.client")
   end)
   
@@ -493,26 +493,68 @@ describe("DNS client", function()
     assert.equal(NOT_FOUND_ERROR, err)    
   end)
 
-  it("fetching IPv4 address", function()
+  it("fetching IPv4 address as A type", function()
     assert(client.init())
 
     local host = "1.2.3.4"
 
-    local answers = assert(client.resolve(host))
+    local answers = assert(client.resolve(host, { qtype = client.TYPE_A }))
     assert.are.equal(#answers, 1)
     assert.are.equal(client.TYPE_A, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
   end)
 
-  it("fetching IPv6 address", function()
+  it("fetching IPv4 address as SRV type", function()
+    assert(client.init())
+
+    -- do a query so we get a resolver object to spy on
+    local _, _, r, history = client.toip("google.com", 123, false)
+    local o_query = r.query
+    r.query = function(self, ...)
+      print(require("pl.pretty").write({...}))
+      return o_query(self, ...)
+    end
+    
+    spy.on(r, "query")
+
+    local res, err, r, history = client.resolve(
+      "1.2.3.4", 
+      { qtype = client.TYPE_SRV }, 
+      false, r)
+    assert.spy(r.query).was_not.called()
+    assert.equal(NOT_FOUND_ERROR, err)
+  end)
+
+  it("fetching IPv6 address as AAAA type", function()
     assert(client.init())
 
     local host = "1:2::3:4"
 
-    local answers = assert(client.resolve(host))
+    local answers = assert(client.resolve(host, { qtype = client.TYPE_AAAA }))
     assert.are.equal(#answers, 1)
     assert.are.equal(client.TYPE_AAAA, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
+  end)
+
+  it("fetching IPv6 address as SRV type", function()
+    assert(client.init())
+
+    -- do a query so we get a resolver object to spy on
+    local _, _, r, history = client.toip("google.com", 123, false)
+    local o_query = r.query
+    r.query = function(self, ...)
+      print(require("pl.pretty").write({...}))
+      return o_query(self, ...)
+    end
+    
+    spy.on(r, "query")
+
+    local res, err, r, history = client.resolve(
+      "1:2::3:4", 
+      { qtype = client.TYPE_SRV }, 
+      false, r)
+    assert.spy(r.query).was_not.called()
+    assert.equal(NOT_FOUND_ERROR, err)
   end)
 
   it("fetching invalid IPv6 address", function()
