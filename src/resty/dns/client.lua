@@ -792,6 +792,9 @@ local function resolve(qname, r_opts, dnsCacheOnly, r, try_list)
   local opts = {}
   if r_opts then
     for k,v in pairs(r_opts) do opts[k] = v end  -- copy the options table
+  else
+    -- if no options table provided, set the ADDITIONAL SECTION to TRUE
+    opts.additional_section = true
   end
   
   -- check for qname being an ip address
