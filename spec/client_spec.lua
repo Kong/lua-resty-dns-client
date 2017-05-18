@@ -145,10 +145,12 @@ describe("DNS client", function()
               "options ndots:1",
             }
           }))
+        local lrucache = client.getcache()
         -- insert a last successful type
-        client.getcache()["host"] = client.TYPE_CNAME
+        local hostname = "host"
+        lrucache:set(hostname, client.TYPE_CNAME)
         local list = {}
-        for qname, qtype in client._search_iter("host", nil) do
+        for qname, qtype in client._search_iter(hostname, nil) do
           table.insert(list, tostring(qname)..":"..tostring(qtype))
         end
         assert.same({
@@ -396,6 +398,7 @@ describe("DNS client", function()
 
   it("fetching A record redirected through 2 CNAME records (un-typed)", function()
     assert(client.init())
+    local lrucache = client.getcache()
 
     --[[
     This test might fail. Recurse flag is on by default. This means that the first return
@@ -417,13 +420,13 @@ describe("DNS client", function()
 
     -- check first CNAME
     local key1 = client.TYPE_CNAME..":"..host
-    local entry1 = client.getcache()[key1]
+    local entry1 = lrucache:get(key1)
     assert.are.equal(host, entry1[1].name)       -- the 1st record is the original 'smtp.thijsschreijer.nl'
     assert.are.equal(client.TYPE_CNAME, entry1[1].type) -- and that is a CNAME
   
     -- check second CNAME
     local key2 = client.TYPE_CNAME..":"..entry1[1].cname
-    local entry2 = client.getcache()[key2]
+    local entry2 = lrucache:get(key2)
     assert.are.equal(entry1[1].cname, entry2[1].name) -- the 2nd is the middle 'thuis.thijsschreijer.nl'
     assert.are.equal(client.TYPE_CNAME, entry2[1].type) -- and that is also a CNAME
 
@@ -434,9 +437,9 @@ describe("DNS client", function()
     assert.are.equal(#answers, 1)
 
     -- check last successful lookup references
-    local lastsuccess3 = client.getcache()[answers[1].name]
-    local lastsuccess2 = client.getcache()[entry2[1].name]
-    local lastsuccess1 = client.getcache()[entry1[1].name]
+    local lastsuccess3 = lrucache:get(answers[1].name)
+    local lastsuccess2 = lrucache:get(entry2[1].name)
+    local lastsuccess1 = lrucache:get(entry1[1].name)
     assert.are.equal(client.TYPE_A, lastsuccess3)
     assert.are.equal(client.TYPE_CNAME, lastsuccess2)
     assert.are.equal(client.TYPE_CNAME, lastsuccess1)
@@ -462,7 +465,8 @@ describe("DNS client", function()
 
   it("fetching multiple SRV records through CNAME (un-typed)", function()
     assert(client.init())
-
+    local lrucache = client.getcache()
+    
     local host = "cname2srv.thijsschreijer.nl"
     local typ = client.TYPE_SRV
 
@@ -471,7 +475,7 @@ describe("DNS client", function()
 
     -- first check CNAME
     local key = client.TYPE_CNAME..":"..host
-    local entry = client.getcache()[key]
+    local entry = lrucache:get(key)
     assert.are.equal(host, entry[1].name)
     assert.are.equal(client.TYPE_CNAME, entry[1].type)
     
@@ -518,6 +522,7 @@ describe("DNS client", function()
 
   it("fetching IPv4 address as A type", function()
     assert(client.init())
+    local lrucache = client.getcache()
 
     local host = "1.2.3.4"
 
@@ -526,8 +531,7 @@ describe("DNS client", function()
     assert.are.equal(client.TYPE_A, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
 
-    local cache = client.getcache()
-    assert.equal(client.TYPE_A, cache[host])
+    assert.equal(client.TYPE_A, lrucache:get(host))
   end)
 
   it("fetching IPv4 address as SRV type", function()
@@ -561,8 +565,8 @@ describe("DNS client", function()
     assert.are.equal(client.TYPE_AAAA, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
 
-    local cache = client.getcache()
-    assert.equal(client.TYPE_AAAA, cache[host])
+    local lrucache = client.getcache()
+    assert.equal(client.TYPE_AAAA, lrucache:get(host))
   end)
 
   it("fetching IPv6 address as SRV type", function()
@@ -602,8 +606,10 @@ describe("DNS client", function()
     assert(tostring(history):find("bad IPv6", nil, true))
   end)
   
-  it("fetching records from cache only, expired and ttl = 0",function()
+  pending("fetching records from cache only, expired and ttl = 0",function()
+  -- ttl = 0 distinction no longer relevant, so drop this test???
     assert(client.init())
+    local lrucache = client.getcache()
     local expired_entry = {
       {
         type = client.TYPE_A,
@@ -616,7 +622,7 @@ describe("DNS client", function()
       expire = 0,  -- definitely expired
     }
     -- insert in the cache
-    client.getcache()[expired_entry[1].type..":"..expired_entry[1].name] = expired_entry
+    lrucache:set(expired_entry[1].type..":"..expired_entry[1].name, expired_entry)
     local cache_count = #client.getcache()
 
     -- resolve this, cache only
@@ -634,6 +640,7 @@ describe("DNS client", function()
             "nameserver 8.8.8.8",
           },
         }))
+    local lrucache = client.getcache()
     local entry1 = {
       {
         type = client.TYPE_CNAME,
@@ -657,8 +664,8 @@ describe("DNS client", function()
       expire = 0,
     }
     -- insert in the cache
-    client.getcache()[entry1[1].type..":"..entry1[1].name] = entry1
-    client.getcache()[entry2[1].type..":"..entry2[1].name] = entry2
+    lrucache:set(entry1[1].type..":"..entry1[1].name, entry1)
+    lrucache:set(entry2[1].type..":"..entry2[1].name, entry2)
 
     -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
     local result, err, r, history = client.resolve("hello.world", nil, true)
@@ -678,8 +685,8 @@ describe("DNS client", function()
         order = {"SRV", "CNAME", "A", "AAAA"},
       }))
 
-    local cache = client.getcache()
-    assert.equal(client.TYPE_A, cache.localhost) -- success set to A as it is the preferred option
+    local lrucache = client.getcache()
+    assert.equal(client.TYPE_A, lrucache:get("localhost")) -- success set to A as it is the preferred option
 
     assert(client.init(
       {
@@ -687,8 +694,8 @@ describe("DNS client", function()
         order = {"SRV", "CNAME", "AAAA", "A"},
       }))
 
-    local cache = client.getcache()
-    assert.equal(client.TYPE_AAAA, cache.localhost) -- success set to AAAA as it is the preferred option
+    local lrucache = client.getcache()
+    assert.equal(client.TYPE_AAAA, lrucache:get("localhost")) -- success set to AAAA as it is the preferred option
   end)
 
 
@@ -780,6 +787,7 @@ describe("DNS client", function()
     end)
     it("SRV-record with 1 entry, round-robin",function()
       assert(client.init())
+      local lrucache = client.getcache()
       local host = "hello.world"
       local entry = {
         {
@@ -796,7 +804,7 @@ describe("DNS client", function()
         expire = gettime()+10,
       }
       -- insert in the cache
-      client.getcache()[entry[1].type..":"..entry[1].name] = entry
+      lrucache:set(entry[1].type..":"..entry[1].name, entry)
 
       -- repeated lookups, as the first will simply serve the first entry
       -- and the only second will setup the round-robin scheme, this is 
@@ -895,9 +903,9 @@ describe("DNS client", function()
           expire = gettime()+10,  -- active
         }
         -- insert in the cache
-        local cache = client.getcache()
-        cache[A_entry[1].type..":"..A_entry[1].name] = A_entry
-        cache[AAAA_entry[1].type..":"..AAAA_entry[1].name] = AAAA_entry
+        local lrucache = client.getcache()
+        lrucache:set(A_entry[1].type..":"..A_entry[1].name, A_entry)
+        lrucache:set(AAAA_entry[1].type..":"..AAAA_entry[1].name, AAAA_entry)
       end
       assert(client.init({order = {"AAAA", "A"}}))
       config()
@@ -908,7 +916,8 @@ describe("DNS client", function()
       ip = client.toip("hello.world")
       assert.equals(ip, "5.6.7.8")
     end)
-    it("resolving from cache only, expired and ttl = 0",function()
+    pending("resolving from cache only, expired and ttl = 0",function()
+-- drop this test? ttl=0 ceases to be a special case...
       assert(client.init())
       local expired_entry = {
         {
@@ -954,6 +963,7 @@ describe("DNS client", function()
               "nameserver 8.8.8.8",
             },
           }))
+      local lrucache = client.getcache()
       local entry1 = {
         {
           type = client.TYPE_CNAME,
@@ -977,8 +987,8 @@ describe("DNS client", function()
         expire = 0,
       }
       -- insert in the cache
-      client.getcache()[entry1[1].type..":"..entry1[1].name] = entry1
-      client.getcache()[entry2[1].type..":"..entry2[1].name] = entry2
+      lrucache:set(entry1[1].type..":"..entry1[1].name, entry1)
+      lrucache:set(entry2[1].type..":"..entry2[1].name, entry2)
 
       -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
       local ip, port, r, history = client.toip("hello.world", 123, true)
@@ -1014,7 +1024,8 @@ describe("DNS client", function()
     end)
   end)
 
-  describe("matrix;", function()
+  pending("matrix;", function()
+--revisit this: ttl=0 is no longer special...
     local ip = "1.4.2.3"
     local name = "thijsschreijer.nl"
     local prep = function(ttl, expired)
@@ -1041,7 +1052,8 @@ describe("DNS client", function()
         expire = gettime() + ttl + expired, 
       }
       -- insert in the cache
-      client.getcache()[entry[1].type..":"..entry[1].name] = entry
+      local lrucache = client.getcache()
+      lrucache:set(entry[1].type..":"..entry[1].name, entry)
       return entry
     end
     
@@ -1251,9 +1263,11 @@ describe("DNS client", function()
       assert.equal(1,count)
     end)
   
-    it("simultaneous lookups with ttl=0 are not synchronized to 1 lookup", function()
+    pending("simultaneous lookups with ttl=0 are not synchronized to 1 lookup", function()
+-- revisit: ttl=0 is no longer special
       assert(client.init())
-      
+      local lrucache = client.getcache()
+
       -- insert a ttl=0 record, so the resolver expects 0 and does not
       -- synchronize the lookups
       local ip = "1.4.2.3"
@@ -1270,7 +1284,7 @@ describe("DNS client", function()
         expire = gettime() - 1, 
       }
       -- insert in the cache
-      client.getcache()[entry[1].type..":"..entry[1].name] = entry
+      lrucache:set(entry[1].type..":"..entry[1].name, entry)
       
       local coros = {}
       local results = {}

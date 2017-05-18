@@ -22,7 +22,7 @@
 local utils = require("resty.dns.utils")
 local fileexists = require("pl.path").exists
 local semaphore = require("ngx.semaphore").new
-
+local lrucache = require("resty.lrucache")
 local resolver = require("resty.dns.resolver")
 local time = ngx.now
 local ngx_log = ngx.log
@@ -48,6 +48,8 @@ local config
 local defined_hosts        -- hash table to lookup names originating from the hosts file
 local emptyTtl             -- ttl (in seconds) for empty and 'name error' (3) errors
 local badTtl               -- ttl (in seconds) for a other dns error results
+local staleTtl             -- ttl (in seconds) to serve stale data (while new lookup is in progress)
+local cacheSize            -- size of the lru cache
 local orderValids = {"LAST", "SRV", "A", "AAAA", "CNAME"} -- default order to query
 for _,v in ipairs(orderValids) do orderValids[v:upper()] = v end
 
@@ -73,51 +75,36 @@ end
 --- Caching.
 -- The cache will not update the `ttl` field. So every time the same record
 -- is served, the ttl will be the same. But the cache will insert extra fields
--- on the top-level; `touch` (timestamp of last access) and `expire` (expiry time
--- based on `ttl`)
+-- on the top-level; `touch` (timestamp of last access), `expire` (expiry time
+-- based on `ttl`), and `expired` (boolean indicating it expired/is stale)
 -- @section caching
 
 
--- hostname cache indexed by "recordtype:hostname" returning address list.
+-- hostname lru-cache indexed by "recordtype:hostname" returning address list.
 -- Result is a list with entries. 
 -- Keys only by "hostname" only contain the last succesfull lookup type 
 -- for this name, see `resolve` function.
-local cache = {}
+local dnscache
 
--- lookup a single entry in the cache. Invalidates the entry if its beyond its ttl.
--- Even if the record is expired and `nil` is returned, the second return value
--- can be `true`.
+-- lookup a single entry in the cache.
 -- @param qname name to lookup
 -- @param qtype type number, any of the TYPE_xxx constants
 -- @param peek just consult the cache, do not check ttl nor expire, just touch it
 -- @return 1st; cached record or nil, 2nd; expect_ttl_0, true if the last one was ttl  0
 local cachelookup = function(qname, qtype, peek)
+assert(peek == nil, "someone is still using PEEK!!")  --TODO: remove after fixing all the tests
   local now = time()
   local key = qtype..":"..qname
-  local cached = cache[key]
-  local expect_ttl_0
+  local cached = dnscache:get(key)
   
   if cached then
-    expect_ttl_0 = ((cached[1] or empty).ttl == 0)
-    if peek then
-      -- cannot update, just update touch time
-      cached.touch = now
-    elseif expect_ttl_0 then
-      -- ttl = 0 so we should not remove the cache entry, but we should also
-      -- not return it
-      cached.touch = now
-      cached = nil
-    elseif (cached.expire < now) then
-      -- the cached entry expired, and we're allowed to mark it as such
-      cache[key] = nil
-      cached = nil
-    else
-      -- still valid, so nothing to do
-      cached.touch = now
+    cached.touch = now
+    if (cached.expire < now) then
+      cached.expired = true
     end
   end
-  
-  return cached, expect_ttl_0
+
+  return cached, expect_ttl_0   --TODO: check client code to not use 2nd return value before removing!!!!!
 end
 
 -- inserts an entry in the cache
@@ -125,7 +112,7 @@ end
 -- params qname, qtype are IGNORED unless `entry` has an empty list part.
 local cacheinsert = function(entry, qname, qtype)
 
-  local ttl, key
+  local ttl, key, lru_ttl
   local e1 = entry[1]
   if e1 then
     key = e1.type..":"..e1.name
@@ -135,28 +122,33 @@ local cacheinsert = function(entry, qname, qtype)
     for i = 2, #entry do
       ttl = math_min(ttl, entry[i].ttl)
     end
+    lru_ttl = ttl + staleTtl
+
   elseif entry.errcode and entry.errcode ~= 3 then
     -- an error, but no 'name error' (3)
     ttl = badTtl
     key = qtype..":"..qname
+    lru_ttl = ttl
+
   else
     -- empty or a 'name error' (3)
     ttl = emptyTtl
     key = qtype..":"..qname
+    lru_ttl = ttl
   end
  
   -- set expire time
   local now = time()
   entry.touch = now
   entry.expire = now + ttl
-  cache[key] = entry
+  dnscache:set(key, entry, lru_ttl)
 end
 
 -- Lookup the last succesful query type.
 -- @param qname name to resolve
 -- @return query/record type constant, or ˋnilˋ if not found
 local function cachegetsuccess(qname)
-  return cache[qname]
+  return dnscache:get(qname)
 end
 
 -- Sets the last succesful query type.
@@ -164,7 +156,7 @@ end
 -- @qtype query/record type to set, or ˋnilˋ to clear
 -- @return ˋtrueˋ
 local function cachesetsuccess(qname, qtype)
-  cache[qname] = qtype
+  dnscache:set(qname, qtype)
   return true
 end
 
@@ -298,7 +290,10 @@ _M.init = function(options)
   log(log_DEBUG, "(re)configuring dns client")
   local resolv, hosts, err
   options = options or {}
-  cache = {}  -- clear cache on re-initialization
+  staleTtl = options.staleTtl or 4
+  cacheSize = options.cacheSize or 10000  -- default set here to be able to reset the cache
+
+  dnscache = lrucache.new(cacheSize)  -- clear cache on (re)initialization
   defined_hosts = {}  -- reset hosts hash table
   
   local order = options.order or orderValids
@@ -560,9 +555,7 @@ end
 local function check_ipv6(qname, qtype, r, try_list)
   try_list = try_add(try_list, qname, qtype, "IPv6")
 
-  -- check cache and always use "cacheonly" to not alter it as IP addresses are
-  -- long lived in the cache anyway
-  local record = cachelookup(qname, qtype, true)
+  local record = cachelookup(qname, qtype)
   if record then
     try_status(try_list, "cached")
     return record, nil, r, try_list
@@ -604,9 +597,7 @@ end
 local function check_ipv4(qname, qtype, r, try_list)
   try_list = try_add(try_list, qname, qtype, "IPv4")
 
-  -- check cache and always use "cacheonly" to not alter it as IP addresses are
-  -- long lived in the cache anyway
-  local record = cachelookup(qname, qtype, true)
+  local record = cachelookup(qname, qtype)
   if record then
     try_status(try_list, "cached")
     return record, nil, r, try_list
@@ -642,7 +633,7 @@ end
 local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
   local qtype = r_opts.qtype
   
-  local record, expect_ttl_0 = cachelookup(qname, qtype, dnsCacheOnly)
+  local record = cachelookup(qname, qtype)
   if record then  -- cache hit
     try_list = try_add(try_list, qname, qtype, "cache hit")
     return record, nil, r, try_list
@@ -1182,7 +1173,7 @@ _M.setpeername = setpeername
 
 -- export the locals in case we're testing
 if _TEST then 
-  _M.getcache = function() return cache end 
+  _M.getcache = function() return dnscache end 
   _M._search_iter = search_iter -- export as different name!
 end 
 
