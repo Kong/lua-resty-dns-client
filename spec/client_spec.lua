@@ -357,6 +357,29 @@ describe("DNS client", function()
 
   end)
 
+  it("fetching names case insensitive", function()
+    assert(client.init())
+
+    -- do a query so we get a resolver object to spy on
+    local _, _, r, history = client.toip("google.com", 123, false)
+    r.query = function(self, ...)
+      return {
+        {
+          name = "some.UPPER.case",
+          type = client.TYPE_A,
+          ttl = 30,
+        }
+      }
+    end
+
+    local res, err, r, history = client.resolve(
+      "some.upper.CASE",
+      { qtype = client.TYPE_A },
+      false, r)
+    assert.equal(1, #res)
+    assert.equal("some.upper.case", res[1].name)
+  end)
+
   it("fetching multiple A records", function()
     assert(client.init())
 

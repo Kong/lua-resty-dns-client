@@ -35,6 +35,7 @@ local math_random = math.random
 local table_remove = table.remove
 local table_insert = table.insert
 local table_concat = table.concat
+local string_lower = string.lower
 
 local empty = setmetatable({}, 
   {__newindex = function() error("The 'empty' table is read-only") end})
@@ -324,6 +325,7 @@ _M.init = function(options)
   -- Populate the DNS cache with the hosts (and aliasses) from the hosts file.
   local ttl = 10*365*24*60*60  -- use ttl of 10 years for hostfile entries
   for name, address in pairs(hosts) do
+    name = string_lower(name)
     if address.ipv4 then 
       cacheinsert({{  -- NOTE: nested list! cache is a list of lists
           name = name,
@@ -648,9 +650,14 @@ local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
   local others = {}
   for i = #answers, 1, -1 do -- we're deleting entries, so reverse the traversal
     local answer = answers[i]
+
+    -- normalize casing
+    answer.name = string_lower(answer.name)
+
     if (answer.type ~= qtype) or (answer.name ~= qname) then
---print("removing: ",answer.type,":",answer.name, " (name or type mismatch)")
       local key = answer.type..":"..answer.name
+      try_status(try_list, key .. " removed")
+--print("removing: ", key, " (name or type mismatch)")
       local lst = others[key]
       if not lst then
         lst = {}
@@ -674,7 +681,7 @@ local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
   end
 
   -- now insert actual target record in cache
-  try_status(try_list, "queried")
+  try_status(try_list, "queried, result "..#answers)
   cacheinsert(answers, qname, qtype)
 --print("------------------------------------------------------------")
 --print(require("pl.pretty").write(answers or {}))
@@ -786,7 +793,7 @@ end
 -- @return `list of records + nil + r + try_list`, or `nil + err + r + try_list`.
 local function resolve(qname, r_opts, dnsCacheOnly, r, try_list)
 
-  qname = qname:lower()
+  qname = string_lower(qname)
   local qtype = (r_opts or empty).qtype
   local err, records
   local opts = {}
