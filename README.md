@@ -39,6 +39,7 @@ History
 
 - Fix: no longer lookup ip adresses as names if the query type is not A or AAAA
 - Fix: normalize names to lowercase after query
+- Fix: set last-success types for hosts-file entries and ip-addresses
 
 ### 0.5.0 (25-Apr-2017) implement SEARCH and NDOTS
 

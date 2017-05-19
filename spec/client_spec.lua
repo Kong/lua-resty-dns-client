@@ -273,19 +273,19 @@ describe("DNS client", function()
             "127.0.0.1 host",
             "::1 host",
           },
-
+          order = { "LAST", "SRV", "A", "AAAA", "CNAME" }
         }))
       local list = {}
       for qname, qtype in client._search_iter("host", nil) do
         table.insert(list, tostring(qname)..":"..tostring(qtype))
       end
       assert.same({
-          'host.one.com:33',
-          'host.two.com:33',
-          'host:33',
           'host:1',
           'host.one.com:1',
           'host.two.com:1',
+          'host.one.com:33',
+          'host.two.com:33',
+          'host:33',
           'host:28',
           'host.one.com:28',
           'host.two.com:28',
@@ -525,6 +525,9 @@ describe("DNS client", function()
     assert.are.equal(#answers, 1)
     assert.are.equal(client.TYPE_A, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
+
+    local cache = client.getcache()
+    assert.equal(client.TYPE_A, cache[host])
   end)
 
   it("fetching IPv4 address as SRV type", function()
@@ -557,6 +560,9 @@ describe("DNS client", function()
     assert.are.equal(#answers, 1)
     assert.are.equal(client.TYPE_AAAA, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
+
+    local cache = client.getcache()
+    assert.equal(client.TYPE_AAAA, cache[host])
   end)
 
   it("fetching IPv6 address as SRV type", function()
@@ -660,34 +666,60 @@ describe("DNS client", function()
     assert.are.equal("recursion detected", err)
   end)
 
+  it("resolving from the /etc/hosts file; preferred A or AAAA order", function()
+    local f = tempfilename()
+    writefile(f, [[
+127.3.2.1 localhost
+1::2 localhost
+]])
+    assert(client.init(
+      {
+        hosts = f,
+        order = {"SRV", "CNAME", "A", "AAAA"},
+      }))
+
+    local cache = client.getcache()
+    assert.equal(client.TYPE_A, cache.localhost) -- success set to A as it is the preferred option
+
+    assert(client.init(
+      {
+        hosts = f,
+        order = {"SRV", "CNAME", "AAAA", "A"},
+      }))
+
+    local cache = client.getcache()
+    assert.equal(client.TYPE_AAAA, cache.localhost) -- success set to AAAA as it is the preferred option
+  end)
+
+
   it("resolving from the /etc/hosts file", function()
     local f = tempfilename()
     writefile(f, [[
-
 127.3.2.1 localhost
 1::2 localhost
 
 123.123.123.123 mashape
 1234::1234 kong.for.president
-      
 ]])
-    assert(client.init({hosts = f}))
+
+    assert(client.init({ hosts = f }))
     os.remove(f)
     
-    local answers, err
     answers, err = client.resolve("localhost", {qtype = client.TYPE_A})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "127.3.2.1")
+
     answers, err = client.resolve("localhost", {qtype = client.TYPE_AAAA})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "1::2")
+
     answers, err = client.resolve("mashape", {qtype = client.TYPE_A})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "123.123.123.123")
+
     answers, err = client.resolve("kong.for.president", {qtype = client.TYPE_AAAA})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "1234::1234")
-    
   end)
 
   describe("toip() function", function()
