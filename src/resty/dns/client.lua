@@ -685,7 +685,8 @@ local function lookup(qname, r_opts, dnsCacheOnly, r, try_list)
   if next(others) then
     for _, lst in pairs(others) do
       -- only store if not already cached (this is only a 'by-product')
-      if not cachelookup(lst[1].name, lst[1].type) then
+      -- or replace it if the cache contains an error
+      if #(cachelookup(lst[1].name, lst[1].type) or empty) == 0 then
         cacheinsert(lst)
       end
       -- set success-type, only if not set (this is only a 'by-product')
