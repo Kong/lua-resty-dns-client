@@ -412,7 +412,7 @@ function objHost:queryDns(cacheOnly)
       dirty = true
     end
   end
-    
+
   self.lastQuery = newQuery
   self.lastSorted = newSorted
   

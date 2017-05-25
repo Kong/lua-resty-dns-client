@@ -24,17 +24,39 @@ end
 
 describe("DNS client", function()
 
-  local client
+  local client, resolver, query_func
   
   before_each(function()
     _G._TEST = true
     client = require("resty.dns.client")
+    resolver = require("resty.dns.resolver")
+    
+    -- you can replace this `query_func` upvalue to spy on resolver query calls.
+    -- This default will just call the original resolver (hence is transparent)
+    query_func = function(self, original_query_func, name, options)
+      return original_query_func(self, name, options)
+    end
+  
+    -- patch the resolver lib, such that any new resolver created will query
+    -- using the `query_func` upvalue defined above
+    local old_new = resolver.new
+    resolver.new = function(...)
+      local r = old_new(...)
+      local original_query_func = r.query
+      r.query = function(self, ...)
+        return query_func(self, original_query_func, ...)
+      end
+      return r
+    end
+
   end)
   
   after_each(function()
     package.loaded["resty.dns.client"] = nil
     package.loaded["resty.dns.resolver"] = nil
     client = nil
+    resolver = nil
+    query_func = nil
     _G._TEST = nil
   end)
 
@@ -306,7 +328,8 @@ describe("DNS client", function()
     local host = "txttest.thijsschreijer.nl"
     local typ = client.TYPE_TXT
 
-    local answers = assert(client.resolve(host, { qtype = typ }))
+    local answers, err, try_list = client.resolve(host, { qtype = typ })
+    assert(answers, (err or "") .. tostring(try_list))
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
     assert.are.equal(#answers, 1)
@@ -330,7 +353,7 @@ describe("DNS client", function()
     local host = "txttest.thijsschreijer.nl"
     local typ = client.TYPE_TXT
 
-    local answers = assert(client.resolve(host, { qtype = typ }))
+    local answers, err, history = assert(client.resolve(host, { qtype = typ }))
 
     local now = gettime()
     local touch_diff = math.abs(now - answers.touch)
@@ -362,9 +385,7 @@ describe("DNS client", function()
   it("fetching names case insensitive", function()
     assert(client.init())
 
-    -- do a query so we get a resolver object to spy on
-    local _, _, r, history = client.toip("google.com", 123, false)
-    r.query = function(self, ...)
+    query_func = function(self, original_query_func, name, options)
       return {
         {
           name = "some.UPPER.case",
@@ -374,10 +395,10 @@ describe("DNS client", function()
       }
     end
 
-    local res, err, r, history = client.resolve(
+    local res, err, history = client.resolve(
       "some.upper.CASE",
       { qtype = client.TYPE_A },
-      false, r)
+      false)
     assert.equal(1, #res)
     assert.equal("some.upper.case", res[1].name)
   end)
@@ -416,7 +437,7 @@ describe("DNS client", function()
 
     local host = "smtp.thijsschreijer.nl"
     local typ = client.TYPE_A
-    local answers = assert(client.resolve(host))
+    local answers, err, history = assert(client.resolve(host))
 
     -- check first CNAME
     local key1 = client.TYPE_CNAME..":"..host
@@ -600,40 +621,68 @@ describe("DNS client", function()
 
     local host = "1::2:3::4"  -- 2x double colons
 
-    local answers, err, r, history = client.resolve(host)
+    local answers, err, history = client.resolve(host)
     assert.is_nil(answers)
     assert.equal(NOT_FOUND_ERROR, err)
     assert(tostring(history):find("bad IPv6", nil, true))
   end)
   
-  pending("fetching records from cache only, expired and ttl = 0",function()
-  -- ttl = 0 distinction no longer relevant, so drop this test???
-    assert(client.init())
+  it("recursive lookups failure - single resolve", function()
+    assert(client.init({
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
+    query_func = function(self, original_query_func, name, opts)
+      if name ~= "hello.world" and (opts or {}).qtype ~= client.TYPE_CNAME then
+        return original_query_func(self, name, opts)
+      end
+      return {
+                {
+                  type = client.TYPE_CNAME,
+                  cname = "hello.world",
+                  class = 1,
+                  name = "hello.world",
+                  ttl = 30, 
+                },
+              }
+    end
+
+    local result, err, history = client.resolve("hello.world")
+    assert.is_nil(result)
+    assert.are.equal("recursion detected", err)
+  end)
+
+  it("recursive lookups failure - single", function()
+    assert(client.init({
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
     local lrucache = client.getcache()
-    local expired_entry = {
+    local entry1 = {
       {
-        type = client.TYPE_A,
-        address = "1.2.3.4",
+        type = client.TYPE_CNAME,
+        cname = "hello.world",
         class = 1,
-        name = "1.2.3.4",
+        name = "hello.world",
         ttl = 0, 
       },
       touch = 0,
-      expire = 0,  -- definitely expired
+      expire = 0,
     }
     -- insert in the cache
-    lrucache:set(expired_entry[1].type..":"..expired_entry[1].name, expired_entry)
-    local cache_count = #client.getcache()
+    lrucache:set(entry1[1].type..":"..entry1[1].name, entry1)
 
-    -- resolve this, cache only
-    local result = client.resolve("1.2.3.4", {qtype = expired_entry[1].type}, true)
-    
-    assert.are.equal(expired_entry, result)
-    assert.are.equal(cache_count, #client.getcache())  -- should not be deleted
-    assert.are.equal(expired_entry, client.getcache()[expired_entry[1].type..":"..expired_entry[1].name])
+    -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
+    local result, err, history = client.resolve("hello.world", nil, true)
+    assert.is_nil(result)
+    assert.are.equal("recursion detected", err)
   end)
 
-  it("recursive lookups failure", function()
+  it("recursive lookups failure - multi", function()
     assert(client.init({
           resolvConf = {
             -- resolv.conf without `search` and `domain` options
@@ -668,7 +717,7 @@ describe("DNS client", function()
     lrucache:set(entry2[1].type..":"..entry2[1].name, entry2)
 
     -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
-    local result, err, r, history = client.resolve("hello.world", nil, true)
+    local result, err, history = client.resolve("hello.world", nil, true)
     assert.is_nil(result)
     assert.are.equal("recursion detected", err)
   end)
@@ -851,19 +900,19 @@ describe("DNS client", function()
       assert.is_string(ip)
       assert.is_nil(port)
     end)
-    it("#only recursive SRV pointing to itself",function()
+    it("recursive SRV pointing to itself",function()
       assert(client.init({
             resolvConf = {
               -- resolv.conf without `search` and `domain` options
               "nameserver 8.8.8.8",
             },
           }))
-      local ip, record, port, host, r, history
+      local ip, record, port, host, history
       host = "srvrecurse.thijsschreijer.nl"
       
       -- resolve SRV specific should return the record including its
       -- recursive entry
-      record, err, r, history = client.resolve(host, { qtype = client.TYPE_SRV })
+      record, err, history = client.resolve(host, { qtype = client.TYPE_SRV })
       assert.is_table(record)
       assert.equal(1, #record)
       assert.equal(host, record[1].target)
@@ -872,7 +921,7 @@ describe("DNS client", function()
       
       -- default order, SRV, A; the recursive SRV record fails, and it falls
       -- back to the IP4 address
-      ip, port, r, history = client.toip(host)
+      ip, port, history = client.toip(host)
       assert.is_string(ip)
       assert.is_equal("10.0.0.44", ip)
       assert.is_nil(port)
@@ -915,32 +964,6 @@ describe("DNS client", function()
       config()
       ip = client.toip("hello.world")
       assert.equals(ip, "5.6.7.8")
-    end)
-    pending("resolving from cache only, expired and ttl = 0",function()
--- drop this test? ttl=0 ceases to be a special case...
-      assert(client.init())
-      local expired_entry = {
-        {
-          type = client.TYPE_A,
-          address = "5.6.7.8",
-          class = 1,
-          name = "hello.world",
-          ttl = 0, 
-        },
-        touch = 0,
-        expire = 0,  -- definitely expired
-      }
-      -- insert in the cache
-      client.getcache()[expired_entry[1].type..":"..expired_entry[1].name] = expired_entry
-      local cache_count = #client.getcache()
-
-      -- resolve this, cache only
-      local result, port = assert(client.toip("hello.world", 9876, true))
-
-      assert.are.equal(expired_entry[1].address, result)
-      assert.are.equal(9876, port)
-      assert.are.equal(cache_count, #client.getcache())  -- should not be deleted
-      assert.are.equal(expired_entry, client.getcache()[expired_entry[1].type..":"..expired_entry[1].name])
     end)
     it("handling of empty responses", function()
       assert(client.init())
@@ -1138,85 +1161,150 @@ describe("DNS client", function()
   it("verifies ttl and caching of empty responses and name errors", function()
     --empty/error responses should be cached for a configurable time
     local emptyTtl = 0.1
+    local staleTtl = 0.1
+    local qname = "really.really.really.does.not.exist.mashape.com"
     assert(client.init({
           emptyTtl = emptyTtl,
+          staleTtl = staleTtl,
           resolvConf = {
             -- resolv.conf without `search` and `domain` options
             "nameserver 8.8.8.8",
           },
         }))
-
-    -- do a query so we get a resolver object to spy on
-    local _, _, r, history = client.toip("google.com", 123, false)
-    spy.on(r, "query")
     
+    -- mock query function to count calls
+    local call_count = 0
+    query_func = function(self, original_query_func, name, options)
+      call_count = call_count + 1
+      return original_query_func(self, name, options)
+    end
+
+
     -- make a first request, populating the cache
     local res1, res2, err1, err2
-    res1, err1, r, history = client.resolve(
-      "really.reall.really.does.not.exist.mashape.com", 
-      { qtype = client.TYPE_A }, 
-      false, r)
-    assert.spy(r.query).was.called(1)
-    assert.equal(NOT_FOUND_ERROR, err1)
-    
-    -- make a second request, result from cache, spy still called only once
-    res2, err2, r, history = client.resolve(
-      "really.reall.really.does.not.exist.mashape.com", 
-      { qtype = client.TYPE_A }, 
-      false, r)
-    assert.are.equal(res1, res2)
-    assert.spy(r.query).was.called(1)
-    
-    -- wait for expiry of ttl and retry, spy should be called twice now
-    sleep(emptyTtl+0.1)
-    res2, err2, r = client.resolve(
-      "really.reall.really.does.not.exist.mashape.com", 
-      { qtype = client.TYPE_A }, 
-      false, r)
-    assert.spy(r.query).was.called(2) 
+    res1, err1, history = client.resolve(
+      qname, 
+      { qtype = client.TYPE_A }
+    )
+    assert.is_nil(res1)
+    assert.are.equal(1, call_count)
+    assert.are.equal(NOT_FOUND_ERROR, err1)
+    res1 = assert(client.getcache():get(client.TYPE_A..":"..qname))
+
+
+    -- make a second request, result from cache, still called only once
+    res2, err2, history = client.resolve(
+      qname, 
+      { qtype = client.TYPE_A }
+    )
+    assert.is_nil(res2)
+    assert.are.equal(1, call_count)
+    assert.are.equal(NOT_FOUND_ERROR, err2)
+    res2 = assert(client.getcache():get(client.TYPE_A..":"..qname))
+    assert.equal(res1, res2)
+    assert.falsy(res2.expired)
+
+
+    -- wait for expiry of Ttl and retry, still called only once
+    sleep(emptyTtl+0.5 * staleTtl)
+    res2, err2 = client.resolve(
+      qname, 
+      { qtype = client.TYPE_A }
+    )
+    assert.is_nil(res2)
+    assert.are.equal(1, call_count)
+    assert.are.equal(NOT_FOUND_ERROR, err2)
+    res2 = assert(client.getcache():get(client.TYPE_A..":"..qname))
+    assert.equal(res1, res2)
+    assert.is_true(res2.expired)  -- by now, record is marked as expired
+
+
+    -- wait for expiry of staleTtl and retry, should be called twice now
+    sleep(0.75 * staleTtl)
+    res2, err2 = client.resolve(
+      qname, 
+      { qtype = client.TYPE_A }
+    )
+    assert.is_nil(res2)
+    assert.are.equal(2, call_count)
+    assert.are.equal(NOT_FOUND_ERROR, err2)
+    res2 = assert(client.getcache():get(client.TYPE_A..":"..qname))
+    assert.not_equal(res1, res2)
+    assert.falsy(res2.expired)  -- new record, not expired
   end)
 
   it("verifies ttl and caching of (other) dns errors", function()
     --empty responses should be cached for a configurable time
     local badTtl = 0.1
+    local staleTtl = 0.1
+    local qname = "realname.com"
     assert(client.init({
           badTtl = badTtl,
+          staleTtl = staleTtl,
           resolvConf = {
             -- resolv.conf without `search` and `domain` options
             "nameserver 8.8.8.8",
           },
         }))
 
-    -- do a query so we get a resolver object to spy on
-    local _, _, r, history = client.toip("google.com", 123, false)
-    r.query = function() return { errcode = 5, errstr = "refused" } end
-    spy.on(r, "query")
-    
+    -- mock query function to count calls, and return errors
+    local call_count = 0
+    query_func = function(self, original_query_func, name, options)
+      call_count = call_count + 1
+      return { errcode = 5, errstr = "refused" }
+    end
+
+
     -- initial request to populate the cache
-    local res1, res2, err1, err2
-    res1, err1, r = client.resolve(
-      "realname.com", 
-      { qtype = client.TYPE_A }, 
-      false, r)
-    assert.spy(r.query).was.called(1)
-    assert.equal("dns server error: 5 refused", err1)
-    
-    -- try again, from cache, spu should still be called only once
-    res2, err2, r = client.resolve(
-      "realname.com", 
-      { qtype = client.TYPE_A }, 
-      false, r)
+    local res1, res2, err1, err2, history
+    res1, err1, history = client.resolve(
+      qname, 
+      { qtype = client.TYPE_A }
+    )
+    assert.is_nil(res1)
+    assert.are.equal(1, call_count)
+    assert.are.equal("dns server error: 5 refused", err1)
+    res1 = assert(client.getcache():get(client.TYPE_A..":"..qname))
+
+
+    -- try again, from cache, should still be called only once
+    res2, err2, history = client.resolve(
+      qname, 
+      { qtype = client.TYPE_A }
+    )
+    assert.is_nil(res2)
+    assert.are.equal(call_count, 1)
     assert.are.equal(err1, err2)
-    assert.spy(r.query).was.called(1)
-    
-    -- wait for expiry of ttl and retry, spy should be called twice now
-    sleep(badTtl+0.1)
-    res2, err2, r = client.resolve(
-      "realname.com", 
-      { qtype = client.TYPE_A }, 
-      false, r)
+    res2 = assert(client.getcache():get(client.TYPE_A..":"..qname))
+    assert.are.equal(res1, res2)
+    assert.falsy(res1.expired)
+
+
+    -- wait for expiry of ttl and retry, still 1 call, but now stale result
+    sleep(badTtl + 0.5 * staleTtl)
+    res2, err2, history = client.resolve(
+      qname, 
+      { qtype = client.TYPE_A }
+    )
+    assert.is_nil(res2)
+    assert.are.equal(call_count, 1)
     assert.are.equal(err1, err2)
-    assert.spy(r.query).was.called(2)
+    res2 = assert(client.getcache():get(client.TYPE_A..":"..qname))
+    assert.are.equal(res1, res2)
+    assert.is_true(res2.expired)
+
+    -- wait for expiry of staleTtl and retry, 2 calls, new result
+    sleep(0.75 * staleTtl)
+    res2, err2, history = client.resolve(
+      qname, 
+      { qtype = client.TYPE_A }
+    )
+    assert.is_nil(res2)
+    assert.are.equal(call_count, 2)  -- 2 calls now
+    assert.are.equal(err1, err2)
+    res2 = assert(client.getcache():get(client.TYPE_A..":"..qname))
+    assert.are_not.equal(res1, res2)  -- a new record
+    assert.falsy(res2.expired)
   end)
 
   describe("verifies the polling of dns queries, retries, and wait times", function()
@@ -1225,7 +1313,15 @@ describe("DNS client", function()
       assert(client.init())
       local coros = {}
       local results = {}
-      
+
+      local call_count = 0
+      query_func = function(self, original_query_func, name, options)
+        call_count = call_count + 1
+        sleep(0.5) -- make sure we take enough time so the other threads
+        -- will be waiting behind this one
+        return original_query_func(self, name, options)
+      end
+
       -- we're going to schedule a whole bunch of queries, all of this
       -- function, which does the same lookup and stores the result
       local x = function()
@@ -1233,7 +1329,10 @@ describe("DNS client", function()
         -- so the scheduler loop can first schedule them all before actually
         -- starting resolving
         coroutine.yield(coroutine.running())
-        local result = client.resolve("thijsschreijer.nl")
+        local result, err, history = client.resolve(
+                                        "thijsschreijer.nl", 
+                                        { qtype = client.TYPE_A }
+                                      )
         table.insert(results, result)
       end
       
@@ -1263,69 +1362,6 @@ describe("DNS client", function()
       assert.equal(1,count)
     end)
   
-    pending("simultaneous lookups with ttl=0 are not synchronized to 1 lookup", function()
--- revisit: ttl=0 is no longer special
-      assert(client.init())
-      local lrucache = client.getcache()
-
-      -- insert a ttl=0 record, so the resolver expects 0 and does not
-      -- synchronize the lookups
-      local ip = "1.4.2.3"
-      local name = "thijsschreijer.nl"
-      local entry = {
-        {
-          type = client.TYPE_A,
-          address = ip,
-          class = 1,
-          name = name,
-          ttl = 0,
-        },
-        touch = 0,
-        expire = gettime() - 1, 
-      }
-      -- insert in the cache
-      lrucache:set(entry[1].type..":"..entry[1].name, entry)
-      
-      local coros = {}
-      local results = {}
-      
-      -- we're going to schedule a whole bunch of queries, all of this
-      -- function, which does the same lookup and stores the result
-      local x = function()
-        -- the function is ran when started. So we must immediately yield
-        -- so the scheduler loop can first schedule them all before actually
-        -- starting resolving
-        coroutine.yield(coroutine.running())
-        local result = client.resolve("thijsschreijer.nl", {qtype = client.TYPE_A})
-        table.insert(results, result)
-      end
-      
-      -- schedule a bunch of the same lookups
-      for _ = 1, 10 do
-        local co = ngx.thread.spawn(x)
-        table.insert(coros, co)
-      end
-      
-      -- all scheduled and waiting to start due to the yielding done.
-      -- now start them all
-      for i = 1, #coros do
-        ngx.thread.wait(coros[i]) -- this wait will resume the scheduled ones
-      end
-      
-      -- now count the unique responses we got
-      local counters = {}
-      for _, r in ipairs(results) do
-        r = tostring(r)
-        counters[r] = (counters[r] or 0) + 1
-      end
-      local count = 0
-      for _ in pairs(counters) do count = count + 1 end
-      
-      -- we should have a 10 individual result tables, as all threads are 
-      -- supposed to do their own lookup.
-      assert.equal(10,count)
-    end)
-
     it("timeout while waiting", function()
       -- basically the local function _synchronized_query
       assert(client.init({
@@ -1339,28 +1375,22 @@ describe("DNS client", function()
       
       -- insert a stub thats waits and returns a fixed record
       local name = "thijsschreijer.nl"
-      local resty = require("resty.dns.resolver")
-      resty.new = function(...)
-        return {
-          query = function()
-            local ip = "1.4.2.3"
-            local entry = {
-              {
-                type = client.TYPE_A,
-                address = ip,
-                class = 1,
-                name = name,
-                ttl = 10,
-              },
-              touch = 0,
-              expire = gettime() + 10, 
-            }
-            sleep(2) -- wait before we return the results
-            return entry
-          end
+      query_func = function()
+        local ip = "1.4.2.3"
+        local entry = {
+          {
+            type = client.TYPE_A,
+            address = ip,
+            class = 1,
+            name = name,
+            ttl = 10,
+          },
+          touch = 0,
+          expire = gettime() + 10, 
         }
+        sleep(2) -- wait before we return the results
+        return entry
       end
-      
       
       local coros = {}
       local results = {}
@@ -1372,8 +1402,8 @@ describe("DNS client", function()
         -- so the scheduler loop can first schedule them all before actually
         -- starting resolving
         coroutine.yield(coroutine.running())
-        local result, err = client.resolve("thijsschreijer.nl", {qtype = client.TYPE_A})
-        table.insert(results, result or err)
+        local result, err, history = client.resolve("thijsschreijer.nl", {qtype = client.TYPE_A})
+        table.insert(results, (result or err))
       end
       
       -- schedule a bunch of the same lookups
@@ -1388,20 +1418,8 @@ describe("DNS client", function()
         ngx.thread.wait(coros[i]) -- this wait will resume the scheduled ones
       end
       
-      -- the result should be 3 entries
-      -- 1: a table  (first attempt)
-      -- 2: a second table (the 1 retry, as hardcoded in `pool_max_retry` variable)
-      -- 3-10: error message (returned by thread 3 to 10)
-      assert.is.table(results[1])
-      assert.is.table(results[1][1])
-      assert.is.equal(results[1][1].name, name)
-      results[1].touch = nil
-      results[2].touch = nil
-      results[1].expire = nil
-      results[2].expire = nil
-      assert.Not.equal(results[1], results[2])
-      assert.same(results[1], results[2])
-      for i = 3, 10 do
+      -- all results are equal, as they all will wait for the first response
+      for i = 1, 10 do
         assert.equal("dns lookup pool exceeded retries (1): timeout", results[i])
       end
     end)

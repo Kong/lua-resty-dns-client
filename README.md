@@ -35,8 +35,13 @@ use the `rbusted` script.
 History
 =======
 
-### 0.5.x (xx-xxx-2017) Bugfixes
+### 0.6.x (xx-xxx-2017) Rewritten resolver core to resolve async
 
+- Added: resolution will be done async whenever possible. For this to work a new
+  setting has been introduced `staleTtl` which determines for how long stale
+  records will returned while a query is in progress in the background.
+- Change: BREAKING! several functions that previously returned and took a
+  resolver object no longer do so.
 - Fix: no longer lookup ip adresses as names if the query type is not A or AAAA
 - Fix: normalize names to lowercase after query
 - Fix: set last-success types for hosts-file entries and ip-addresses
