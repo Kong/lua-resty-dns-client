@@ -35,7 +35,7 @@ use the `rbusted` script.
 History
 =======
 
-### 0.4.2 (xx-May-2017) Bugfix
+### 0.4.2 (25-May-2017) Bugfix
 
 - Fix: do not try to lookup ip addresses for non- A or AAAA records
 - Fix: normalize names to lowercase to prevent case issues
