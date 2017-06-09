@@ -27,6 +27,7 @@ local resolver = require("resty.dns.resolver")
 local time = ngx.now
 local ngx_log = ngx.log
 local log_WARN = ngx.WARN
+local log_DEBUG = ngx.DEBUG
 
 local math_min = math.min
 local math_max = math.max
@@ -294,6 +295,7 @@ local poolMaxRetry
 -- )
 _M.init = function(options)
   
+  log(log_DEBUG, "(re)configuring dns client")
   local resolv, hosts, err
   options = options or {}
   cache = {}  -- clear cache on re-initialization
@@ -313,7 +315,8 @@ _M.init = function(options)
     typeOrder[i] = _M["TYPE_"..t]
   end
   assert(#typeOrder > 0, "Invalid order list; cannot be empty")
-  
+  log(log_DEBUG, "query order: ", table.concat(order,", "))
+
   
   -- Deal with the `hosts` file
   
@@ -344,6 +347,7 @@ _M.init = function(options)
       -- cache is empty so far, so no need to check for the ip_preference
       -- field here, just set ipv4 as success-type.
       cachesetsuccess(name, _M.TYPE_A)
+      log(log_DEBUG, "adding from 'hosts' file: ",name, " = ", address.ipv4)
     end
     if address.ipv6 then 
       cacheinsert({{  -- NOTE: nested list! cache is a list of lists
@@ -358,6 +362,7 @@ _M.init = function(options)
       if ip_preference == "AAAA" or not cachegetsuccess(name) then
         cachesetsuccess(name, _M.TYPE_AAAA)
       end
+      log(log_DEBUG, "adding from 'hosts' file: ",name, " = ", address.ipv6)
     end
   end
 
@@ -393,8 +398,12 @@ _M.init = function(options)
     end
   end
   assert(#(options.nameservers or {}) > 0, "Invalid configuration, no valid nameservers found")
+  for _, r in ipairs(options.nameservers) do
+    log(log_DEBUG, "nameserver ", type(r) == "table" and (r[1]..":"..r[2]) or r)
+  end
   
   options.retrans = options.retrans or resolv.options.attempts or 5 -- 5 is openresty default
+  log(log_DEBUG, "attempts ", options.retrans)
   
   if not options.timeout then
     if resolv.options.timeout then
@@ -403,6 +412,7 @@ _M.init = function(options)
       options.timeout = 2000  -- 2000 is openresty default
     end
   end
+  log(log_DEBUG, "timeout ", options.timeout, " ms")
 
   -- setup the search order
   options.ndots = options.ndots or resolv.options.ndots or 1
@@ -412,7 +422,9 @@ _M.init = function(options)
   -- other options
   
   badTtl = options.badTtl or 1
+  log(log_DEBUG, "badTtl ", badTtl, " s")
   emptyTtl = options.emptyTtl or 30
+  log(log_DEBUG, "emptyTtl ", emptyTtl, " s")
   
   -- options.no_recurse = -- not touching this one for now
   
