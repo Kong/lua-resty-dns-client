@@ -272,7 +272,8 @@ local poolMaxRetry
 --        })
 -- )
 _M.init = function(options)
-  
+
+  log(log_DEBUG, "(re)configuring dns client")
   local resolv, hosts, err
   options = options or {}
   cache = {}  -- clear cache on re-initialization
@@ -285,6 +286,7 @@ _M.init = function(options)
     typeOrder[i] = _M["TYPE_"..t]
   end
   assert(#typeOrder > 0, "Invalid order list; cannot be empty")
+  log(log_DEBUG, "query order : ", table.concat(order,", "))
   
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
   local resolvconffile = options.resolvConf or utils.DEFAULT_RESOLV_CONF
@@ -309,6 +311,7 @@ _M.init = function(options)
           class = 1,
           ttl = ttl,
         }})
+      log(log_DEBUG, "adding from 'hosts' file: ",name, " = ", address.ipv4)
     end
     if address.ipv6 then 
       cacheinsert({{  -- NOTE: nested list! cache is a list of lists
@@ -318,6 +321,7 @@ _M.init = function(options)
           class = 1,
           ttl = ttl,
         }})
+      log(log_DEBUG, "adding from 'hosts' file: ",name, " = ", address.ipv6)
     end
   end
 
@@ -337,16 +341,20 @@ _M.init = function(options)
       local ip, port = address:match("^([^:]+)%:*(%d*)$")
       port = tonumber(port)
       if port then
-        options.nameservers[i] = { ip, port }
+        options.nameservers[#options.nameservers + 1] = { ip, port }
       else
-        options.nameservers[i] = ip
+        options.nameservers[#options.nameservers + 1] = ip
       end
     end
   end
   assert(#(options.nameservers or {}) > 0, "Invalid configuration, no dns servers found")
-  
+  for _, r in ipairs(options.nameservers) do
+    log(log_DEBUG, "nameserver ", type(r) == "table" and (r[1]..":"..r[2]) or r)
+  end
+
   options.retrans = options.retrans or resolv.attempts or 5 -- 5 is openresty default
-  
+  log(log_DEBUG, "attempts ", options.retrans)
+
   if not options.timeout then
     if resolv.timeout then
       options.timeout = resolv.timeout * 1000
@@ -354,8 +362,10 @@ _M.init = function(options)
       options.timeout = 2000  -- 2000 is openresty default
     end
   end
+  log(log_DEBUG, "timeout ", options.timeout, "ms")
   
   badTtl = options.badTtl or 1
+  log(log_DEBUG, "badTtl ", badTtl, "s")
   
   -- options.no_recurse = -- not touching this one for now
   
