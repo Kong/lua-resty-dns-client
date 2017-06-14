@@ -32,7 +32,6 @@
 
 <h2>Contents</h2>
 <ul>
-<li><a href="#Caching">Caching </a></li>
 <li><a href="#Resolving">Resolving </a></li>
 <li><a href="#Socket_functions">Socket functions </a></li>
 </ul>
@@ -55,20 +54,23 @@
 
 <h1>Module <code>resty.dns.client</code></h1>
 <p>DNS client.</p>
-<p><p> Works with OpenResty only. Requires the <a href="https://github.com/openresty/lua-resty-dns"><code>lua-resty-dns</code></a> module.</p>
+<p>
 
-<p> <em>NOTES</em>:</p>
+
+<p> Works with OpenResty only. Requires the <a href="https://github.com/openresty/lua-resty-dns"><code>lua-resty-dns</code></a> module.</p>
+
+<p> <em>NOTES</em>: </p>
 
 <ol>
-<li>parsing the config files upon initialization uses blocking i/o, so use with
-care. See <a href="../modules/resty.dns.client.html#init">init</a> for details.</li>
-<li>All returned records are directly from the cache. <em>So do not modify them!</em>
-If you need to, copy them first.</li>
-<li>TTL for records is the TTL returned by the server at the time of fetching
-and won&rsquo;t be updated while the client serves the records from its cache.</li>
-<li>resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
-the hostname to be resolved is a valid IP address, it will be cached with a ttl of
-10 years. So the user doesn&rsquo;t have to check for ip adresses.</li>
+    <li>parsing the config files upon initialization uses blocking i/o, so use with
+    care. See <a href="../modules/resty.dns.client.html#init">init</a> for details.</li>
+    <li>All returned records are directly from the cache. <em>So do not modify them!</em>
+    If you need to, copy them first.</li>
+    <li>TTL for records is the TTL returned by the server at the time of fetching
+    and won't be updated while the client serves the records from its cache.</li>
+    <li>resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
+    the hostname to be resolved is a valid IP address, it will be cached with a ttl of
+    10 years. So the user doesn't have to check for ip adresses.</li>
 </ol>
 </p>
     <h3>Info:</h3>
@@ -79,13 +81,6 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     </ul>
 
 
-<h2><a href="#Caching">Caching </a></h2>
-<table class="function_list">
-	<tr>
-	<td class="name" nowrap><a href="#purgeCache">purgeCache (touched)</a></td>
-	<td class="summary">Cleanup the DNS client cache.</td>
-	</tr>
-</table>
 <h2><a href="#Resolving">Resolving </a></h2>
 <table class="function_list">
 	<tr>
@@ -93,11 +88,11 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 	<td class="summary">Initialize the client.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#resolve">resolve (qname, r_opts, dnsCacheOnly, r, try_list)</a></td>
+	<td class="name" nowrap><a href="#resolve">resolve (qname, r_opts, dnsCacheOnly, try_list)</a></td>
 	<td class="summary">Resolve a name.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#toip">toip (qname, port, dnsCacheOnly, r, try_list)</a></td>
+	<td class="name" nowrap><a href="#toip">toip (qname, port, dnsCacheOnly, try_list)</a></td>
 	<td class="summary">Resolves to an IP and port number.</td>
 	</tr>
 </table>
@@ -117,68 +112,17 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 <br/>
 
 
-    <h2 class="section-header has-description"><a name="Caching"></a>Caching </h2>
-
-          <div class="section-description">
-           The cache will not update the <code>ttl</code> field. So every time the same record
- is served, the ttl will be the same. But the cache will insert extra fields
- on the top-level; <code>touch</code> (timestamp of last access) and <code>expire</code> (expiry time
- based on <code>ttl</code>)
-          </div>
-    <dl class="function">
-    <dt>
-    <a name = "purgeCache"></a>
-    <strong>purgeCache (touched)</strong>
-    </dt>
-    <dd>
-    Cleanup the DNS client cache.  Items will be checked on TTL only upon
- retrieval from the cache. So items inserted, but never used again will
- never be removed from the cache automatically. So unless you have a very
- restricted fixed set of hostnames you&rsquo;re resolving, you should occasionally
- purge the cache.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">touched</span>
-         in seconds. Cleanup everything (also non-expired items) not
- touched in <code>touched</code> seconds. If omitted, only expired items (based on ttl)
- will be removed.
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        number of entries deleted
-    </ol>
-
-
-
-
-</dd>
-</dl>
     <h2 class="section-header has-description"><a name="Resolving"></a>Resolving </h2>
 
           <div class="section-description">
            When resolving names, queries will be synchronized, such that only a single
- query will be sent. Any other requests coming in while waiting for a
- response from the name server will be queued, and receive the same result
- as the first request, once that returns.
- The exception is when a <code>ttl=0</code> is expected (expectation
- is based on a previous query returning <code>ttl=0</code>), in that case every request
- will get its own name server query.</p>
-
-<p> Because OpenResty will close sockets on boundaries of contexts, the
- resolver objects can only be reused in limited situations. To reuse
- them see the <code>r</code> parameters of the <a href="../modules/resty.dns.client.html#resolve">resolve</a> and <a href="../modules/resty.dns.client.html#toip">toip</a> functions. Applicable
- for multiple consecutive calls in the same context.</p>
+ query will be sent. If stale data is available, the request will return
+ stale data immediately, whilst continuing to resolve the name in the
+ background.</p>
 
 <p> The <code>dnsCacheOnly</code> parameter found with <a href="../modules/resty.dns.client.html#resolve">resolve</a> and <a href="../modules/resty.dns.client.html#toip">toip</a> can be used in
  contexts where the co-socket api is unavailable. When the flag is set
- only cached data is returned, which is possibly stale, but it will never
- use blocking io. Also; the stale data will not
- be invalidated from the cache when <code>dnsCacheOnly</code> is set.</p>
+ only cached data is returned, but it will never use blocking io.</p>
 
 <p> <strong>Housekeeping</strong>; when using <a href="../modules/resty.dns.client.html#toip">toip</a> it has to do some housekeeping to apply
  the (weighted) round-robin scheme. Those values will be stored in the
@@ -228,11 +172,15 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </span><span class="comment">-- 'last'; will try the last previously successful type for a hostname.
 </span><span class="keyword">local</span> order = { <span class="string">"last"</span>, <span class="string">"SRV"</span>, <span class="string">"A"</span>, <span class="string">"AAAA"</span>, <span class="string">"CNAME"</span> }
 
+<span class="comment">-- Stale ttl for how long a stale record will be served from the cache
+</span><span class="comment">-- while a background lookup is in progress.
+</span><span class="keyword">local</span> staleTtl = <span class="number">4.0</span>    <span class="comment">-- in seconds (can have fractions)
+</span>
 <span class="comment">-- Cache ttl for empty and 'name error' (3) responses
 </span><span class="keyword">local</span> emptyTtl = <span class="number">30.0</span>   <span class="comment">-- in seconds (can have fractions)
 </span>
 <span class="comment">-- Cache ttl for other error responses
-</span><span class="keyword">local</span> badTtl = <span class="number">1.0</span>   <span class="comment">-- in seconds (can have fractions)
+</span><span class="keyword">local</span> badTtl = <span class="number">1.0</span>      <span class="comment">-- in seconds (can have fractions)
 </span>
 <span class="comment">-- <code>ndots</code>, same as the <code>resolv.conf</code> option, if not given it is taken from
 </span><span class="comment">-- <code>resolv.conf</code> or otherwise set to 1
@@ -252,6 +200,8 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
          search = search,
          order = order,
          badTtl = badTtl,
+         emptyTtl = emptTtl,
+         staleTtl = staleTtl,
          enable_ipv6 = enable_ipv6,
        })
 )</pre>
@@ -260,10 +210,10 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </dd>
     <dt>
     <a name = "resolve"></a>
-    <strong>resolve (qname, r_opts, dnsCacheOnly, r, try_list)</strong>
+    <strong>resolve (qname, r_opts, dnsCacheOnly, try_list)</strong>
     </dt>
     <dd>
-    <p>Resolve a name.<br/>
+    Resolve a name. <br/>
  If <code>r_opts.qtype</code> is given, then it will fetch that specific type only. If
  <code>r_opts.qtype</code> is not provided, then it will try to resolve
  the name using the record types, in the order as provided to <a href="../modules/resty.dns.client.html#init">init</a>.</p>
@@ -275,22 +225,23 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  it (the first time) as;</p>
 
 <ul>
-<li>SRV,</li>
-<li>then A,</li>
-<li>then AAAA (success),</li>
-<li>then CNAME (after AAAA success, this will not be tried)</li>
+    <li>SRV, </li>
+    <li>then A, </li>
+    <li>then AAAA (success),</li>
+    <li>then CNAME (after AAAA success, this will not be tried)</li>
 </ul>
-
 
 <p> A second lookup will now try (assuming the cached entry expired);</p>
 
 <ul>
-<li>AAAA (as it was the last successful lookup),</li>
-<li>then SRV,</li>
-<li>then A,</li>
-<li>then CNAME.</li>
+    <li>AAAA (as it was the last successful lookup),</li>
+    <li>then SRV, </li>
+    <li>then A,</li>
+    <li>then CNAME.</li>
 </ul>
 
+<p> The outer loop will be based on the <code>search</code> and <code>ndots</code> options. Within each of
+ those, the inner loop will be the query/record type.
 
 
     <h3>Parameters:</h3>
@@ -303,14 +254,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  <a href="https://github.com/openresty/lua-resty-dns">OpenResty docs</a> for more options.
         </li>
         <li><span class="parameter">dnsCacheOnly</span>
-         Only check the cache, won&rsquo;t do server lookups
- (will not invalidate any ttl expired data and will hence possibly return
- expired data)
-        </li>
-        <li><span class="parameter">r</span>
-         (optional) dns resolver object to use, it will also be returned.
- In case of multiple calls, this allows to reuse the resolver object
- instead of recreating a new one on each call.
+         Only check the cache, won't do server lookups
         </li>
         <li><span class="parameter">try_list</span>
          (optional) list of tries to add to
@@ -320,7 +264,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     <h3>Returns:</h3>
     <ol>
 
-        <code>list of records + nil + r + try_list</code>, or <code>nil + err + r + try_list</code>.
+        <code>list of records + nil + try_list</code>, or <code>nil + err + try_list</code>.
     </ol>
 
 
@@ -329,10 +273,10 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </dd>
     <dt>
     <a name = "toip"></a>
-    <strong>toip (qname, port, dnsCacheOnly, r, try_list)</strong>
+    <strong>toip (qname, port, dnsCacheOnly, try_list)</strong>
     </dt>
     <dd>
-    <p>Resolves to an IP and port number.
+    Resolves to an IP and port number.
  Builds on top of <a href="../modules/resty.dns.client.html#resolve">resolve</a>, but will also further dereference SRV type records.</p>
 
 <p> When calling multiple times on cached records, it will apply load-balancing
@@ -343,33 +287,37 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 
 <p> <strong>Example</strong>;</p>
 
-<p> SRV record for &ldquo;my.domain.com&rdquo;, containing 2 entries (this is the 1st level);</p>
+<p> SRV record for "my.domain.com", containing 2 entries (this is the 1st level);</p>
 
 <ul>
-<li> <code>target = 127.0.0.1, port = 80, weight = 10</code></li>
-<li> <code>target = &quot;other.domain.com&quot;, port = 8080, weight = 5</code></li>
+    <li><code>target = 127.0.0.1, port = 80, weight = 10</code></li>
+    <li><code>target = &quot;other.domain.com&quot;, port = 8080, weight = 5</code></li>
 </ul>
 
-
-<p> A record for &ldquo;other.domain.com&rdquo;, containing 2 entries (this is the 2nd level);</p>
+<p> A record for "other.domain.com", containing 2 entries (this is the 2nd level);</p>
 
 <ul>
-<li> <code>ip = 127.0.0.2</code></li>
-<li> <code>ip = 127.0.0.3</code></li>
+    <li><code>ip = 127.0.0.2</code></li>
+    <li><code>ip = 127.0.0.3</code></li>
 </ul>
-
 
 <p> Now calling <code>local ip, port = toip(&quot;my.domain.com&quot;, 123)</code> in a row 6 times will result in;</p>
 
 <ul>
-<li> <code>127.0.0.1, 80</code></li>
-<li> <code>127.0.0.2, 8080</code> (port from SRV, 1st IP from A record)</li>
-<li> <code>127.0.0.1, 80</code>   (completes WRR 1st level, 1st run)</li>
-<li> <code>127.0.0.3, 8080</code> (port from SRV, 2nd IP from A record, completes RR 2nd level)</li>
-<li> <code>127.0.0.1, 80</code></li>
-<li> <code>127.0.0.1, 80</code>   (completes WRR 1st level, 2nd run, with different order as WRR is randomized)</li>
+    <li><code>127.0.0.1, 80</code></li>
+    <li><code>127.0.0.2, 8080</code> (port from SRV, 1st IP from A record)</li>
+    <li><code>127.0.0.1, 80</code>   (completes WRR 1st level, 1st run)</li>
+    <li><code>127.0.0.3, 8080</code> (port from SRV, 2nd IP from A record, completes RR 2nd level)</li>
+    <li><code>127.0.0.1, 80</code></li>
+    <li><code>127.0.0.1, 80</code>   (completes WRR 1st level, 2nd run, with different order as WRR is randomized)</li>
 </ul>
 
+<p> <strong>Debugging</strong>:</p>
+
+<p> This function both takes and returns a <code>try_list</code>. This is an internal object
+ representing the entire resolution history for a call. To prevent unnecessary
+ string concatenations on a hot code path, it is not logged in this module.
+ If you need to log it, just log <code>tostring(try_list)</code> from the caller code.
 
 
     <h3>Parameters:</h3>
@@ -382,13 +330,8 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  the lookup chain (only SRV records carry port information, SRV with <code>port=0</code> will be ignored)
         </li>
         <li><span class="parameter">dnsCacheOnly</span>
-         Only check the cache, won&rsquo;t do server lookups (will
+         Only check the cache, won't do server lookups (will
  not invalidate any ttl expired data and will hence possibly return expired data)
-        </li>
-        <li><span class="parameter">r</span>
-         (optional) dns resolver object to use, it will also be returned.
- In case of multiple calls, this allows to reuse the resolver object instead
- of recreating a new one on each call.
         </li>
         <li><span class="parameter">try_list</span>
          (optional) list of tries to add to
@@ -488,7 +431,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2017-04-26 02:23:12 </i>
+<i style="float:right;">Last updated 2017-06-15 16:36:27 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

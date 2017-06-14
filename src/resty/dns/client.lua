@@ -52,6 +52,7 @@ local emptyTtl             -- ttl (in seconds) for empty and 'name error' (3) er
 local badTtl               -- ttl (in seconds) for a other dns error results
 local staleTtl             -- ttl (in seconds) to serve stale data (while new lookup is in progress)
 local cacheSize            -- size of the lru cache
+local noSynchronisation
 local orderValids = {"LAST", "SRV", "A", "AAAA", "CNAME"} -- default order to query
 for _,v in ipairs(orderValids) do orderValids[v:upper()] = v end
 
@@ -132,6 +133,10 @@ local cacheinsert = function(entry, qname, qtype)
 
     elseif entry.errcode and entry.errcode ~= 3 then
       -- an error, but no 'name error' (3)
+      if (cachelookup(qname, qtype) or empty)[1] then
+        -- we still have a stale record with data, so we're not replacing that
+        return
+      end
       ttl = badTtl
       key = qtype..":"..qname
 
@@ -154,10 +159,12 @@ local cacheinsert = function(entry, qname, qtype)
     ttl = entry.ttl
     key = (qtype or e1.type) .. ":" .. (qname or e1.name)
     lru_ttl = entry.expire - now + staleTtl
+  end
 
-    if lru_ttl < 0 then
-      return  -- item is already expired, so we do not add it
-    end
+  if lru_ttl <= 0 then
+    -- item is already expired, so we do not add it
+    dnscache:delete(key)
+    return
   end
 
   dnscache:set(key, entry, lru_ttl)
@@ -344,6 +351,7 @@ _M.init = function(options)
   options = options or {}
   staleTtl = options.staleTtl or 4
   cacheSize = options.cacheSize or 10000  -- default set here to be able to reset the cache
+  noSynchronisation = options.noSynchronisation
 
   dnscache = lrucache.new(cacheSize)  -- clear cache on (re)initialization
   defined_hosts = {}  -- reset hosts hash table
@@ -530,6 +538,32 @@ local function parseQuery(qname, qtype, answers, try_list)
 end
 
 
+-- executes 1 individual query.
+-- This query will not be synchronized, every call will be 1 query.
+-- @param qname the name to query for
+-- @param r_opts a table with the query options
+-- @param try_list the try_list object to add to
+-- @return `result + nil + try_list`, or `nil + err + try_list` in case of errors
+local function individualQuery(qname, r_opts, try_list)
+  local r, err = resolver:new(config)
+  if not r then
+    return r, "failed to create a resolver: " .. err, try_list
+  end
+
+  try_status(try_list, "querying")
+
+  local result
+  result, err = r:query(qname, r_opts)
+  if not result then
+    return result, err, try_list
+  end
+
+  parseQuery(qname, r_opts.qtype, result, try_list)
+
+  return result, nil, try_list
+end
+
+
 local queue = setmetatable({}, {__mode = "v"})
 -- to be called as a timer-callback, performs a query and returns the results
 -- in the `item` table.
@@ -555,7 +589,9 @@ local function executeQuery(premature, item)
   item.semaphore = nil
 end
 
+
 -- schedules an async query.
+-- This will be synchronized, so multiple calls (sync or async) might result in 1 query.
 -- @param qname the name to query for
 -- @param r_opts a table with the query options
 -- @param try_list the try_list object to add to
@@ -589,7 +625,9 @@ local function asyncQuery(qname, r_opts, try_list)
   return item
 end
 
+
 -- schedules a sync query.
+-- This will be synchronized, so multiple calls (sync or async) might result in 1 query.
 -- The `poolMaxWait` is how long a thread waits for another to complete the query.
 -- The `poolMaxRetry` is how often we wait for another query to complete.
 -- The maximum delay would be `poolMaxWait * poolMaxRetry`.
@@ -660,6 +698,9 @@ local function lookup(qname, r_opts, dnsCacheOnly, try_list)
     end
     -- perform a sync lookup, as we have no stale data to fall back to
     try_list = try_add(try_list, qname, r_opts.qtype, "cache-miss")
+    if noSynchronisation then
+      return individualQuery(qname, r_opts, try_list)
+    end
     return syncQuery(qname, r_opts, try_list)
   end
 
@@ -1192,9 +1233,6 @@ end
 -- the lookup chain (only SRV records carry port information, SRV with `port=0` will be ignored)
 -- @param dnsCacheOnly Only check the cache, won't do server lookups (will 
 -- not invalidate any ttl expired data and will hence possibly return expired data)
--- @param r (optional) dns resolver object to use, it will also be returned. 
--- In case of multiple calls, this allows to reuse the resolver object instead 
--- of recreating a new one on each call.
 -- @param try_list (optional) list of tries to add to
 -- @return `ip address + port + r + try_list`, or in case of an error `nil + error + r + try_list`
 local function toip(qname, port, dnsCacheOnly, try_list)

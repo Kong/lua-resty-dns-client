@@ -35,7 +35,7 @@ use the `rbusted` script.
 History
 =======
 
-### 0.6.x (xx-xxx-2017) Rewritten resolver core to resolve async
+### 0.6.0 (14-Jun-2017) Rewritten resolver core to resolve async
 
 - Added: resolution will be done async whenever possible. For this to work a new
   setting has been introduced `staleTtl` which determines for how long stale

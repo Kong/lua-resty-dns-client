@@ -1047,116 +1047,6 @@ describe("DNS client", function()
     end)
   end)
 
-  pending("matrix;", function()
---revisit this: ttl=0 is no longer special...
-    local ip = "1.4.2.3"
-    local name = "thijsschreijer.nl"
-    local prep = function(ttl, expired)
-      assert(client.init({
-            resolvConf = {
-              -- resolv.conf without `search` and `domain` options
-              "nameserver 8.8.8.8",
-            },
-          }))
-      if expired then
-        expired = (-ttl - 2) -- expired by 2 seconds
-      else
-        expired = 0
-      end
-      local entry = {
-        {
-          type = client.TYPE_A,
-          address = ip,
-          class = 1,
-          name = name,
-          ttl = ttl, 
-        },
-        touch = 0,
-        expire = gettime() + ttl + expired, 
-      }
-      -- insert in the cache
-      local lrucache = client.getcache()
-      lrucache:set(entry[1].type..":"..entry[1].name, entry)
-      return entry
-    end
-    
-    it("ttl=0, expired=true,  cache_only=true", function()
-      -- returns the expired record, because cache_only is set
-      local ttl, expired, cache_only = 0, true, true
-      
-      local entry = prep(ttl, expired)
-      local record = assert(client.resolve(name, nil, cache_only))
-      assert.are.equal(entry, record)
-    end)
-    it("ttl=0, expired=true,  cache_only=false", function()
-      -- returns a new record, because it is expired and not cache_only
-      local ttl, expired, cache_only = 0, true, false
-      
-      local entry = prep(ttl, expired)
-      local record = assert(client.resolve(name, nil, cache_only))
-      assert.is.table(record)
-      assert.is.table(record[1])
-      assert.are.equal(name, record[1].name)
-      assert.are_not.equal(ip, record[1].address)
-      assert.are.Not.equal(entry, record)
-    end)
-    it("ttl=0, expired=false, cache_only=true", function()
-      -- returns the expired record, because cache_only is set
-      local ttl, expired, cache_only = 0, false, true
-      
-      local entry = prep(ttl, expired)
-      local record = assert(client.resolve(name, nil, cache_only))
-      assert.are.equal(entry, record)
-    end)
-    it("ttl=0, expired=false, cache_only=false", function()
-      -- returns a new record, because it has ttl=0, and not cache_only
-      local ttl, expired, cache_only = 0, false, false
-      
-      local entry = prep(ttl, expired)
-      local record = assert(client.resolve(name, nil, cache_only))
-      assert.is.table(record)
-      assert.is.table(record[1])
-      assert.are.equal(name, record[1].name)
-      assert.are_not.equal(ip, record[1].address)
-      assert.are.Not.equal(entry, record)
-    end)
-    it("ttl>0, expired=true,  cache_only=true", function()
-      -- returns the expired record, because it is cache_only
-      local ttl, expired, cache_only = 10, true, true
-      
-      local entry = prep(ttl, expired)
-      local record = assert(client.resolve(name, nil, cache_only))
-      assert.are.equal(entry, record)
-    end)
-    it("ttl>0, expired=true,  cache_only=false", function()
-      -- returns a new record, because it is expired, but not cache_only
-      local ttl, expired, cache_only = 10, true, false
-      
-      local entry = prep(ttl, expired)
-      local record = assert(client.resolve(name, nil, cache_only))
-      assert.is.table(record)
-      assert.is.table(record[1])
-      assert.are.equal(name, record[1].name)
-      assert.are_not.equal(ip, record[1].address)
-      assert.are.Not.equal(entry, record)
-    end)
-    it("ttl>0, expired=false, cache_only=true", function()
-      -- returns the active/valid record
-      local ttl, expired, cache_only = 10, false, true
-      
-      local entry = prep(ttl, expired)
-      local record = assert(client.resolve(name, nil, cache_only))
-      assert.are.equal(entry, record)
-    end)
-    it("ttl>0, expired=false, cache_only=false", function()
-      -- returns the active/valid record
-      local ttl, expired, cache_only = 10, false, false
-      
-      local entry = prep(ttl, expired)
-      local record = assert(client.resolve(name, nil, cache_only))
-      assert.are.equal(entry, record)
-    end)
-  end)
 
   it("verifies ttl and caching of empty responses and name errors", function()
     --empty/error responses should be cached for a configurable time
@@ -1402,7 +1292,7 @@ describe("DNS client", function()
         -- so the scheduler loop can first schedule them all before actually
         -- starting resolving
         coroutine.yield(coroutine.running())
-        local result, err, history = client.resolve("thijsschreijer.nl", {qtype = client.TYPE_A})
+        local result, err, history = client.resolve(name, {qtype = client.TYPE_A})
         table.insert(results, (result or err))
       end
       
@@ -1424,4 +1314,64 @@ describe("DNS client", function()
       end
     end)
   end)
+
+  it("noSynchronisation == true, queries on each request", function()
+    -- basically the local function _synchronized_query
+    assert(client.init({
+      resolvConf = {
+        -- resolv.conf without `search` and `domain` options
+        "nameserver 8.8.8.8",
+      },
+      noSynchronisation = true,
+    }))
+    
+    -- insert a stub thats waits and returns a fixed record
+    local call_count = 0
+    local name = "thijsschreijer.nl"
+    query_func = function()
+      local ip = "1.4.2.3"
+      local entry = {
+        {
+          type = client.TYPE_A,
+          address = ip,
+          class = 1,
+          name = name,
+          ttl = 10,
+        },
+        touch = 0,
+        expire = gettime() + 10, 
+      }
+      sleep(1) -- wait before we return the results
+      call_count = call_count + 1
+      return entry
+    end
+    
+    local coros = {}
+    
+    -- we're going to schedule a whole bunch of queries, all of this
+    -- function, which does the same lookup and stores the result
+    local x = function()
+      -- the function is ran when started. So we must immediately yield
+      -- so the scheduler loop can first schedule them all before actually
+      -- starting resolving
+      coroutine.yield(coroutine.running())
+      local result, err, history = client.resolve(name, {qtype = client.TYPE_A})
+    end
+    
+    -- schedule a bunch of the same lookups
+    for _ = 1, 10 do
+      local co = ngx.thread.spawn(x)
+      table.insert(coros, co)
+    end
+    
+    -- all scheduled and waiting to start due to the yielding done.
+    -- now start them all
+    for i = 1, #coros do
+      ngx.thread.wait(coros[i]) -- this wait will resume the scheduled ones
+    end
+    
+    -- all results are unique, each call got its own query
+    assert.equal(call_count, 10)
+  end)
+
 end)
