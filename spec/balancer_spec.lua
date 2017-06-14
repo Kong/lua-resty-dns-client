@@ -19,7 +19,7 @@ else
 end
 
 -- creates an SRV record in the cache
-local dnsSRV = function(records)
+local dnsSRV = function(records, staleTtl)
   -- if single table, then insert into a new list
   if not records[1] then records = { records } end
   
@@ -43,14 +43,15 @@ local dnsSRV = function(records)
   records.expire = gettime() + records[1].ttl
   
   -- create key, and insert it
-  dnscache[records[1].type..":"..records[1].name] = records
+  local key = records[1].type..":"..records[1].name
+  dnscache:set(key, records, records[1].ttl + (staleTtl or 4))
   -- insert last-succesful lookup type
-  dnscache[records[1].name] = records[1].type
+  dnscache:set(records[1].name, records[1].type)
   return records
 end
 
 -- creates an A record in the cache
-local dnsA = function(records)
+local dnsA = function(records, staleTtl)
   -- if single table, then insert into a new list
   if not records[1] then records = { records } end
   
@@ -71,14 +72,15 @@ local dnsA = function(records)
   records.expire = gettime() + records[1].ttl
   
   -- create key, and insert it
-  dnscache[records[1].type..":"..records[1].name] = records
+  local key = records[1].type..":"..records[1].name
+  dnscache:set(key, records, records[1].ttl + (staleTtl or 4))
   -- insert last-succesful lookup type
-  dnscache[records[1].name] = records[1].type
+  dnscache:set(records[1].name, records[1].type)
   return records
 end
 
 -- creates an AAAA record in the cache
-local dnsAAAA = function(records)
+local dnsAAAA = function(records, staleTtl)
   -- if single table, then insert into a new list
   if not records[1] then records = { records } end
   
@@ -99,9 +101,10 @@ local dnsAAAA = function(records)
   records.expire = gettime() + records[1].ttl
   
   -- create key, and insert it
-  dnscache[records[1].type..":"..records[1].name] = records
+  local key = records[1].type..":"..records[1].name
+  dnscache:set(key, records, records[1].ttl + (staleTtl or 4))
   -- insert last-succesful lookup type
-  dnscache[records[1].name] = records[1].type
+  dnscache:set(records[1].name, records[1].type)
   return records
 end
 
@@ -1023,7 +1026,13 @@ describe("Loadbalancer", function()
           ["[::1]:80"]   = 30,
       }, count)
       
-      record.expire = gettime() - 1 -- expire record now
+      -- expire the existing record
+      record.expire = gettime() - 1
+      record.expired = true
+      -- do a lookup to trigger the async lookup
+      client.resolve("does.not.exist.mashape.com", {qtype = client.TYPE_A})
+      sleep(0.5) -- provide time for async lookup to complete
+      
       for _ = 1, b.wheelSize do b:getPeer() end -- hit them all to force renewal
       
       count = count_slots(b)
