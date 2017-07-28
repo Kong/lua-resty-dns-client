@@ -1,8 +1,8 @@
 package = "lua-resty-dns-client"
-version = "0.6.0-1"
+version = "0.6.1-1"
 source = {
-  url = "https://github.com/Mashape/lua-resty-dns-client/archive/0.6.0.tar.gz",
-  dir = "lua-resty-dns-client-0.6.0"
+  url = "https://github.com/Mashape/lua-resty-dns-client/archive/0.6.1.tar.gz",
+  dir = "lua-resty-dns-client-0.6.1"
 }
 description = {
   summary = "DNS library",
@@ -16,6 +16,7 @@ description = {
 dependencies = {
   "lua >= 5.1, < 5.4",
   "penlight > 1.1, < 2.0",
+  "lrandom",
 }
 build = {
   type = "builtin",

@@ -42,6 +42,7 @@ local REQUERY_INTERVAL = 1  -- Interval for requerying failed dns queries
 local bit = require "bit"
 local dns = require "resty.dns.client"
 local utils = require "resty.dns.utils"
+local lrandom = require "random"
 local empty = setmetatable({}, 
   {__newindex = function() error("The 'empty' table is read-only") end})
 
@@ -49,7 +50,6 @@ local time = ngx.now
 local table_sort = table.sort
 local table_remove = table.remove
 local math_floor = math.floor
-local math_random = math.random
 local string_sub = string.sub
 local ngx_md5 = ngx.md5_bin
 local timer_at = ngx.timer.at
@@ -888,10 +888,7 @@ end
 -- will have to be moved between targets. A value of 50 to 200 slots per entry 
 -- seems about right.
 -- - `order` (optional) if given, a list of random numbers, size `wheelSize`, used to 
--- randomize the wheel. This entry is solely to support multiple servers with 
--- the same consistency, as it allows to use the same randomization on each
--- server, and hence the same slot assignment. Duplicates are not allowed in
--- the list.
+-- randomize the wheel. Duplicates are not allowed in the list.
 -- - `dns` (required) a configured `dns.client` object for querying the dns server.
 -- - `requery` (optional) interval of requerying the dns server for previously 
 -- failed queries. Defaults to 1 if omitted (in seconds)
@@ -946,15 +943,19 @@ _M.new = function(opts)
   local slotList = self.unassignedSlots
   local duplicateCheck = {}
   local empty = {}
+  -- create a new randomizer with just any seed, we do not care about
+  -- uniqueness, only about distribution, and repeatability, each orderlist
+  -- must be identical!
+  local randomizer = lrandom.new(158841259)
   for i = 1, self.wheelSize do
     
     local slot = {}
-    local order = (opts.order or empty)[i] or math_random()
+    local order = (opts.order or empty)[i] or randomizer()
     while duplicateCheck[order] do  -- no duplicates allowed! order must be deterministic!
       if (opts.order or empty)[i] then -- it was a user provided value, so error out
         error("the 'order' list contains duplicates")
       end
-      order = math_random()
+      order = randomizer()
     end
     duplicateCheck[order] = true
     slot.order = order           -- the order in the slot wheel

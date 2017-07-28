@@ -35,6 +35,12 @@ use the `rbusted` script.
 History
 =======
 
+### 0.6.1 (28-Jul-2017) Randomization adjusted
+
+- Change: use a different randomizer for the ring-balancer to predictably
+  recreate the balancer in the exact same state (adds the `lrandom` library as
+  a new dependency)
+
 ### 0.6.0 (14-Jun-2017) Rewritten resolver core to resolve async
 
 - Added: resolution will be done async whenever possible. For this to work a new
