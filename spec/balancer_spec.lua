@@ -1027,7 +1027,7 @@ describe("Loadbalancer", function()
       }, count)
       
       -- expire the existing record
-      record.expire = gettime() - 1
+      record.expire = 0
       record.expired = true
       -- do a lookup to trigger the async lookup
       client.resolve("does.not.exist.mashape.com", {qtype = client.TYPE_A})

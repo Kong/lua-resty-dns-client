@@ -35,6 +35,10 @@ use the `rbusted` script.
 History
 =======
 
+### 0.6.x (xx-xxx-2017) Fixes and refactor
+
+- Fix: fix an occasionally failing test
+
 ### 0.6.1 (28-Jul-2017) Randomization adjusted
 
 - Change: use a different randomizer for the ring-balancer to predictably
