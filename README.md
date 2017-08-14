@@ -38,6 +38,7 @@ History
 ### 0.6.x (xx-xxx-2017) Fixes and refactor
 
 - Fix: fix an occasionally failing test
+- Refactor: remove metadata from the records, instead store it in its own cache
 
 ### 0.6.1 (28-Jul-2017) Randomization adjusted
 
