@@ -443,7 +443,7 @@ _M.init = function(options)
       local ip, port, t = utils.parseHostname(address)
       if t == "ipv6" and not options.enable_ipv6 then
         -- should not add this one
-        log(log_DEBUG, "skipping IPv6 nameserver ", type(r) == "table" and (r[1]..":"..r[2]) or r)
+        log(log_DEBUG, "skipping IPv6 nameserver ", port and (ip..":"..port) or ip)
       else
         if port then
           options.nameservers[#options.nameservers + 1] = { ip, port }
