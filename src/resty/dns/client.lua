@@ -279,12 +279,6 @@ end
 -- The `dnsCacheOnly` parameter found with `resolve` and `toip` can be used in 
 -- contexts where the co-socket api is unavailable. When the flag is set
 -- only cached data is returned, but it will never use blocking io.
---
--- __Housekeeping__; when using `toip` it has to do some housekeeping to apply
--- the (weighted) round-robin scheme. Those values will be stored in the 
--- dns record using field names starting with `__` (double underscores). So when
--- using `resolve` it might return a record from the cache with those fields if
--- it has been accessed by `toip` before.
 -- @section resolving
 
 
@@ -1066,15 +1060,24 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
   return nil, err, try_list
 end
 
+-- Create a metadata cache, using weak keys so it follows the dns record cache.
+-- The cache will hold pointers and lists for (weighted) round-robin schemes
+local metadataCache = setmetatable({}, { __mode = "k" })
+
 -- returns the index of the record next up in the round-robin scheme.
 local function roundRobin(rec)
-  local cursor = rec.__lastCursor or 0 -- start with first entry, trust the dns server! no random pick
+  local md = metadataCache[rec]
+  if not md then
+    md = {}
+    metadataCache[rec] = md
+  end
+  local cursor = md.lastCursor or 0 -- start with first entry, trust the dns server! no random pick
   if cursor == #rec then
     cursor = 1
   else
     cursor = cursor + 1
   end
-  rec.__lastCursor = cursor
+  md.lastCursor = cursor
   return cursor
 end
 
@@ -1120,9 +1123,14 @@ end
 
 -- returns the index of the SRV entry next up in the weighted round-robin scheme.
 local function roundRobinW(rec)
+  local md = metadataCache[rec]
+  if not md then
+    md = {}
+    metadataCache[rec] = md
+  end
   
   -- determine priority; stick to current or lower priority
-  local prioList = rec.__prioList -- list with indexes-to-entries having the lowest priority
+  local prioList = md.prioList -- list with indexes-to-entries having the lowest priority
   
   if not prioList then
     -- 1st time we're seeing this record, so go and
@@ -1142,21 +1150,21 @@ local function roundRobinW(rec)
         weightList = { r.weight }
       end
     end
-    rec.__prioList = prioList
-    rec.__weightList = weightList
+    md.prioList = prioList
+    md.weightList = weightList
     return prioList[1]  -- start with first entry, trust the dns server!
   end
 
-  local rrwList = rec.__rrwList
-  local rrwPointer = rec.__rrwPointer
+  local rrwList = md.rrwList
+  local rrwPointer = md.rrwPointer
 
   if not rrwList then
     -- 2nd time we're seeing this record
     -- 1st time we trusted the dns server, now we do WRR by our selves, so
     -- must create a list based on the weights. We do this only when necessary
     -- for performance reasons, so only on 2nd or later calls. Especially for
-    -- ttl=0 scenarios where there is only 1 call ever.
-    local weightList = reducedWeights(rec.__weightList)
+    -- ttl=0 scenarios where there might only be 1 call ever.
+    local weightList = reducedWeights(md.weightList)
     rrwList = {}
     local x = 0
     -- create a list of entries, where each entry is repeated based on its
@@ -1167,7 +1175,7 @@ local function roundRobinW(rec)
         rrwList[x] = idx
       end
     end
-    rec.__rrwList = rrwList
+    md.rrwList = rrwList
     -- The list has 2 parts, lower-part is yet to be used, higher-part was
     -- already used. The `rrwPointer` points to the last entry of the lower-part.
     -- On the initial call we served the first record, so we must rotate
@@ -1184,9 +1192,9 @@ local function roundRobinW(rec)
   -- rotate to next
   rrwList[idx], rrwList[rrwPointer] = rrwList[rrwPointer], rrwList[idx]
   if rrwPointer == 1 then 
-    rec.__rrwPointer = #rrwList 
+    md.rrwPointer = #rrwList 
   else
-    rec.__rrwPointer = rrwPointer-1
+    md.rrwPointer = rrwPointer-1
   end
   
   return target
