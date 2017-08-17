@@ -105,7 +105,9 @@ function objAddr:getPeer(cacheOnly)
   if self.ipType == "name" then
     -- SRV type record with a named target
     local ip, port = dns.toip(self.ip, self.port, cacheOnly)
-    return ip, port, self.host.name
+    -- TODO: which is the proper name to return in this case?
+    -- `self.host.hostname`? or the named SRV entry: `self.ip`?
+    return ip, port, self.host.hostname
   else
     -- just an IP address
     return self.ip, self.port, self.host.hostname
