@@ -37,6 +37,8 @@ History
 
 ### 0.6.x (xx-xxx-2017) Fixes and refactor
 
+- Fix: balancer not returning hostname for named SRV entries. See
+  [issue #17](https://github.com/Mashape/lua-resty-dns-client/issues/17)
 - Fix: fix an occasionally failing test
 - Refactor: remove metadata from the records, instead store it in its own cache
 
