@@ -35,6 +35,12 @@ use the `rbusted` script.
 History
 =======
 
+### 0.4.3 (17-Aug-2017) Bugfix
+
+- Fix: return proper hostname for named SRV entries in the balancer
+- Fix: skip adding IPv6 nameservers, instead of nil insertion
+- Change: added logging on debug level
+
 ### 0.4.2 (25-May-2017) Bugfix
 
 - Fix: do not try to lookup ip addresses for non- A or AAAA records

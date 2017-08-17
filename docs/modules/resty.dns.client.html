@@ -55,20 +55,23 @@
 
 <h1>Module <code>resty.dns.client</code></h1>
 <p>DNS client.</p>
-<p><p> Works with OpenResty only. Requires the <a href="https://github.com/openresty/lua-resty-dns"><code>lua-resty-dns</code></a> module.</p>
+<p>
 
-<p> <em>NOTES</em>:</p>
+
+<p> Works with OpenResty only. Requires the <a href="https://github.com/openresty/lua-resty-dns"><code>lua-resty-dns</code></a> module.</p>
+
+<p> <em>NOTES</em>: </p>
 
 <ol>
-<li>parsing the config files upon initialization uses blocking i/o, so use with
-care. See <a href="../modules/resty.dns.client.html#init">init</a> for details.</li>
-<li>All returned records are directly from the cache. <em>So do not modify them!</em>
-If you need to, copy them first.</li>
-<li>TTL for records is the TTL returned by the server at the time of fetching
-and won&rsquo;t be updated while the client serves the records from its cache.</li>
-<li>resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
-the hostname to be resolved is a valid IP address, it will be cached with a ttl of
-10 years. So the user doesn&rsquo;t have to check for ip adresses.</li>
+    <li>parsing the config files upon initialization uses blocking i/o, so use with
+    care. See <a href="../modules/resty.dns.client.html#init">init</a> for details.</li>
+    <li>All returned records are directly from the cache. <em>So do not modify them!</em>
+    If you need to, copy them first.</li>
+    <li>TTL for records is the TTL returned by the server at the time of fetching
+    and won't be updated while the client serves the records from its cache.</li>
+    <li>resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
+    the hostname to be resolved is a valid IP address, it will be cached with a ttl of
+    10 years. So the user doesn't have to check for ip adresses.</li>
 </ol>
 </p>
     <h3>Info:</h3>
@@ -138,7 +141,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     Cleanup the DNS client cache.  Items will be checked on TTL only upon
  retrieval from the cache. So items inserted, but never used again will
  never be removed from the cache automatically. So unless you have a very
- restricted fixed set of hostnames you&rsquo;re resolving, you should occasionally
+ restricted fixed set of hostnames you're resolving, you should occasionally
  purge the cache.
 
 
@@ -247,7 +250,8 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     <strong>resolve (qname, r_opts, dnsCacheOnly, r)</strong>
     </dt>
     <dd>
-    <p>Resolve a name.<br/>
+
+<p>Resolve a name. <br/>
  If <code>r_opts.qtype</code> is given, then it will fetch that specific type only. If
  <code>r_opts.qtype</code> is not provided, then it will try to resolve
  the name using the record types, in the order as provided to <a href="../modules/resty.dns.client.html#init">init</a>.</p>
@@ -259,21 +263,21 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  it (the first time) as;</p>
 
 <ul>
-<li>SRV,</li>
-<li>then A,</li>
-<li>then AAAA (success),</li>
-<li>then CNAME (after AAAA success, this will not be tried)</li>
+    <li>SRV, </li>
+    <li>then A, </li>
+    <li>then AAAA (success),</li>
+    <li>then CNAME (after AAAA success, this will not be tried)</li>
 </ul>
-
 
 <p> A second lookup will now try (assuming the cached entry expired);</p>
 
 <ul>
-<li>AAAA (as it was the last successful lookup),</li>
-<li>then SRV,</li>
-<li>then A,</li>
-<li>then CNAME.</li>
+    <li>AAAA (as it was the last successful lookup),</li>
+    <li>then SRV, </li>
+    <li>then A,</li>
+    <li>then CNAME.</li>
 </ul>
+
 
 
 
@@ -287,7 +291,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  <a href="https://github.com/openresty/lua-resty-dns">OpenResty docs</a> for more options.
         </li>
         <li><span class="parameter">dnsCacheOnly</span>
-         Only check the cache, won&rsquo;t do server lookups
+         Only check the cache, won't do server lookups
  (will not invalidate any ttl expired data and will hence possibly return
  expired data)
         </li>
@@ -321,7 +325,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  A server error table is returned as <code>nil+error+r</code> (where <a href="https://www.lua.org/manual/5.1/manual.html#pdf-error">error</a> is a string
  extracted from the server error table).
  An empty response is returned as <code>response+error+r</code> (where <a href="https://www.lua.org/manual/5.1/manual.html#pdf-error">error</a> is
- &lsquo;dns query returned no results&rsquo;).
+ 'dns query returned no results').
 
 
 
@@ -347,7 +351,8 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
     <strong>toip (qname, port, dnsCacheOnly, r)</strong>
     </dt>
     <dd>
-    <p>Resolves to an IP and port number.
+
+<p>Resolves to an IP and port number.
  Builds on top of <a href="../modules/resty.dns.client.html#resolve">resolve</a>, but will also further dereference SRV type records.</p>
 
 <p> When calling multiple times on cached records, it will apply load-balancing
@@ -358,32 +363,31 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 
 <p> <strong>Example</strong>;</p>
 
-<p> SRV record for &ldquo;my.domain.com&rdquo;, containing 2 entries (this is the 1st level);</p>
+<p> SRV record for "my.domain.com", containing 2 entries (this is the 1st level);</p>
 
 <ul>
-<li> <code>target = 127.0.0.1, port = 80, weight = 10</code></li>
-<li> <code>target = &quot;other.domain.com&quot;, port = 8080, weight = 5</code></li>
+    <li><code>target = 127.0.0.1, port = 80, weight = 10</code></li>
+    <li><code>target = &quot;other.domain.com&quot;, port = 8080, weight = 5</code></li>
 </ul>
 
-
-<p> A record for &ldquo;other.domain.com&rdquo;, containing 2 entries (this is the 2nd level);</p>
+<p> A record for "other.domain.com", containing 2 entries (this is the 2nd level);</p>
 
 <ul>
-<li> <code>ip = 127.0.0.2</code></li>
-<li> <code>ip = 127.0.0.3</code></li>
+    <li><code>ip = 127.0.0.2</code></li>
+    <li><code>ip = 127.0.0.3</code></li>
 </ul>
-
 
 <p> Now calling <code>local ip, port = toip(&quot;my.domain.com&quot;, 123)</code> in a row 6 times will result in;</p>
 
 <ul>
-<li> <code>127.0.0.1, 80</code></li>
-<li> <code>127.0.0.2, 8080</code> (port from SRV, 1st IP from A record)</li>
-<li> <code>127.0.0.1, 80</code>   (completes WRR 1st level, 1st run)</li>
-<li> <code>127.0.0.3, 8080</code> (port from SRV, 2nd IP from A record, completes RR 2nd level)</li>
-<li> <code>127.0.0.1, 80</code></li>
-<li> <code>127.0.0.1, 80</code>   (completes WRR 1st level, 2nd run, with different order as WRR is randomized)</li>
+    <li><code>127.0.0.1, 80</code></li>
+    <li><code>127.0.0.2, 8080</code> (port from SRV, 1st IP from A record)</li>
+    <li><code>127.0.0.1, 80</code>   (completes WRR 1st level, 1st run)</li>
+    <li><code>127.0.0.3, 8080</code> (port from SRV, 2nd IP from A record, completes RR 2nd level)</li>
+    <li><code>127.0.0.1, 80</code></li>
+    <li><code>127.0.0.1, 80</code>   (completes WRR 1st level, 2nd run, with different order as WRR is randomized)</li>
 </ul>
+
 
 
 
@@ -397,7 +401,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
  the lookup chain (only SRV records carry port information, SRV with <code>port=0</code> will be ignored)
         </li>
         <li><span class="parameter">dnsCacheOnly</span>
-         Only check the cache, won&rsquo;t do server lookups (will
+         Only check the cache, won't do server lookups (will
  not invalidate any ttl expired data and will hence possibly return expired data)
         </li>
         <li><span class="parameter">r</span>
@@ -500,7 +504,7 @@ the hostname to be resolved is a valid IP address, it will be cached with a ttl 
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2017-04-21 10:40:30 </i>
+<i style="float:right;">Last updated 2017-08-17 13:23:24 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
