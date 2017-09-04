@@ -35,7 +35,7 @@ use the `rbusted` script.
 History
 =======
 
-### 0.6.x (xx-xxx-2017) Fixes and refactor
+### 0.6.2 (04-Sep-2017) Fixes and refactor
 
 - Fix: balancer not returning hostname for named SRV entries. See
   [issue #17](https://github.com/Mashape/lua-resty-dns-client/issues/17)
