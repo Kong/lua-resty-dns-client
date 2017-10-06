@@ -276,11 +276,11 @@ describe("Loadbalancer", function()
       it("fails without proper options", function()
         assert.has.error(
           function() balancer.new() end, 
-          "Expected an options table, but got; nil"
+          "Expected an options table, but got: nil"
         )
         assert.has.error(
           function() balancer.new("should be a table") end,
-          "Expected an options table, but got; string"
+          "Expected an options table, but got: string"
         )
       end)
       it("fails without proper 'dns' option", function()
@@ -330,6 +330,16 @@ describe("Loadbalancer", function()
           "the 'order' list contains duplicates"
         )
       end)
+      it("fails with a bad callback", function()
+        assert.has.error(
+          function() balancer.new({
+              dns = client,
+              hosts = {"mashape.com"},
+              callback = "not a function",
+            }) end,
+          "expected 'callback' to be a function or nil, but got: string"
+        )
+      end)
       it("succeeds with proper options", function()
         dnsA({ 
           { name = "mashape.com", address = "1.2.3.4" },
@@ -342,6 +352,7 @@ describe("Loadbalancer", function()
           order = {1,2,3,4,5,6,7,8,9,10},
           requery = 2,
           ttl0 = 5,
+          callback = function() end,
         })
       end)
       it("succeeds with the right sizes", function()
