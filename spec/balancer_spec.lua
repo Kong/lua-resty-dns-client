@@ -577,7 +577,7 @@ describe("Loadbalancer", function()
       assert.equal(8001, port)
       assert.equal("gelato.io", host)
     end)
-    it("gets an IP address and port number round-robin", function()
+    it("gets an IP address and port number; round-robin", function()
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
       })
@@ -603,6 +603,10 @@ describe("Loadbalancer", function()
       assert.equal(20, res["mashape.com:123"])
       assert.equal(10, res["5.6.7.8:321"])
       assert.equal(10, res["getkong.org:321"])
+    end)
+    pending("gets an IP address and port number; round-robin skips unhealthy addresses", function()
+    end)
+    pending("gets an IP address and port number; round-robin succeeds when all unhealthy", function()
     end)
     it("gets an IP address and port number; consistent hashing", function()
       dnsA({ 
@@ -696,6 +700,10 @@ describe("Loadbalancer", function()
       local count = 0
       for _,_ in pairs(res) do count = count + 1 end
       assert.equal(10, count) -- 10 unique entries
+    end)
+    pending("gets an IP address and port number; consistent hashing skips unhealthy addresses", function()
+    end)
+    pending("gets an IP address and port number; consistent hashing succeeds when all unhealthy", function()
     end)
     it("does not hit the resolver when 'cache_only' is set", function()
       local record = dnsA({ 
@@ -1410,6 +1418,8 @@ describe("Loadbalancer", function()
       -- wheel should be back in original state
 --print("now checking the updated results")
       assert.same(state1, copyWheel(b))
+    end)
+    pending("renewed DNS A record; unhealthy entries remain unhealthy after renewal", function()
     end)
     it("low weight with zero-slots assigned doesn't fail", function()
       -- depending on order of insertion it is either 1 or 0 slots
