@@ -38,6 +38,9 @@ local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
 local TTL_0_RETRY = 60      -- Maximum life-time for hosts added with ttl=0, requery after it expires
 local REQUERY_INTERVAL = 1  -- Interval for requerying failed dns queries
+local ERR_SLOT_REASSIGNED = "Cannot get peer, current slot got reassigned"
+local ERR_ADDRESS_UNAVAILABLE = "Address is marked as unavailable"
+local ERR_NO_PEERS_AVAILABLE = "No peers are available"
 
 local bit = require "bit"
 local dns = require "resty.dns.client"
@@ -49,6 +52,7 @@ local empty = setmetatable({},
 local time = ngx.now
 local table_sort = table.sort
 local table_remove = table.remove
+local table_concat = table.concat
 local math_floor = math.floor
 local string_sub = string.sub
 local ngx_md5 = ngx.md5_bin
@@ -100,13 +104,20 @@ end
 local objAddr = {}
 
 -- Returns the peer info.
--- @return ip-address, port and hostname of the target
+-- @return ip-address, port and hostname of the target, or nil+err if unavailable
+-- or lookup error
 function objAddr:getPeer(cacheOnly)
+  if not self.available then
+    return nil, ERR_ADDRESS_UNAVAILABLE
+  end
+
   if self.ipType == "name" then
     -- SRV type record with a named target
     local ip, port = dns.toip(self.ip, self.port, cacheOnly)
-    -- TODO: which is the proper name to return in this case?
+    -- which is the proper name to return in this case?
     -- `self.host.hostname`? or the named SRV entry: `self.ip`?
+    -- use our own hostname, as it might be used to mark this address
+    -- as unhealthy, so we must be able to find it
     return ip, port, self.host.hostname
   else
     -- just an IP address
@@ -205,6 +216,11 @@ function objAddr:change(newWeight)
   self.weight = newWeight
 end
 
+-- Set the availability of the address.
+function objAddr:setState(available)
+  self.available = not not available -- force to boolean
+end
+
 -- creates a new address object.
 -- @param ip the upstream ip address or target name
 -- @param port the upstream port number
@@ -218,6 +234,7 @@ local newAddress = function(ip, port, weight, host)
     ipType = utils.hostnameType(ip),  -- 'ipv4', 'ipv6' or 'name'
     port = port,
     weight = weight,
+    available = true,     -- is this target available?
     host = host,          -- the host this address belongs to
     slots = {},           -- the slots assigned to this address
     index = nil,          -- reverse index in the ordered part of the containing balancer
@@ -480,6 +497,7 @@ function objHost:addAddress(entry)
     weight or self.nodeWeight,
     self
   )
+  -- TODO: callback/event for new address with: ip,port,name
 end
 
 -- Looks up and disables an `address` object from the `host`.
@@ -505,6 +523,7 @@ function objHost:deleteAddresses()
     if self.addresses[i].disabled then
       self.addresses[i]:delete()
       table_remove(self.addresses, i)
+      -- TODO: callback/event for deleted address with: ip,port,name
     end
   end
 
@@ -539,7 +558,7 @@ end
 -- Gets address and port number from a specific slot owned by the host.
 -- The slot MUST be owned by the host. Call balancer:getPeer, never this one.
 -- access: balancer:getPeer->slot->address->host->returns addr+port
-function objHost:getPeer(hashValue, cacheOnly, slot)
+function objHost:getPeer(cacheOnly, slot)
   
   if (self.lastQuery.expire or 0) < time() and not cacheOnly then
     -- ttl expired, so must renew
@@ -549,7 +568,7 @@ function objHost:getPeer(hashValue, cacheOnly, slot)
       -- our slot has been reallocated to another host, so recurse to start over
       ngx_log(ngx_DEBUG, log_prefix, "slot previously assigned to ", self.hostname,
               " was reassigned to another due to a dns update")
-      return self.balancer:getPeer(hashValue, cacheOnly)
+      return nil, ERR_SLOT_REASSIGNED
     end
   end
 
@@ -811,22 +830,96 @@ end
 function objBalancer:getPeer(hashValue, retryCount, cacheOnly)
   local pointer
   if self.weight == 0 then
-    return nil, "No peers are available"
+    return nil, ERR_NO_PEERS_AVAILABLE
   end
   
+  -- calculate starting point
   if hashValue then
-    hashValue = hashValue + (retryCount or 0) -- must update here because we're passing it to getPeer
+    hashValue = hashValue + (retryCount or 0)
     pointer = 1 + (hashValue % self.wheelSize)
   else
     -- no hash, so get the next one, round-robin like
-    pointer = (self.pointer or 0) + 1
-    if pointer > self.wheelSize then pointer = 1 end
-    self.pointer = pointer
+    pointer = self.pointer
+    if pointer < self.wheelSize then
+      self.pointer = pointer + 1
+    else
+      self.pointer = 1
+    end
   end
   
-  local slot = self.wheel[pointer]
-  
-  return slot.address.host:getPeer(hashValue, cacheOnly, slot)
+  local initial_pointer = pointer
+  while true do
+    local slot = self.wheel[pointer]
+    local ip, port, hostname = slot.address.host:getPeer(cacheOnly, slot)
+    if ip then
+      return ip, port, hostname
+    elseif port == ERR_SLOT_REASSIGNED then
+      -- we just need to retry the same slot, no change for 'pointer'
+    elseif port == ERR_ADDRESS_UNAVAILABLE then
+      -- fall through to the next slot
+      if hashValue then
+        pointer = pointer + 1
+        if pointer > self.wheelSize then pointer = 1 end
+      else
+        pointer = self.pointer
+        if pointer < self.wheelSize then
+          self.pointer = pointer + 1
+        else
+          self.pointer = 1
+        end
+      end
+      if pointer == initial_pointer then
+        -- we went around, but still nothing...
+        return nil, ERR_NO_PEERS_AVAILABLE
+      end
+    else
+      -- an unknown error occured
+      return nil, port
+    end
+  end
+
+end
+
+--- Sets the current status of the peer.
+-- This allows to temporarily suspend peers when they are offline/unhealthy,
+-- it will not alter the slot distribution. The parameters passed in should
+-- be previous results from `getPeer`.
+-- @param available `true` for enabled/healthy, `false` for disabled/unhealthy
+-- @param ip ip address of the peer
+-- @param port the port of the peer (in address object, not as recorded with the Host!)
+-- @param hostname (optional, defaults to the value of `ip`) the hostname
+-- @return `true` on success, or `nil+err` if not found
+function objBalancer:setPeerStatus(available, ip, port, hostname)
+  hostname = hostname or ip
+  local name_srv = {}
+  for _, addr, host in self:addressIter() do
+    if host.hostname == hostname and addr.port == port then
+      if addr.ip == ip then
+        -- found it
+        addr:setState(available)
+        return true
+      elseif addr.ipType == "name" then
+        -- so.... the ip is a name. This means that the host that
+        -- was added most likely resolved to an SRV, which then has
+        -- in turn names as targets instead of ip addresses.
+        -- (possibly a fake SRV for ttl=0 records)
+        -- Those names are resolved last minute by `getPeer`.
+        -- TLDR: we don't track the IP in this case, so we cannot match the
+        -- inputs back to an address to disable/enable it.
+        -- We record this fact here, and if we have no match in the end
+        -- we can provide a more specific message
+        name_srv[#name_srv + 1] = addr.ip .. ":" .. addr.port
+      end
+    end
+  end
+  local msg = ("no peer found by name '%s' and address %s:%s"):format(hostname, ip, tostring(port))
+  if name_srv[1] then
+    -- no match, but we did find a named one, so making the message more explicit
+    msg = msg .. ", possibly the IP originated from these nested dns names: " ..
+          table_concat(name_srv, ",")
+    ngx_log(ngx_WARN, log_prefix, msg)
+  end
+  return nil, msg
 end
 
 -- Timer invoked to check for failed queries
@@ -931,6 +1024,7 @@ _M.new = function(opts)
     weight = 0,    -- total weight of all hosts
     wheel = nil,   -- wheel with entries (fully randomized)
     slots = nil,   -- list of slots in no particular order
+    pointer = 1,   -- pointer to next-up slot for the round robin scheme
     wheelSize = opts.wheelSize or 1000, -- number of entries in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
     unassignedSlots = nil, -- list to hold unassigned slots (initially, and when all hosts fail)
@@ -1007,9 +1101,10 @@ end
 --- Creates a MD5 hash value from a string.
 -- The string will be hashed using MD5, and then shortened to 4 bytes.
 -- The returned hash value can be used as input for the `getpeer` function.
+-- @function hashMd5
 -- @param str (string) value to create the hash from
 -- @return 32-bit numeric hash
-_M.hash_md5 = function(str)
+_M.hashMd5 = function(str)
   local md5 = ngx_md5(str)
   return bxor(
     tonumber(string_sub(md5, 1, 4), 16),
@@ -1022,9 +1117,10 @@ end
 -- The string will be hashed using CRC32. The returned hash value can be
 -- used as input for the `getpeer` function. This is simply a shortcut to
 -- `ngx.crc32_short`.
+-- @function hashCrc32
 -- @param str (string) value to create the hash from
 -- @return 32-bit numeric hash
-_M.hash_crc32 = ngx.crc32_short
+_M.hashCrc32 = ngx.crc32_short
 
 
 return _M
