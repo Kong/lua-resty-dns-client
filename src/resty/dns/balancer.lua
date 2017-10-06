@@ -202,6 +202,8 @@ function objAddr:delete()
           " (host ", (self.host or empty).hostname, ")")
 
   assert(#self.slots == 0, "Cannot delete address while it contains slots")
+  self.host.balancer.callback(self.host.balancer, "removed", self.ip,
+                              self.port, self.host.hostname)
   self.host = nil
 end
 
@@ -244,7 +246,9 @@ local newAddress = function(ip, port, weight, host)
   
   host:addWeight(weight)
 
-  ngx_log(ngx_DEBUG, log_prefix, "new address for host '",host.hostname,"' created: ", ip, ":", port, " (weight ",weight,")")
+  ngx_log(ngx_DEBUG, log_prefix, "new address for host '", host.hostname,
+          "' created: ", ip, ":", port, " (weight ", weight,")")
+  host.balancer.callback(host.balancer, "added", ip, port, host.hostname)
   return addr
 end
 
@@ -497,7 +501,6 @@ function objHost:addAddress(entry)
     weight or self.nodeWeight,
     self
   )
-  -- TODO: callback/event for new address with: ip,port,name
 end
 
 -- Looks up and disables an `address` object from the `host`.
@@ -523,7 +526,6 @@ function objHost:deleteAddresses()
     if self.addresses[i].disabled then
       self.addresses[i]:delete()
       table_remove(self.addresses, i)
-      -- TODO: callback/event for deleted address with: ip,port,name
     end
   end
 
@@ -996,6 +998,11 @@ end
 -- failed queries. Defaults to 1 if omitted (in seconds)
 -- - `ttl0` (optional) Maximum lifetime for records inserted with ttl=0, to verify
 -- the ttl is still 0. Defaults to 60 if omitted (in seconds)
+-- - `callback` (optional) a function called when an address is added (after dns
+-- resolution for example). Signature of the callback is
+-- `function(balancer, action, ip, port, hostname)`, where `ip` might also be a hostname if the
+-- dns resolution returns another name (usually in SRV records). The `action` parameter
+-- will be either "added" or "removed".
 -- @param opts table with options
 -- @return new balancer object or nil+error
 -- @usage -- hosts
@@ -1005,7 +1012,7 @@ end
 --   { name = "getkong.org", port = 80, weight = 25 },  -- fully specified, as table
 -- }
 _M.new = function(opts)
-  assert(type(opts) == "table", "Expected an options table, but got; "..type(opts))
+  assert(type(opts) == "table", "Expected an options table, but got: "..type(opts))
   --assert(type(opts.hosts) == "table", "expected option 'hosts' to be a table")
   --assert(#opts.hosts > 0, "at least one host entry is required in the 'hosts' option")
   assert(opts.dns, "expected option `dns` to be a configured dns client")
@@ -1017,7 +1024,9 @@ _M.new = function(opts)
   end
   assert((opts.requery or 1) > 0, "expected 'requery' parameter to be > 0")
   assert((opts.ttl0 or 1) > 0, "expected 'ttl0' parameter to be > 0")
-  
+  assert(type(opts.callback) == "function" or type(opts.callback) == "nil",
+    "expected 'callback' to be a function or nil, but got: " .. type(opts.callback))
+
   local self = {
     -- properties
     hosts = {},    -- a table, index by both the hostname and index, the value being a host object
@@ -1030,7 +1039,8 @@ _M.new = function(opts)
     unassignedSlots = nil, -- list to hold unassigned slots (initially, and when all hosts fail)
     requeryRunning = false,  -- requery timer is not running, see `startRequery`
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
-    ttl0Interval = opts.ttl0 or TTL_0_RETRY -- refreshing ttl=0 records
+    ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
+    callback = opts.callback or function() end, -- callback for address mutations
   }
   for name, method in pairs(objBalancer) do self[name] = method end
   self.wheel = new_tab(self.wheelSize, 0)
