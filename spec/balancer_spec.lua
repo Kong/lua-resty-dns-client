@@ -540,6 +540,55 @@ describe("Loadbalancer", function()
         check_balancer(b)
       end)
     end)
+
+    describe("setting status", function()
+      it("#only valid target is accepted", function()
+        local b = check_balancer(balancer.new { dns = client })
+        dnsA({ 
+          { name = "kong.inc", address = "4.3.2.1" },
+        })
+        b:addHost("1.2.3.4", 80, 10)
+        b:addHost("kong.inc", 80, 10)
+        local ok, err = b:setPeerStatus(false, "1.2.3.4", 80, "1.2.3.4")
+        assert.is_true(ok)
+        assert.is_nil(err)
+        local ok, err = b:setPeerStatus(false, "4.3.2.1", 80, "kong.inc")
+        assert.is_true(ok)
+        assert.is_nil(err)
+      end)
+      it("#only invalid target returns an error", function()
+        local b = check_balancer(balancer.new { dns = client })
+        dnsA({ 
+          { name = "kong.inc", address = "4.3.2.1" },
+        })
+        b:addHost("1.2.3.4", 80, 10)
+        b:addHost("kong.inc", 80, 10)
+        local ok, err = b:setPeerStatus(false, "1.1.1.1", 80)
+        assert.is_nil(ok)
+        assert.equals("no peer found by name '1.1.1.1' and address 1.1.1.1:80", err)
+        local ok, err = b:setPeerStatus(false, "1.1.1.1", 80, "kong.inc")
+        assert.is_nil(ok)
+        assert.equals("no peer found by name 'kong.inc' and address 1.1.1.1:80", err)
+      end)
+      it("#only SRV target with A record targets returns a descriptive error", function()
+        local b = check_balancer(balancer.new { dns = client })
+        dnsA({
+          { name = "mashape1.com", address = "12.34.56.1" },
+        })
+        dnsA({
+          { name = "mashape2.com", address = "12.34.56.2" },
+        })
+        dnsSRV({ 
+          { name = "mashape.com", target = "mashape1.com", port = 8001, weight = 5 },
+          { name = "mashape.com", target = "mashape2.com", port = 8002, weight = 5 },
+        })
+        b:addHost("mashape.com", 80, 10)
+        local ok, err = b:setPeerStatus(false, "mashape1.com", 80, "mashape.com")
+        assert.is_nil(ok)
+        assert.equals("no peer found by name 'kong.inc' and address 1.1.1.1:80", err)
+      end)
+    end)
+
   end)
   it("ringbalancer with a running timer gets GC'ed", function()
     local b = check_balancer(balancer.new {
@@ -615,9 +664,36 @@ describe("Loadbalancer", function()
       assert.equal(10, res["5.6.7.8:321"])
       assert.equal(10, res["getkong.org:321"])
     end)
-    pending("gets an IP address and port number; round-robin skips unhealthy addresses", function()
+    pending("#only gets an IP address and port number; round-robin skips unhealthy addresses", function()
+      dnsA({ 
+        { name = "mashape.com", address = "1.2.3.4" },
+      })
+      dnsA({ 
+        { name = "getkong.org", address = "5.6.7.8" },
+      })
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          {name = "mashape.com", port = 123, weight = 100},
+          {name = "getkong.org", port = 321, weight = 50},
+        },
+        dns = client,
+        wheelSize = 15,
+      })
+      -- mark node down
+      assert(b:setPeerStatus(false, "1.2.3.4", 123))
+      -- run down the wheel twice
+      local res = {}
+      for _ = 1, 15*2 do
+        local addr, port, host = b:getPeer()
+        res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
+        res[host..":"..port] = (res[host..":"..port] or 0) + 1
+      end
+      assert.equal(0, res["1.2.3.4:123"])
+      assert.equal(0, res["mashape.com:123"])
+      assert.equal(30, res["5.6.7.8:321"])
+      assert.equal(30, res["getkong.org:321"])
     end)
-    pending("gets an IP address and port number; round-robin succeeds when all unhealthy", function()
+    pending("#only gets an IP address and port number; round-robin succeeds when all unhealthy", function()
     end)
     it("gets an IP address and port number; consistent hashing", function()
       dnsA({ 
@@ -712,9 +788,9 @@ describe("Loadbalancer", function()
       for _,_ in pairs(res) do count = count + 1 end
       assert.equal(10, count) -- 10 unique entries
     end)
-    pending("gets an IP address and port number; consistent hashing skips unhealthy addresses", function()
+    pending("#only gets an IP address and port number; consistent hashing skips unhealthy addresses", function()
     end)
-    pending("gets an IP address and port number; consistent hashing succeeds when all unhealthy", function()
+    pending("#only gets an IP address and port number; consistent hashing succeeds when all unhealthy", function()
     end)
     it("does not hit the resolver when 'cache_only' is set", function()
       local record = dnsA({ 
@@ -754,6 +830,110 @@ describe("Loadbalancer", function()
       assert.is_nil(ip)
       assert.equals("No peers are available", port)
       assert.is_nil(host)
+    end)
+  end)
+
+  describe("#only setting status triggers address-callback", function()
+    it("for IP addresses", function()
+      local count_add = 0
+      local count_remove = 0
+      local b
+      b = check_balancer(balancer.new { 
+        hosts = {},  -- no hosts, so balancer is empty
+        dns = client,
+        wheelSize = 10,
+        callback = function(balancer, action, ip, port, hostname)
+          assert.equal(b, balancer)
+          if action == "added" then
+            count_add = count_add + 1
+          elseif action == "removed" then
+            count_remove = count_remove + 1
+          else
+            error("unknown action received: "..tostring(action))
+          end
+          assert.equals("12.34.56.78", ip)
+          assert.equals(123, port)
+          assert.equals("12.34.56.78", hostname)
+        end
+      })
+      b:addHost("12.34.56.78", 123, 100)
+      assert.equal(1, count_add)
+      assert.equal(0, count_remove)
+      b:removeHost("12.34.56.78", 123)
+      assert.equal(1, count_add)
+      assert.equal(1, count_remove)
+    end)
+    it("#only for 1 level dns", function()
+      local count_add = 0
+      local count_remove = 0
+      local b
+      b = check_balancer(balancer.new { 
+        hosts = {},  -- no hosts, so balancer is empty
+        dns = client,
+        wheelSize = 10,
+        callback = function(balancer, action, ip, port, hostname)
+          assert.equal(b, balancer)
+          if action == "added" then
+            count_add = count_add + 1
+          elseif action == "removed" then
+            count_remove = count_remove + 1
+          else
+            error("unknown action received: "..tostring(action))
+          end
+          assert.equals("12.34.56.78", ip)
+          assert.equals(123, port)
+          assert.equals("mashape.com", hostname)
+        end
+      })
+      local record = dnsA({ 
+        { name = "mashape.com", address = "12.34.56.78" },
+        { name = "mashape.com", address = "12.34.56.78" },
+      })
+      b:addHost("mashape.com", 123, 100)
+      assert.equal(2, count_add)
+      assert.equal(0, count_remove)
+      b:removeHost("mashape.com", 123)
+      assert.equal(2, count_add)
+      assert.equal(2, count_remove)
+    end)
+    it("#only for 2+ level dns", function()
+      local count_add = 0
+      local count_remove = 0
+      local b
+      b = check_balancer(balancer.new { 
+        hosts = {},  -- no hosts, so balancer is empty
+        dns = client,
+        wheelSize = 10,
+        callback = function(balancer, action, ip, port, hostname)
+          assert.equal(b, balancer)
+          if action == "added" then
+            count_add = count_add + 1
+          elseif action == "removed" then
+            count_remove = count_remove + 1
+          else
+            error("unknown action received: "..tostring(action))
+          end
+          assert(ip == "mashape1.com" or ip == "mashape2.com")
+          assert(port == 8001 or port == 8002)
+          assert.equals("mashape.com", hostname)
+        end
+      })
+      dnsA({
+        { name = "mashape1.com", address = "12.34.56.1" },
+      })
+      dnsA({
+        { name = "mashape2.com", address = "12.34.56.2" },
+      })
+      dnsSRV({ 
+        { name = "mashape.com", target = "mashape1.com", port = 8001, weight = 5 },
+        { name = "mashape.com", target = "mashape2.com", port = 8002, weight = 5 },
+      })
+      b:addHost("mashape.com", 123, 100)
+      assert.equal(2, count_add)
+      assert.equal(0, count_remove)
+      b:removeHost("mashape.com", 123)
+      assert.equal(2, count_add)
+      assert.equal(2, count_remove)
     end)
   end)
 
@@ -1430,7 +1610,7 @@ describe("Loadbalancer", function()
 --print("now checking the updated results")
       assert.same(state1, copyWheel(b))
     end)
-    pending("renewed DNS A record; unhealthy entries remain unhealthy after renewal", function()
+    pending("#only renewed DNS A record; unhealthy entries remain unhealthy after renewal", function()
     end)
     it("low weight with zero-slots assigned doesn't fail", function()
       -- depending on order of insertion it is either 1 or 0 slots
