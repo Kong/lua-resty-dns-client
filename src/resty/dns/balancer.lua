@@ -202,7 +202,7 @@ function objAddr:delete()
           " (host ", (self.host or empty).hostname, ")")
 
   assert(#self.slots == 0, "Cannot delete address while it contains slots")
-  self.host.balancer.callback(self.host.balancer, "removed", self.ip,
+  self.host.balancer:callback("removed", self.ip,
                               self.port, self.host.hostname)
   self.host = nil
 end
@@ -248,7 +248,7 @@ local newAddress = function(ip, port, weight, host)
 
   ngx_log(ngx_DEBUG, log_prefix, "new address for host '", host.hostname,
           "' created: ", ip, ":", port, " (weight ", weight,")")
-  host.balancer.callback(host.balancer, "added", ip, port, host.hostname)
+  host.balancer:callback("added", ip, port, host.hostname)
   return addr
 end
 
