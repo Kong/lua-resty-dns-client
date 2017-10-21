@@ -18,7 +18,7 @@ else
 end
 
 -- simple debug function
-local debug = function(...)
+local dump = function(...)
   print(pretty({...}))
 end
 
@@ -761,7 +761,7 @@ describe("DNS client", function()
     assert(client.init({ hosts = f }))
     os.remove(f)
     
-    answers, err = client.resolve("localhost", {qtype = client.TYPE_A})
+    local answers, err = client.resolve("localhost", {qtype = client.TYPE_A})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "127.3.2.1")
 
@@ -863,6 +863,58 @@ describe("DNS client", function()
         assert.equal("1.2.3.4", ip)
         assert.equal(321, port)
       end
+    end)
+    it("SRV-record with 0-weight, round-robin",function()
+      assert(client.init())
+      local lrucache = client.getcache()
+      local host = "hello.world"
+      local entry = {
+        {
+          type = client.TYPE_SRV,
+          target = "1.2.3.4",
+          port = 321,
+          weight = 0,   --> weight 0
+          priority = 10,
+          class = 1,
+          name = host,
+          ttl = 10, 
+        },
+        {
+          type = client.TYPE_SRV,
+          target = "1.2.3.5",
+          port = 321,
+          weight = 50,   --> weight 50
+          priority = 10,
+          class = 1,
+          name = host,
+          ttl = 10, 
+        },
+        {
+          type = client.TYPE_SRV,
+          target = "1.2.3.6",
+          port = 321,
+          weight = 50,   --> weight 50
+          priority = 10,
+          class = 1,
+          name = host,
+          ttl = 10, 
+        },
+        touch = 0,
+        expire = gettime()+10,
+      }
+      -- insert in the cache
+      lrucache:set(entry[1].type..":"..entry[1].name, entry)
+
+      -- weight 0 will be weight 1, without any reduction in weight
+      -- of the other ones.
+      local track = {}
+      for _ = 1 , 202 do  --> run around twice
+        local ip, port = assert(client.toip(host))
+        track[ip] = (track[ip] or 0) + 1
+      end
+      assert.equal(100, track["1.2.3.5"])
+      assert.equal(100, track["1.2.3.6"])
+      assert.equal(2, track["1.2.3.4"])
     end)
     it("port passing",function()
       assert(client.init())
@@ -993,10 +1045,10 @@ describe("DNS client", function()
           cname = "bye.bye.world",
           class = 1,
           name = "hello.world",
-          ttl = 0, 
+          ttl = 10, 
         },
         touch = 0,
-        expire = 0,
+        expire = gettime()+10, -- active
       }
       local entry2 = {
         {
@@ -1004,10 +1056,10 @@ describe("DNS client", function()
           cname = "hello.world",
           class = 1,
           name = "bye.bye.world",
-          ttl = 0, 
+          ttl = 10, 
         },
         touch = 0,
-        expire = 0,
+        expire = gettime()+10, -- active
       }
       -- insert in the cache
       lrucache:set(entry1[1].type..":"..entry1[1].name, entry1)
@@ -1044,7 +1096,7 @@ describe("DNS client", function()
 
 
     -- make a first request, populating the cache
-    local res1, res2, err1, err2
+    local res1, res2, err1, err2, history
     res1, err1, history = client.resolve(
       qname, 
       { qtype = client.TYPE_A }
