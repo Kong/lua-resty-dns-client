@@ -1018,33 +1018,6 @@ describe("DNS client", function()
       assert.is_nil(ip)
       assert.are.equal("recursion detected", port)
     end)
-    it("passing through the resolver-object", function()
-      assert(client.init())
-
-      local _, err1, r1 = client.toip("google.com", 123, false)
-      local q2, err2, r2 = client.toip("google.nl",  123, false, r1)
-      assert.are.equal(123, err1)
-      assert.are.equal(123, err2)
-      assert.is.table(r1)
-      assert.is.table(r2)
-      assert.equal(r1, r2)
-      
-      -- when fetching from cache
-      q2, err2, r2 = client.toip("google.nl",  123, false, r1)
-      assert.equal(r1, r2)
-      
-      -- when its an IPv4 address
-      q2, err2, r2 = client.toip("1.2.3.4",  123, false, r1)
-      assert.equal(r1, r2)
-      
-      -- when its an IPv6 address
-      q2, err2, r2 = client.toip("::1",  123, false, r1)
-      assert.equal(r1, r2)
-      
-      -- when its a bad IPv6 address (ipv6 == more than 1 colon)
-      q2, err2, r2 = client.toip("::1gdhgasga",  123, false, r1)
-      assert.equal(r1, r2)
-    end)
   end)
 
 
