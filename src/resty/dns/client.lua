@@ -1139,15 +1139,20 @@ local function roundRobinW(rec)
     local weightList -- weights for the entry
     local n = 0
     for i, r in ipairs(rec) do
+      -- when weight == 0 then minimal possibility of hitting it
+      -- should occur. Setting it to 1 will prevent the weight-reduction
+      -- from succeeding, hence a longer RR list is created, with
+      -- lower probability of the 0-one being hit.
+      local weight = (r.weight ~= 0 and r.weight or 1)
       if r.priority == topPriority then
         n = n + 1
         prioList[n] = i
-        weightList[n] = r.weight
+        weightList[n] = weight
       elseif r.priority < topPriority then
         n = 1
         topPriority = r.priority
         prioList = { i }
-        weightList = { r.weight }
+        weightList = { weight }
       end
     end
     md.prioList = prioList
