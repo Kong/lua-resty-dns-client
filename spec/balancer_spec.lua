@@ -1444,6 +1444,25 @@ describe("Loadbalancer", function()
         wheelSize = 100,
       })
     end)
+    it("SRV record with 0 weight doesn't fail resolving", function()
+      -- depending on order of insertion it is either 1 or 0 slots
+      -- but it may never error.
+      dnsSRV({
+        { name = "gelato.io", target = "1.2.3.6", port = 8001, weight = 0 },
+        { name = "gelato.io", target = "1.2.3.6", port = 8002, weight = 0 },
+      })
+      local b = check_balancer(balancer.new {
+        hosts = {
+          -- port and weight will be overridden by the above
+          { name = "gelato.io", port = 80, weight = 99999 },
+        },
+        dns = client,
+        wheelSize = 100,
+      })
+      local ip, port, host = b:getPeer()
+      assert.equal("1.2.3.6", ip)
+      assert(port == 8001 or port == 8002, "port expected 8001 or 8002")
+    end)
     it("ttl of 0 inserts only a single unresolved address", function()
       local ttl = 0
       local resolve_count = 0

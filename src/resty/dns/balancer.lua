@@ -466,11 +466,18 @@ end
 -- Adds an `address` object to the `host`.
 -- @param entry (table) DNS entry
 function objHost:addAddress(entry)
+  local weight = entry.weight  -- nil for anything else than SRV
+  if weight == 0 then
+    -- Special case: SRV with weight = 0 should be included, but with
+    -- the lowest possible probability of being hit. So we force it to
+    -- weight 1.
+    weight = 1
+  end
   local addresses = self.addresses
   addresses[#addresses+1] = newAddress(
-    entry.address or entry.target, 
-    entry.port or self.port, 
-    entry.weight or self.nodeWeight, 
+    entry.address or entry.target,
+    entry.port or self.port,
+    weight or self.nodeWeight,
     self
   )
 end
