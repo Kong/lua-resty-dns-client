@@ -664,7 +664,7 @@ describe("Loadbalancer", function()
       assert.equal(10, res["5.6.7.8:321"])
       assert.equal(10, res["getkong.org:321"])
     end)
-    pending("#only gets an IP address and port number; round-robin skips unhealthy addresses", function()
+    it("#only gets an IP address and port number; round-robin skips unhealthy addresses", function()
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
       })
@@ -680,7 +680,7 @@ describe("Loadbalancer", function()
         wheelSize = 15,
       })
       -- mark node down
-      assert(b:setPeerStatus(false, "1.2.3.4", 123))
+      assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
       -- run down the wheel twice
       local res = {}
       for _ = 1, 15*2 do
@@ -688,8 +688,8 @@ describe("Loadbalancer", function()
         res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
         res[host..":"..port] = (res[host..":"..port] or 0) + 1
       end
-      assert.equal(0, res["1.2.3.4:123"])
-      assert.equal(0, res["mashape.com:123"])
+      assert.equal(nil, res["1.2.3.4:123"])     -- address got no hits, key never gets initialized
+      assert.equal(nil, res["mashape.com:123"]) -- host got no hits, key never gets initialized
       assert.equal(30, res["5.6.7.8:321"])
       assert.equal(30, res["getkong.org:321"])
     end)
