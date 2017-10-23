@@ -585,7 +585,7 @@ describe("Loadbalancer", function()
         b:addHost("mashape.com", 80, 10)
         local ok, err = b:setPeerStatus(false, "mashape1.com", 80, "mashape.com")
         assert.is_nil(ok)
-        assert.equals("no peer found by name 'kong.inc' and address 1.1.1.1:80", err)
+        assert.equals("no peer found by name 'mashape.com' and address mashape1.com:80", err)
       end)
     end)
 
