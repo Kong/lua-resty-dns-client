@@ -693,7 +693,30 @@ describe("Loadbalancer", function()
       assert.equal(30, res["5.6.7.8:321"])
       assert.equal(30, res["getkong.org:321"])
     end)
-    pending("#only gets an IP address and port number; round-robin succeeds when all unhealthy", function()
+    it("#only gets an IP address and port number; round-robin fails when all unhealthy", function()
+      dnsA({
+        { name = "mashape.com", address = "1.2.3.4" },
+      })
+      dnsA({
+        { name = "getkong.org", address = "5.6.7.8" },
+      })
+      local b = check_balancer(balancer.new {
+        hosts = {
+          {name = "mashape.com", port = 123, weight = 100},
+          {name = "getkong.org", port = 321, weight = 50},
+        },
+        dns = client,
+        wheelSize = 15,
+      })
+      -- mark all nodes down
+      assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
+      assert(b:setPeerStatus(false, "5.6.7.8", 321, "getkong.org"))
+      -- getPeer fails with `nil` and `err` when there are no more available peers
+      for n = 1, 15*2 do
+        local ok, err = b:getPeer()
+        assert.falsy(ok)
+        assert.same("No peers are available", err)
+      end
     end)
     it("gets an IP address and port number; consistent hashing", function()
       dnsA({ 
@@ -788,9 +811,59 @@ describe("Loadbalancer", function()
       for _,_ in pairs(res) do count = count + 1 end
       assert.equal(10, count) -- 10 unique entries
     end)
-    pending("#only gets an IP address and port number; consistent hashing skips unhealthy addresses", function()
+    it("#only gets an IP address and port number; consistent hashing skips unhealthy addresses", function()
+      dnsA({
+        { name = "mashape.com", address = "1.2.3.4" },
+      })
+      dnsA({
+        { name = "getkong.org", address = "5.6.7.8" },
+      })
+      local b = check_balancer(balancer.new {
+        hosts = {
+          {name = "mashape.com", port = 123, weight = 100},
+          {name = "getkong.org", port = 321, weight = 50},
+        },
+        dns = client,
+        wheelSize = 15,
+      })
+      -- mark node down
+      assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
+      -- run down the wheel twice
+      local res = {}
+      for n = 1, 15*2 do
+        local addr, port, host = b:getPeer(n)
+        res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
+        res[host..":"..port] = (res[host..":"..port] or 0) + 1
+      end
+      assert.equal(nil, res["1.2.3.4:123"])     -- address got no hits, key never gets initialized
+      assert.equal(nil, res["mashape.com:123"]) -- host got no hits, key never gets initialized
+      assert.equal(30, res["5.6.7.8:321"])
+      assert.equal(30, res["getkong.org:321"])
     end)
-    pending("#only gets an IP address and port number; consistent hashing succeeds when all unhealthy", function()
+    it("#only gets an IP address and port number; consistent hashing fails when all unhealthy", function()
+      dnsA({
+        { name = "mashape.com", address = "1.2.3.4" },
+      })
+      dnsA({
+        { name = "getkong.org", address = "5.6.7.8" },
+      })
+      local b = check_balancer(balancer.new {
+        hosts = {
+          {name = "mashape.com", port = 123, weight = 100},
+          {name = "getkong.org", port = 321, weight = 50},
+        },
+        dns = client,
+        wheelSize = 15,
+      })
+      -- mark all nodes down
+      assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
+      assert(b:setPeerStatus(false, "5.6.7.8", 321, "getkong.org"))
+      -- getPeer fails with `nil` and `err` when there are no more available peers
+      for n = 1, 15*2 do
+        local ok, err = b:getPeer(n)
+        assert.falsy(ok)
+        assert.same("No peers are available", err)
+      end
     end)
     it("does not hit the resolver when 'cache_only' is set", function()
       local record = dnsA({ 
