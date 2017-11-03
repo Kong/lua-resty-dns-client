@@ -967,6 +967,17 @@ function objBalancer:startRequery()
   end
 end
 
+--- Sets an event callback for user code.
+-- @param callback a function called when an address is added (after DNS
+-- resolution for example). Signature of the callback is
+-- `function(balancer, action, ip, port, hostname)`, where `ip` might also
+-- be a hostname if the DNS resolution returns another name (usually in
+-- SRV records). The `action` parameter will be either "added" or "removed".
+function objBalancer:setCallback(callback)
+  assert(type(callback) == "function", "expected a callback function")
+  self.callback = callback
+end
+
 --- Creates a new balancer. The balancer is based on a wheel with slots. The 
 -- slots will be randomly distributed over the targets. The number of slots 
 -- assigned will be relative to the weight.
