@@ -712,7 +712,7 @@ describe("Loadbalancer", function()
       assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
       assert(b:setPeerStatus(false, "5.6.7.8", 321, "getkong.org"))
       -- getPeer fails with `nil` and `err` when there are no more available peers
-      for n = 1, 15*2 do
+      for _ = 1, 15*2 do
         local ok, err = b:getPeer()
         assert.falsy(ok)
         assert.same("No peers are available", err)
@@ -958,7 +958,7 @@ describe("Loadbalancer", function()
           assert.equals("mashape.com", hostname)
         end
       })
-      local record = dnsA({ 
+      dnsA({ 
         { name = "mashape.com", address = "12.34.56.78" },
         { name = "mashape.com", address = "12.34.56.78" },
       })
@@ -1630,7 +1630,6 @@ describe("Loadbalancer", function()
       dnsA({ 
         { name = "getkong.org", address = "9.9.9.9" },
       })
---print("setup fake record, now creating a balancer")
       local b = check_balancer(balancer.new { 
         hosts = { 
           { name = "mashape.com", port = 80, weight = 10 }, 
@@ -1640,10 +1639,8 @@ describe("Loadbalancer", function()
         wheelSize = 20,
         requery = 1,   -- shorten default requery time for the test
       })
---print("balancer created, storing state1 + state2 here")
       local state1 = copyWheel(b)
       local state2 = copyWheel(b)
---print("reconfiguring dns client with bad nameserver...")
       -- reconfigure the dns client to make sure next query fails
       assert(client.init {
         hosts = {}, 
@@ -1654,15 +1651,12 @@ describe("Loadbalancer", function()
       -- refetch the cache, since the 'init' call above caused it to be replaced
       dnscache = client.getcache()
       record.expire = gettime() -1 -- expire current dns cache record
---print("dns client reconfigured, local cache updated (empty now). Running whole wheel...")
       -- run entire wheel to make sure the expired one is requested, so it can fail
       for _ = 1, b.wheelSize do b:getPeer() end
---print("ran down whole wheel. Now updating previous state2 to be the expected one")
       -- all slots are now getkong.org
       updateWheelState(state2, " %- 1%.2%.3%.4 @ 80 %(mashape%.com%)", " - 9.9.9.9 @ 123 (getkong.org)")
       
       assert.same(state2, copyWheel(b))
---print("asserted that the failure updated the wheel correctly by removing 'mashape.com'")
       -- reconfigure the dns client to make sure next query works again
       assert(client.init {
         hosts = {}, 
@@ -1675,13 +1669,39 @@ describe("Loadbalancer", function()
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
       })
---print("client reconfigured, local cache updated, and inserted the fake record again")      
---print("waiting for timer to update the failed record...")
       sleep(b.requeryInterval + 1) --requery timer runs, so should be fixed after this
 
       -- wheel should be back in original state
---print("now checking the updated results")
       assert.same(state1, copyWheel(b))
+    end)
+    it("renewed DNS A record; last host fails DNS resolution", function()
+      -- This test might show some error output similar to the lines below. This is expected and ok.
+      -- 2017/11/06 15:52:49 [warn] 5123#0: *2 [lua] balancer.lua:320: queryDns(): [ringbalancer] querying dns for really.does.not.exist.mashape.com failed: dns server error: 3 name error, context: ngx.timer
+      
+      local test_name = "really.does.not.exist.mashape.com"
+      local ttl = 0.1
+      local staleTtl = 0   -- stale ttl = 0, force lookup upon expiring
+      local record = dnsA({ 
+        { name = test_name, address = "1.2.3.4", ttl = ttl },
+      }, staleTtl)
+      local b = check_balancer(balancer.new { 
+        hosts = { 
+          { name = test_name, port = 80, weight = 10 }, 
+        },
+        dns = client,
+      })
+      for _ = 1, b.wheelSize do
+        local ip = b:getPeer()
+        assert.equal(record[1].address, ip)
+      end
+      -- wait for ttl to expire
+      sleep(ttl + 0.1)
+      -- run entire wheel to make sure the expired one is requested, so it can fail
+      for _ = 1, b.wheelSize do
+        local ip, port = b:getPeer()
+        assert.is_nil(ip)
+        assert.equal(port, "No peers are available")
+      end
     end)
     it("renewed DNS A record; unhealthy entries remain unhealthy after renewal", function()
       local record = dnsA({
@@ -1705,7 +1725,7 @@ describe("Loadbalancer", function()
 
       -- run the wheel
       local res = {}
-      for n = 1, 15 do
+      for _ = 1, 15 do
         local addr, port, host = b:getPeer()
         res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
         res[host..":"..port] = (res[host..":"..port] or 0) + 1
@@ -1792,7 +1812,7 @@ describe("Loadbalancer", function()
         dns = client,
         wheelSize = 100,
       })
-      local ip, port, host = b:getPeer()
+      local ip, port = b:getPeer()
       assert.equal("1.2.3.6", ip)
       assert(port == 8001 or port == 8002, "port expected 8001 or 8002")
     end)

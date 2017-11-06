@@ -566,7 +566,7 @@ function objHost:getPeer(cacheOnly, slot)
     -- ttl expired, so must renew
     self:queryDns(cacheOnly)
 
-    if slot.address.host ~= self then
+    if (slot.address or empty).host ~= self then
       -- our slot has been reallocated to another host, so recurse to start over
       ngx_log(ngx_DEBUG, log_prefix, "slot previously assigned to ", self.hostname,
               " was reassigned to another due to a dns update")
@@ -856,7 +856,11 @@ function objBalancer:getPeer(hashValue, retryCount, cacheOnly)
     if ip then
       return ip, port, hostname
     elseif port == ERR_SLOT_REASSIGNED then
-      -- we just need to retry the same slot, no change for 'pointer'
+      -- we just need to retry the same slot, no change for 'pointer', just
+      -- in case of dns updates, we need to check our weight again.
+      if self.weight == 0 then
+        return nil, ERR_NO_PEERS_AVAILABLE
+      end
     elseif port == ERR_ADDRESS_UNAVAILABLE then
       -- fall through to the next slot
       if hashValue then
