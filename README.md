@@ -37,8 +37,10 @@ History
 
 ### Unreleased
 
-- Added: `balancer:setCallback`, a method for setting the balancer callback
-  after initialization.
+- Added: flag to mark an address as failed/unhealthy, see `setPeerStatus`
+- Added: callback to receive balancer updates; addresses added-to/removed-from
+  the balancer (after DNS updates for example).
+- fix: SRV record entries with a weight 0 are now supported
 
 ### 0.6.2 (04-Sep-2017) Fixes and refactor
 
