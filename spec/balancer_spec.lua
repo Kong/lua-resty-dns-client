@@ -1233,6 +1233,38 @@ describe("Loadbalancer", function()
       updateWheelState(state, " %- ::2 @ ", " - 1.2.3.4 @ ")
       assert.same(state, copyWheel(b))
     end)
+
+
+    it("renewed DNS A record; last host fails DNS resolution", function()
+      -- This test might show some error output similar to the lines below. This is expected and ok.
+      -- 2017/11/06 15:52:49 [warn] 5123#0: *2 [lua] balancer.lua:320: queryDns(): [ringbalancer] querying dns for really.does.not.exist.mashape.com failed: dns server error: 3 name error, context: ngx.timer
+
+      local test_name = "really.does.not.exist.mashape.com"
+      local ttl = 0.1
+      local staleTtl = 0   -- stale ttl = 0, force lookup upon expiring
+      local record = dnsA({
+        { name = test_name, address = "1.2.3.4", ttl = ttl },
+      }, staleTtl)
+      local b = check_balancer(balancer.new {
+        hosts = {
+          { name = test_name, port = 80, weight = 10 },
+        },
+        dns = client,
+      })
+      for _ = 1, b.wheelSize do
+        local ip = b:getPeer()
+        assert.equal(record[1].address, ip)
+      end
+      -- wait for ttl to expire
+      sleep(ttl + 0.1)
+      -- run entire wheel to make sure the expired one is requested, so it can fail
+      for _ = 1, b.wheelSize do
+        local ip, port = b:getPeer()
+        assert.is_nil(ip)
+        assert.equal(port, "No peers are available")
+      end
+    end)
+
     it("renewed DNS record; targets changed", function()
       local record = dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },

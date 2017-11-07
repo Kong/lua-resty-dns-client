@@ -538,10 +538,11 @@ function objHost:getPeer(hashValue, cacheOnly, slot)
     -- ttl expired, so must renew
     self:queryDns(cacheOnly)
 
-    if slot.address.host ~= self then
-      -- our slot has been reallocated to another host, so recurse to start over
+    if (not slot.address) or slot.address.host ~= self then
+      -- our slot has been reallocated to another host (or there are no addresses),
+      -- so recurse to start over (or to give a proper error message)
       ngx_log(ngx_DEBUG, log_prefix, "slot previously assigned to ", self.hostname,
-              " was reassigned to another due to a dns update")
+              " was reassigned due to a DNS update")
       return self.balancer:getPeer(hashValue, cacheOnly)
     end
   end
