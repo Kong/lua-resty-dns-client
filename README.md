@@ -35,6 +35,10 @@ use the `rbusted` script.
 History
 =======
 
+### Unreleased
+
+- Fix: failure of the last hostname to resolve (balancer)
+
 ### 0.4.3 (17-Aug-2017) Bugfix
 
 - Fix: return proper hostname for named SRV entries in the balancer
