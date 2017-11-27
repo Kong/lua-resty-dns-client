@@ -33,7 +33,6 @@
 <h2>Contents</h2>
 <ul>
 <li><a href="#Functions">Functions</a></li>
-<li><a href="#Fields">Fields</a></li>
 </ul>
 
 
@@ -83,7 +82,7 @@
  function, have an <code>__</code> prefix (double underscores).</p>
     <h3>Info:</h3>
     <ul>
-        <li><strong>Copyright</strong>: Mashape Inc. All rights reserved.</li>
+        <li><strong>Copyright</strong>: 2016-2017 Kong Inc. All rights reserved.</li>
         <li><strong>License</strong>: Apache 2.0</li>
         <li><strong>Author</strong>: Thijs Schreijer</li>
     </ul>
@@ -100,7 +99,11 @@
 	<td class="summary">Gets the next ip address and port according to the loadbalancing scheme.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#hash_md5">hash_md5 (str)</a></td>
+	<td class="name" nowrap><a href="#hashCrc32">hashCrc32 (str)</a></td>
+	<td class="summary">Creates a CRC32 hash value from a string.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#hashMd5">hashMd5 (str)</a></td>
 	<td class="summary">Creates a MD5 hash value from a string.</td>
 	</tr>
 	<tr>
@@ -108,15 +111,16 @@
 	<td class="summary">Creates a new balancer.</td>
 	</tr>
 	<tr>
+	<td class="name" nowrap><a href="#objBalancer:setCallback">objBalancer:setCallback (callback)</a></td>
+	<td class="summary">Sets an event callback for user code.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#objBalancer:setPeerStatus">objBalancer:setPeerStatus (available, ip, port, hostname)</a></td>
+	<td class="summary">Sets the current status of the peer.</td>
+	</tr>
+	<tr>
 	<td class="name" nowrap><a href="#removeHost">removeHost (hostname, port)</a></td>
 	<td class="summary">Removes a host from a balancer.</td>
-	</tr>
-</table>
-<h2><a href="#Fields">Fields</a></h2>
-<table class="function_list">
-	<tr>
-	<td class="name" nowrap><a href="#hash_crc32">hash_crc32</a></td>
-	<td class="summary">Creates a CRC32 hash value from a string.</td>
 	</tr>
 </table>
 
@@ -225,8 +229,36 @@
 
 </dd>
     <dt>
-    <a name = "hash_md5"></a>
-    <strong>hash_md5 (str)</strong>
+    <a name = "hashCrc32"></a>
+    <strong>hashCrc32 (str)</strong>
+    </dt>
+    <dd>
+    Creates a CRC32 hash value from a string.
+ The string will be hashed using CRC32. The returned hash value can be
+ used as input for the <code>getpeer</code> function. This is simply a shortcut to
+ <code>ngx.crc32_short</code>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">str</span>
+         (string) value to create the hash from
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        32-bit numeric hash
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "hashMd5"></a>
+    <strong>hashMd5 (str)</strong>
     </dt>
     <dd>
     Creates a MD5 hash value from a string.
@@ -289,6 +321,11 @@
     failed queries. Defaults to 1 if omitted (in seconds)</li>
     <li><code>ttl0</code> (optional) Maximum lifetime for records inserted with ttl=0, to verify
     the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
+    <li><code>callback</code> (optional) a function called when an address is added (after dns
+    resolution for example). Signature of the callback is
+    <code>function(balancer, action, ip, port, hostname)</code>, where <code>ip</code> might also be a hostname if the
+    dns resolution returns another name (usually in SRV records). The <code>action</code> parameter
+    will be either "added" or "removed".</li>
 </ul>
 
 
@@ -312,11 +349,72 @@
     <ul>
         <pre class="example"><span class="comment">-- hosts
 </span><span class="keyword">local</span> hosts = {
-  <span class="string">"mashape.com"</span>,                                     <span class="comment">-- name only, as string
+  <span class="string">"kong.com"</span>,                                        <span class="comment">-- name only, as string
 </span>  { name = <span class="string">"gelato.io"</span> },                            <span class="comment">-- name only, as table
 </span>  { name = <span class="string">"getkong.org"</span>, port = <span class="number">80</span>, weight = <span class="number">25</span> },  <span class="comment">-- fully specified, as table
 </span>}</pre>
     </ul>
+
+</dd>
+    <dt>
+    <a name = "objBalancer:setCallback"></a>
+    <strong>objBalancer:setCallback (callback)</strong>
+    </dt>
+    <dd>
+    Sets an event callback for user code.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">callback</span>
+         a function called when an address is added (after DNS
+ resolution for example). Signature of the callback is
+ <code>function(balancer, action, ip, port, hostname)</code>, where <code>ip</code> might also
+ be a hostname if the DNS resolution returns another name (usually in
+ SRV records). The <code>action</code> parameter will be either "added" or "removed".
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "objBalancer:setPeerStatus"></a>
+    <strong>objBalancer:setPeerStatus (available, ip, port, hostname)</strong>
+    </dt>
+    <dd>
+    Sets the current status of the peer.
+ This allows to temporarily suspend peers when they are offline/unhealthy,
+ it will not alter the slot distribution. The parameters passed in should
+ be previous results from <a href="../modules/resty.dns.balancer.html#getPeer">getPeer</a>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">available</span>
+         <code>true</code> for enabled/healthy, <code>false</code> for disabled/unhealthy
+        </li>
+        <li><span class="parameter">ip</span>
+         ip address of the peer
+        </li>
+        <li><span class="parameter">port</span>
+         the port of the peer (in address object, not as recorded with the Host!)
+        </li>
+        <li><span class="parameter">hostname</span>
+         (optional, defaults to the value of <code>ip</code>) the hostname
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        <code>true</code> on success, or <code>nil+err</code> if not found
+    </ol>
+
+
+
 
 </dd>
     <dt>
@@ -353,39 +451,13 @@
 
 </dd>
 </dl>
-    <h2 class="section-header "><a name="Fields"></a>Fields</h2>
-
-    <dl class="function">
-    <dt>
-    <a name = "hash_crc32"></a>
-    <strong>hash_crc32</strong>
-    </dt>
-    <dd>
-    Creates a CRC32 hash value from a string.
- The string will be hashed using CRC32. The returned hash value can be
- used as input for the <code>getpeer</code> function. This is simply a shortcut to
- <code>ngx.crc32_short</code>.
-
-
-    <ul>
-        <li><span class="parameter">str</span>
-         (string) value to create the hash from
-        </li>
-    </ul>
-
-
-
-
-
-</dd>
-</dl>
 
 
 </div> <!-- id="content" -->
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2017-09-04 14:46:55 </i>
+<i style="float:right;">Last updated 2017-11-27 23:14:29 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

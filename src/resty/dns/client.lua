@@ -15,7 +15,7 @@
 -- the hostname to be resolved is a valid IP address, it will be cached with a ttl of 
 -- 10 years. So the user doesn't have to check for ip adresses.
 --
--- @copyright 2016 Mashape Inc.
+-- @copyright 2016-2017 Kong Inc.
 -- @author Thijs Schreijer
 -- @license Apache 2.0
 

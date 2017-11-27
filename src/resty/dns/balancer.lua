@@ -30,7 +30,7 @@
 -- function, have an `__` prefix (double underscores).
 --
 -- @author Thijs Schreijer
--- @copyright Mashape Inc. All rights reserved.
+-- @copyright 2016-2017 Kong Inc. All rights reserved.
 -- @license Apache 2.0
 
 
@@ -1022,7 +1022,7 @@ end
 -- @return new balancer object or nil+error
 -- @usage -- hosts
 -- local hosts = {
---   "mashape.com",                                     -- name only, as string
+--   "kong.com",                                        -- name only, as string
 --   { name = "gelato.io" },                            -- name only, as table
 --   { name = "getkong.org", port = 80, weight = 25 },  -- fully specified, as table
 -- }

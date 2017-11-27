@@ -20,7 +20,7 @@ Features
 Copyright and license
 =====================
 
-Copyright: (c) 2016-2017 Mashape, Inc.
+Copyright: (c) 2016-2017 Kong, Inc.
 
 Author: Thijs Schreijer
 
@@ -35,7 +35,7 @@ use the `rbusted` script.
 History
 =======
 
-### Unreleased
+### 0.6.3 (27-Nov-2017) Fixes and flagging unhealthy peers
 
 - Added: flag to mark an address as failed/unhealthy, see `setPeerStatus`
 - Added: callback to receive balancer updates; addresses added-to/removed-from
@@ -46,7 +46,7 @@ History
 ### 0.6.2 (04-Sep-2017) Fixes and refactor
 
 - Fix: balancer not returning hostname for named SRV entries. See
-  [issue #17](https://github.com/Mashape/lua-resty-dns-client/issues/17)
+  [issue #17](https://github.com/Kong/lua-resty-dns-client/issues/17)
 - Fix: fix an occasionally failing test
 - Refactor: remove metadata from the records, instead store it in its own cache
 
@@ -84,7 +84,7 @@ History
 ### 0.4.1 (21-Apr-2017) Bugfix
 
 - Fix: cname record caching causing excessive dns queries,
-  see [Kong issue #2303](https://github.com/Mashape/kong/issues/2303).
+  see [Kong issue #2303](https://github.com/Kong/kong/issues/2303).
 
 ### 0.4.0 (30-Mar-2017) Bugfixes
 
@@ -92,7 +92,7 @@ History
 - Added: BREAKING! a retry counter to fall-through on hashed-retries (changes
   the `getpeer` signature)
 - Fix: the MAXNS (3) was not honoured, so more than 3 nameservers would be parsed
-  from the `resolv.conf` file. Fixes [Kong issue #2290](https://github.com/Mashape/kong/issues/2290).
+  from the `resolv.conf` file. Fixes [Kong issue #2290](https://github.com/Kong/kong/issues/2290).
 - Added: two convenience hash functions
 - Performance: some improvements (pre-allocated tables for the slot lists)
 
