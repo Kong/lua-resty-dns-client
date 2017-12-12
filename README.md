@@ -35,6 +35,10 @@ use the `rbusted` script.
 History
 =======
 
+### 0.x.x (xx-xxx-201x) Fixes
+
+- fix: properly recognize IPv6 addresses in square brackets
+
 ### 0.6.3 (27-Nov-2017) Fixes and flagging unhealthy peers
 
 - Added: flag to mark an address as failed/unhealthy, see `setPeerStatus`

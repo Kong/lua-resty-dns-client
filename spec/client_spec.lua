@@ -558,25 +558,36 @@ describe("DNS client", function()
   it("fetching IPv4 address as SRV type", function()
     assert(client.init())
 
-    -- do a query so we get a resolver object to spy on
-    local _, _, r, history = client.toip("google.com", 123, false)
-    local o_query = r.query
-    r.query = function(self, ...)
-      print(require("pl.pretty").write({...}))
-      return o_query(self, ...)
+    local callcount = 0
+    query_func = function(self, original_query_func, name, options)
+      callcount = callcount + 1
+      return original_query_func(self, name, options)
     end
-    
-    spy.on(r, "query")
 
-    local res, err, r, history = client.resolve(
+    local res, err, try_list = client.resolve(
       "1.2.3.4", 
       { qtype = client.TYPE_SRV }, 
-      false, r)
-    assert.spy(r.query).was_not.called()
+      false
+    )
+    assert.equal(0, callcount)
     assert.equal(NOT_FOUND_ERROR, err)
   end)
 
   it("fetching IPv6 address as AAAA type", function()
+    assert(client.init())
+
+    local host = "[1:2::3:4]"
+
+    local answers = assert(client.resolve(host, { qtype = client.TYPE_AAAA }))
+    assert.are.equal(#answers, 1)
+    assert.are.equal(client.TYPE_AAAA, answers[1].type)
+    assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
+
+    local lrucache = client.getcache()
+    assert.equal(client.TYPE_AAAA, lrucache:get(host))
+  end)
+
+  it("fetching IPv6 address as AAAA type (without brackets)", function()
     assert(client.init())
 
     local host = "1:2::3:4"
@@ -593,21 +604,18 @@ describe("DNS client", function()
   it("fetching IPv6 address as SRV type", function()
     assert(client.init())
 
-    -- do a query so we get a resolver object to spy on
-    local _, _, r, history = client.toip("google.com", 123, false)
-    local o_query = r.query
-    r.query = function(self, ...)
-      print(require("pl.pretty").write({...}))
-      return o_query(self, ...)
+    local callcount = 0
+    query_func = function(self, original_query_func, name, options)
+      callcount = callcount + 1
+      return original_query_func(self, name, options)
     end
-    
-    spy.on(r, "query")
 
-    local res, err, r, history = client.resolve(
-      "1:2::3:4", 
+    local res, err, trylist = client.resolve(
+      "[1:2::3:4]", 
       { qtype = client.TYPE_SRV }, 
-      false, r)
-    assert.spy(r.query).was_not.called()
+      false
+    )
+    assert.equal(0, callcount)
     assert.equal(NOT_FOUND_ERROR, err)
   end)
 
@@ -619,7 +627,7 @@ describe("DNS client", function()
           },
         }))
 
-    local host = "1::2:3::4"  -- 2x double colons
+    local host = "[1::2:3::4]"  -- 2x double colons
 
     local answers, err, history = client.resolve(host)
     assert.is_nil(answers)

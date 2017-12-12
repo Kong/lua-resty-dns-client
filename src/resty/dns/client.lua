@@ -724,7 +724,12 @@ local function check_ipv6(qname, qtype, try_list)
     return record, nil, try_list
   end
 
-  local check = qname
+  local check = qname:match("^%[(.+)%]$")  -- grab contents of "[ ]"
+  if not check then
+    -- no square brackets found
+    check = qname
+  end
+
   if check:sub(1,1) == ":" then check = "0"..check end
   if check:sub(-1,-1) == ":" then check = check.."0" end
   if check:find("::") then
@@ -1248,7 +1253,7 @@ end
 -- @param dnsCacheOnly Only check the cache, won't do server lookups (will 
 -- not invalidate any ttl expired data and will hence possibly return expired data)
 -- @param try_list (optional) list of tries to add to
--- @return `ip address + port + r + try_list`, or in case of an error `nil + error + r + try_list`
+-- @return `ip address + port + try_list`, or in case of an error `nil + error + try_list`
 local function toip(qname, port, dnsCacheOnly, try_list)
   local rec, err
   rec, err, try_list = resolve(qname, nil, dnsCacheOnly, try_list)
