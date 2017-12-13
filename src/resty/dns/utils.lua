@@ -303,7 +303,8 @@ _M.hostnameType = function(name)
 end
 
 --- parses a hostname with an optional port.
--- Does not validate the name/ip.
+-- Does not validate the name/ip. IPv6 addresses are always returned in
+-- square brackets, even if the input wasn't.
 -- @param name the string to check (this may contain a port number)
 -- @return `name/ip` + `port (or nil)` + `type` (one of: `"ipv4"`, `"ipv6"`, or `"name"`)
 _M.parseHostname = function(name)

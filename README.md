@@ -35,9 +35,10 @@ use the `rbusted` script.
 History
 =======
 
-### 0.x.x (xx-xxx-201x) Fixes
+### 0.7.x (xx-xxx-201x) Fixes
 
-- fix: properly recognize IPv6 addresses in square brackets
+- Change: BREAKING all IPv6 addresses are now returned with square brackets
+- Fix: properly recognize IPv6 addresses in square brackets
 
 ### 0.6.3 (27-Nov-2017) Fixes and flagging unhealthy peers
 
