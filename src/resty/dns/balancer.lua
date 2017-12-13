@@ -26,8 +26,8 @@
 -- it will get slots reassigned to it.
 --
 -- __Housekeeping__; the ring-balancer does some house keeping and may insert
--- some extra fields in dns records. Those fields will, similar to the `toip`
--- function, have an `__` prefix (double underscores).
+-- some extra fields in dns records. Those fields will have an `__` prefix
+-- (double underscores).
 --
 -- @author Thijs Schreijer
 -- @copyright 2016-2017 Kong Inc. All rights reserved.

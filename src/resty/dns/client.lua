@@ -125,10 +125,17 @@ local cacheinsert = function(entry, qname, qtype)
       -- an actual record
       key = (qtype or e1.type) .. ":" .. (qname or e1.name)
       
-      -- determine minimum ttl of all answer records
-      ttl = e1.ttl
-      for i = 2, #entry do
-        ttl = math_min(ttl, entry[i].ttl)
+      ttl = math.huge
+      for i = 1, #entry do
+        local record = entry[i]
+        -- determine minimum ttl of all answer records
+        ttl = math_min(ttl, record.ttl)
+        -- update IPv6 address format to include square brackets
+        if record.type == _M.TYPE_AAAA then
+          record.address = utils.parseHostname(record.address)
+        elseif record.type == _M.TYPE_SRV then -- SRV can also contain IPv6
+          record.target = utils.parseHostname(record.target)
+        end
       end
 
     elseif entry.errcode and entry.errcode ~= 3 then

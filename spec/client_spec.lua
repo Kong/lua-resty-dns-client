@@ -582,6 +582,7 @@ describe("DNS client", function()
     assert.are.equal(#answers, 1)
     assert.are.equal(client.TYPE_AAAA, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
+    assert.are.equal(host, answers[1].address)
 
     local lrucache = client.getcache()
     assert.equal(client.TYPE_AAAA, lrucache:get(host))
@@ -596,6 +597,7 @@ describe("DNS client", function()
     assert.are.equal(#answers, 1)
     assert.are.equal(client.TYPE_AAAA, answers[1].type)
     assert.are.equal(10*365*24*60*60, answers[1].ttl)  -- 10 year ttl
+    assert.are.equal("["..host.."]", answers[1].address) -- brackets added
 
     local lrucache = client.getcache()
     assert.equal(client.TYPE_AAAA, lrucache:get(host))
@@ -634,7 +636,40 @@ describe("DNS client", function()
     assert.equal(NOT_FOUND_ERROR, err)
     assert(tostring(history):find("bad IPv6", nil, true))
   end)
-  
+
+  it("fetching IPv6 in an SRV record adds brackets",function()
+    assert(client.init())
+    local host = "hello.world"
+    local address = "::1"
+    local entry = {
+      {
+        type = client.TYPE_SRV,
+        target = address,
+        port = 321,
+        weight = 10,
+        priority = 10,
+        class = 1,
+        name = host,
+        ttl = 10,
+      },
+    }
+
+    query_func = function(self, original_query_func, name, options)
+      if name == host and options.qtype == client.TYPE_SRV then
+        return entry
+      end
+      return original_query_func(self, name, options)
+    end
+
+    local res, err, trylist = client.resolve(
+      host,
+      { qtype = client.TYPE_SRV },
+      false
+    )
+    assert.equal("["..address.."]", res[1].target)
+
+  end)
+
   it("recursive lookups failure - single resolve", function()
     assert(client.init({
           resolvConf = {
@@ -751,7 +786,7 @@ describe("DNS client", function()
         order = {"SRV", "CNAME", "AAAA", "A"},
       }))
 
-    local lrucache = client.getcache()
+    lrucache = client.getcache()
     assert.equal(client.TYPE_AAAA, lrucache:get("localhost")) -- success set to AAAA as it is the preferred option
   end)
 
@@ -775,7 +810,7 @@ describe("DNS client", function()
 
     answers, err = client.resolve("localhost", {qtype = client.TYPE_AAAA})
     assert.is.Nil(err)
-    assert.are.equal(answers[1].address, "1::2")
+    assert.are.equal(answers[1].address, "[1::2]")
 
     answers, err = client.resolve("mashape", {qtype = client.TYPE_A})
     assert.is.Nil(err)
@@ -783,7 +818,7 @@ describe("DNS client", function()
 
     answers, err = client.resolve("kong.for.president", {qtype = client.TYPE_AAAA})
     assert.is.Nil(err)
-    assert.are.equal(answers[1].address, "1234::1234")
+    assert.are.equal(answers[1].address, "[1234::1234]")
   end)
 
   describe("toip() function", function()
@@ -967,7 +1002,7 @@ describe("DNS client", function()
               "nameserver 8.8.8.8",
             },
           }))
-      local ip, record, port, host, history
+      local ip, record, port, host, history, err
       host = "srvrecurse.thijsschreijer.nl"
       
       -- resolve SRV specific should return the record including its
@@ -1074,7 +1109,7 @@ describe("DNS client", function()
       lrucache:set(entry2[1].type..":"..entry2[1].name, entry2)
 
       -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
-      local ip, port, r, history = client.toip("hello.world", 123, true)
+      local ip, port, try_list = client.toip("hello.world", 123, true)
       assert.is_nil(ip)
       assert.are.equal("recursion detected", port)
     end)
