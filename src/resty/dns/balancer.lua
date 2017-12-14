@@ -30,7 +30,7 @@
 -- (double underscores).
 --
 -- @author Thijs Schreijer
--- @copyright 2016-2017 Kong Inc. All rights reserved.
+-- @copyright 2016-2018 Kong Inc. All rights reserved.
 -- @license Apache 2.0
 
 
