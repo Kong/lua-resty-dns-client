@@ -20,7 +20,7 @@ Features
 Copyright and license
 =====================
 
-Copyright: (c) 2016-2017 Kong, Inc.
+Copyright: (c) 2016-2018 Kong, Inc.
 
 Author: Thijs Schreijer
 
@@ -35,7 +35,9 @@ use the `rbusted` script.
 History
 =======
 
-### 0.7.x (xx-xxx-201x) Fixes
+Versioning is strictly based on [Semantic Versioning](https://semver.org/)
+
+### 1.0.0 (14-Dec-2017) Fixes and IPv6
 
 - Change: BREAKING all IPv6 addresses are now returned with square brackets
 - Fix: properly recognize IPv6 addresses in square brackets
