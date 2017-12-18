@@ -454,9 +454,13 @@ _M.init = function(options)
       end
     end
   end
-  assert(#(options.nameservers or {}) > 0, "Invalid configuration, no valid nameservers found")
-  for _, r in ipairs(options.nameservers) do
-    log(log_DEBUG, "nameserver ", type(r) == "table" and (r[1]..":"..r[2]) or r)
+  options.nameservers = options.nameservers or {}
+  if #options.nameservers == 0 then
+    log(log_WARN, "Invalid configuration, no valid nameservers found")
+  else
+    for _, r in ipairs(options.nameservers) do
+      log(log_DEBUG, "nameserver ", type(r) == "table" and (r[1]..":"..r[2]) or r)
+    end
   end
   
   options.retrans = options.retrans or resolv.options.attempts or 5 -- 5 is openresty default

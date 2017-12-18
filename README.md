@@ -37,6 +37,10 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
+### x.x.x (xx-Dec-2017) Fix
+
+- Fix: do not fail initialization without nameservers. 
+
 ### 1.0.0 (14-Dec-2017) Fixes and IPv6
 
 - Change: BREAKING all IPv6 addresses are now returned with square brackets
