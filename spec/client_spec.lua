@@ -41,7 +41,10 @@ describe("DNS client", function()
     -- using the `query_func` upvalue defined above
     local old_new = resolver.new
     resolver.new = function(...)
-      local r = old_new(...)
+      local r, err = old_new(...)
+      if not r then
+        return nil, err
+      end
       local original_query_func = r.query
       r.query = function(self, ...)
         return query_func(self, original_query_func, ...)
@@ -62,12 +65,11 @@ describe("DNS client", function()
 
   describe("initialization", function()
 
-    it("fails with no nameservers", function()
+    it("does not fail with no nameservers", function()
       -- empty list fallsback on resolv.conf
       assert.has.no.error(function() client.init( {nameservers = {} } ) end)
 
-      assert.has.error(function() client.init( {nameservers = {}, resolvConf = {} } ) end,
-        "Invalid configuration, no valid nameservers found")    
+      assert.has.no.error(function() client.init( {nameservers = {}, resolvConf = {} } ) end)    
     end)
 
     it("fails with order being empty", function()
@@ -321,6 +323,17 @@ describe("DNS client", function()
 
   end)
 
+
+  it("fetching a record without nameservers errors", function()
+    assert(client.init({ resolvConf = {} }))
+
+    local host = "thijsschreijer.nl"
+    local typ = client.TYPE_A
+
+    local answers, err, try_list = client.resolve(host, { qtype = typ })
+    assert.is_nil(answers)
+    assert(err:find("failed to create a resolver: no nameservers specified"))
+  end)
 
   it("fetching a TXT record", function()
     assert(client.init())
