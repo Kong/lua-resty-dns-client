@@ -982,6 +982,30 @@ function objBalancer:setCallback(callback)
   self.callback = callback
 end
 
+local randomlist_cache = {}
+
+local function randomlist(size)
+  if randomlist_cache[size] then
+    return randomlist_cache[size]
+  end
+  local randomizer = lrandom.new(158841259)
+  local rnds = new_tab(size, 0)
+  local out = new_tab(size, 0)
+  for i = 1, size do
+    local n = math.floor(randomizer() * size) + 1
+    while rnds[n] do
+      n = n + 1
+      if n > size then
+        n = 1
+      end
+    end
+    out[i] = n
+    rnds[n] = true
+  end
+  randomlist_cache[size] = out
+  return out
+end
+
 --- Creates a new balancer. The balancer is based on a wheel with slots. The 
 -- slots will be randomly distributed over the targets. The number of slots 
 -- assigned will be relative to the weight.
@@ -1070,33 +1094,25 @@ _M.new = function(opts)
   local slots = self.slots
   local slotList = self.unassignedSlots
   local duplicateCheck = {}
-  local empty = {}
+  local orderlist = opts.order or randomlist(self.wheelSize)
   -- create a new randomizer with just any seed, we do not care about
   -- uniqueness, only about distribution, and repeatability, each orderlist
   -- must be identical!
-  local randomizer = lrandom.new(158841259)
+
   for i = 1, self.wheelSize do
     
     local slot = {}
-    local order = (opts.order or empty)[i] or randomizer()
-    while duplicateCheck[order] do  -- no duplicates allowed! order must be deterministic!
-      if (opts.order or empty)[i] then -- it was a user provided value, so error out
-        error("the 'order' list contains duplicates")
-      end
-      order = randomizer()
+    local order = orderlist[i]
+    if duplicateCheck[order] then  -- no duplicates allowed! order must be deterministic!
+      -- it was a user provided value, so error out
+      error("the 'order' list contains duplicates")
     end
     duplicateCheck[order] = true
-    slot.order = order           -- the order in the slot wheel
     slot.address = nil           -- the address this slot belongs to (set by `addSlots` and `dropSlots` methods)
     
     slots[i] = slot
-    wheel[i] = slot
+    wheel[order] = slot
     slotList[i] = slot
-  end
-  -- sort the wheel, randomizing the order of the slots
-  table_sort(wheel, function(a,b) return a.order < b.order end)
-  for i, slot in ipairs(wheel) do
-    slot.order = i               -- replace by order id (float by integer)
   end
   
   -- Sort the hosts, to make order deterministic
