@@ -55,6 +55,7 @@ local table_remove = table.remove
 local table_concat = table.concat
 local math_floor = math.floor
 local string_sub = string.sub
+local string_format = string.format
 local ngx_md5 = ngx.md5_bin
 local timer_at = ngx.timer.at
 local bxor = bit.bxor
@@ -281,7 +282,7 @@ local sorts = {
     -- build table with keys
     for i, v in ipairs(result) do
       sorted[i] = v
-      v.__balancerSortKey = string.format("%06d:%s:%s:%s", v.priority, v.target, v.port, v.weight)
+      v.__balancerSortKey = string_format("%06d:%s:%s:%s", v.priority, v.target, v.port, v.weight)
     end
     -- sort by the keys
     table_sort(sorted, sortQuery)
@@ -995,7 +996,7 @@ local function randomlist(size)
   local rnds = new_tab(size, 0)
   local out = new_tab(size, 0)
   for i = 1, size do
-    local n = math.floor(randomizer() * size) + 1
+    local n = math_floor(randomizer() * size) + 1
     while rnds[n] do
       n = n + 1
       if n > size then
