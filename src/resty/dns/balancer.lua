@@ -988,6 +988,9 @@ local function randomlist(size)
   if randomlist_cache[size] then
     return randomlist_cache[size]
   end
+  -- create a new randomizer with just any seed, we do not care about
+  -- uniqueness, only about distribution, and repeatability, each orderlist
+  -- must be identical!
   local randomizer = lrandom.new(158841259)
   local rnds = new_tab(size, 0)
   local out = new_tab(size, 0)
@@ -1095,12 +1098,8 @@ _M.new = function(opts)
   local slotList = self.unassignedSlots
   local duplicateCheck = {}
   local orderlist = opts.order or randomlist(self.wheelSize)
-  -- create a new randomizer with just any seed, we do not care about
-  -- uniqueness, only about distribution, and repeatability, each orderlist
-  -- must be identical!
 
   for i = 1, self.wheelSize do
-    
     local slot = {}
     local order = orderlist[i]
     if duplicateCheck[order] then  -- no duplicates allowed! order must be deterministic!
