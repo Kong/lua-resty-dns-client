@@ -151,6 +151,11 @@ function objAddr:addIndices(availableIndicesList, count)
       
       wheel[wheelIdx] = self
     end
+    -- track maximum table size reached
+    local max = count + size
+    if max > self.indicesMax then
+      self.indicesMax = max
+    end
   end
   return self
 end
@@ -179,8 +184,15 @@ function objAddr:dropIndices(availableIndicesList, count)
       
       wheel[wheelIdx] = nil
     end
+    -- track table size reduction
+    size = size + count
+    if size * 2 < self.indicesMax then
+      -- table was reduced by at least half, so drop the original to reduce
+      -- memory footprint
+      self.indicesMax = size
+      self.indices = table.move(self.indices, 1, size, 1, {})
+    end
   end
-
   return availableIndicesList
 end
 
@@ -243,6 +255,7 @@ local newAddress = function(ip, port, weight, host)
     available = true,     -- is this target available?
     host = host,          -- the host this address belongs to
     indices = {},         -- the indices of the wheel assigned to this address
+    indicesMax = 0,       -- max size reached for 'indices' table
     disabled = false,     -- has this record been disabled? (before deleting)
   }
   for name, method in pairs(objAddr) do addr[name] = method end
