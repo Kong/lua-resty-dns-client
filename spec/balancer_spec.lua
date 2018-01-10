@@ -129,18 +129,18 @@ end
 local check_balancer = function(balancer)
   assert.is.table(balancer)
   check_list(balancer.hosts)
-  assert.are.equal(check_list(balancer.wheel), balancer.wheelSize)
+  assert.are.equal(balancer.wheelSize, check_list(balancer.wheel)+check_list(balancer.unassignedWheelIndices))
   if balancer.weight == 0 then
     -- all hosts failed, so the balancer slots have no content
-    assert.are.equal(balancer.wheelSize, #balancer.unassignedSlots)
+    assert.are.equal(balancer.wheelSize, #balancer.unassignedWheelIndices)
     for _, slot in ipairs(balancer.wheel) do
       assert.is_nil(slot.address)
     end
   else
     -- addresses
     local addrlist = {}
-    for _, slot in ipairs(balancer.wheel) do -- calculate slots per address based on the wheel
-      addrlist[slot.address] = (addrlist[slot.address] or 0) + 1
+    for _, address in ipairs(balancer.wheel) do -- calculate slots per address based on the wheel
+      addrlist[address] = (addrlist[address] or 0) + 1
     end
     for addr, count in pairs(addrlist) do
       assert.are.equal(#addr.slots, count)
@@ -164,12 +164,12 @@ end
 -- creates a hash table with "address:port" keys and as value the number of slots
 local function count_slots(balancer)
   local r = {}
-  for _, slot in ipairs(balancer.wheel) do
-    local key = tostring(slot.address.ip)
+  for _, address in ipairs(balancer.wheel) do
+    local key = tostring(address.ip)
     if key:find(":",1,true) then
-      key = "["..key.."]:"..slot.address.port
+      key = "["..key.."]:"..address.port
     else
-      key = key..":"..slot.address.port
+      key = key..":"..address.port
     end
     r[key] = (r[key] or 0) + 1
   end
@@ -180,8 +180,8 @@ end
 -- can be used for before/after comparison
 local copyWheel = function(b)
   local copy = {}
-  for i, slot in ipairs(b.wheel) do
-    copy[i] = i.." - "..slot.address.ip.." @ "..slot.address.port.." ("..slot.address.host.hostname..")"
+  for i, address in ipairs(b.wheel) do
+    copy[i] = i.." - "..address.ip.." @ "..address.port.." ("..address.host.hostname..")"
   end
   return copy
 end
@@ -364,13 +364,13 @@ describe("Loadbalancer", function()
           dns = client,
           wheelSize = 10,
         })
-        assert.are.equal(10, #b.unassignedSlots)
+        assert.are.equal(10, #b.unassignedWheelIndices)
         b = check_balancer(balancer.new { 
           dns = client,
           wheelSize = 10,
           hosts = {},  -- empty hosts table hould work too
         })
-        assert.are.equal(10, #b.unassignedSlots)
+        assert.are.equal(10, #b.unassignedWheelIndices)
       end)
       it("succeeds with multiple hosts", function()
         dnsA({ 
