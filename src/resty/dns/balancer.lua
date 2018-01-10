@@ -1108,6 +1108,7 @@ _M.new = function(opts)
       error("the 'order' list contains duplicates")
     end
     duplicateCheck[order] = true
+    slot.order = order           -- the order in the slot wheel
     slot.address = nil           -- the address this slot belongs to (set by `addSlots` and `dropSlots` methods)
     
     slots[i] = slot
