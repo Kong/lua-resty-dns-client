@@ -128,57 +128,60 @@ end
 
 -- Adds a list of slots to the address. The slots added to the address will be removed from 
 -- the provided `slotList`.
--- @param slotList a list of slots to be added
+-- @param availableIndicesList a list of slots to be added
 -- @param count the number of slots to take from the list provided, defaults to ALL if omitted
 -- @return the address object
-function objAddr:addSlots(slotList, count)
-  count = count or #slotList
+function objAddr:addSlots(availableIndicesList, count)
+  count = count or #availableIndicesList
   if count > 0 then
-    local slots = self.slots
-    local size = #slots
-    if count > #slotList then 
-      error("more slots requested to be added ("..count..") than provided ("..#slotList..
+    local myWheelIndices = self.slots
+    local size = #myWheelIndices
+    if count > #availableIndicesList then
+      error("more slots requested to be added ("..count..") than provided ("..#availableIndicesList..
             ") for host '"..self.host.hostname..":"..self.port.."' ("..tostring(self.ip)..")") 
     end
-    
-    local lsize = #slotList + 1
+
+    local wheel = self.host.balancer.wheel
+    local lsize = #availableIndicesList + 1
     for i = 1, count do
-      local idx = lsize - i
-      local slot = slotList[idx]
-      slotList[idx] = nil
-      slots[size + i] = slot
+      local availableIdx = lsize - i
+      local wheelIdx = availableIndicesList[availableIdx]
+      availableIndicesList[availableIdx] = nil
+      myWheelIndices[size + i] = wheelIdx
       
-      slot.address = self
+      wheel[wheelIdx] = self
     end
   end
   return self
 end
 
 -- Drop an amount of slots and return them to the overall balancer.
--- @param slotList The list to add the dropped slots to
+-- @param availableIndicesList The list to add the dropped slots to
 -- @param count (optional) The number of slots to drop, defaults to ALL if omitted
--- @return slotList with added to it the slots removed from this address
-function objAddr:dropSlots(slotList, count)
-  local slots = self.slots
-  local size = #slots
+-- @return availableIndicesList with added to it the slots removed from this address
+function objAddr:dropSlots(availableIndicesList, count)
+  local myWheelIndices = self.slots
+  local size = #myWheelIndices
   count = count or size
   if count > 0 then
     if count > size then 
       error("more slots requested to drop ("..count..") than available ("..size..
             ") in address '"..self.host.hostname..":"..self.port.."' ("..self.ip..")") 
     end
-    
-    local lsize = #slotList
+
+    local wheel = self.host.balancer.wheel
+    local lsize = #availableIndicesList
     for i = 1, count do
-      local idx = size + 1 - i
-      local slot = slots[idx]
-      slots[idx] = nil
-      slotList[lsize + i] = slot
+      local myIdx = size + 1 - i
+      local wheelIdx = myWheelIndices[myIdx]
+      myWheelIndices[myIdx] = nil
+      availableIndicesList[lsize + i] = wheelIdx
       
-      slot.address = nil
+      wheel[wheelIdx] = nil
     end
   end
-  return slotList
+
+  return availableIndicesList
 end
 
 -- disables an address object from the balancer.
@@ -560,14 +563,14 @@ end
  
 -- Gets address and port number from a specific slot owned by the host.
 -- The slot MUST be owned by the host. Call balancer:getPeer, never this one.
--- access: balancer:getPeer->slot->address->host->returns addr+port
-function objHost:getPeer(cacheOnly, slot)
+-- access: balancer:getPeer->address->host->returns addr+port
+function objHost:getPeer(cacheOnly, address)
   
   if (self.lastQuery.expire or 0) < time() and not cacheOnly then
     -- ttl expired, so must renew
     self:queryDns(cacheOnly)
 
-    if (slot.address or empty).host ~= self then
+    if (address or empty).host ~= self then
       -- our slot has been reallocated to another host, so recurse to start over
       ngx_log(ngx_DEBUG, log_prefix, "slot previously assigned to ", self.hostname,
               " was reassigned to another due to a dns update")
@@ -575,7 +578,7 @@ function objHost:getPeer(cacheOnly, slot)
     end
   end
 
-  return slot.address:getPeer(cacheOnly)
+  return address:getPeer(cacheOnly)
 end
 
 -- creates a new host object.
@@ -651,7 +654,7 @@ end
 -- @return balancer object
 function objBalancer:redistributeSlots()
   local totalWeight = self.weight
-  local slotList = self.unassignedSlots
+  local slotList = self.unassignedWheelIndices
   
   -- NOTE: calculations are based on the "remaining" slots and weights, to prevent issues due to rounding;
   -- eg. 10 equal systems with 19 slots.
@@ -771,8 +774,8 @@ function objBalancer:addHost(hostname, port, weight)
     end
   end
 
-  if #self.unassignedSlots == 0 then
-    self.unassignedSlots = {}  -- replace table because of initial memory footprint
+  if #self.unassignedWheelIndices == 0 then
+    self.unassignedWheelIndices = {}  -- replace table because of initial memory footprint
   end
   return self
 end
@@ -808,8 +811,8 @@ function objBalancer:removeHost(hostname, port)
       break
     end
   end
-  if #self.unassignedSlots == 0 then
-    self.unassignedSlots = {}  -- replace table because of initial memory footprint
+  if #self.unassignedWheelIndices == 0 then
+    self.unassignedWheelIndices = {}  -- replace table because of initial memory footprint
   end
   return self
 end
@@ -858,8 +861,8 @@ function objBalancer:getPeer(hashValue, retryCount, cacheOnly)
   
   local initial_pointer = pointer
   while true do
-    local slot = self.wheel[pointer]
-    local ip, port, hostname = slot.address.host:getPeer(cacheOnly, slot)
+    local address = self.wheel[pointer]
+    local ip, port, hostname = address.host:getPeer(cacheOnly, address)
     if ip then
       return ip, port, hostname
     elseif port == ERR_SLOT_REASSIGNED then
@@ -1062,8 +1065,6 @@ end
 -- }
 _M.new = function(opts)
   assert(type(opts) == "table", "Expected an options table, but got: "..type(opts))
-  --assert(type(opts.hosts) == "table", "expected option 'hosts' to be a table")
-  --assert(#opts.hosts > 0, "at least one host entry is required in the 'hosts' option")
   assert(opts.dns, "expected option `dns` to be a configured dns client")
   if (not opts.wheelSize) and opts.order then
     opts.wheelSize = #opts.order
@@ -1084,7 +1085,7 @@ _M.new = function(opts)
     pointer = 1,   -- pointer to next-up slot for the round robin scheme
     wheelSize = opts.wheelSize or 1000, -- number of entries in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
-    unassignedSlots = nil, -- list to hold unassigned slots (initially, and when all hosts fail)
+    unassignedWheelIndices = nil, -- list to hold unassigned slots (initially, and when all hosts fail)
     requeryRunning = false,  -- requery timer is not running, see `startRequery`
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
@@ -1092,28 +1093,22 @@ _M.new = function(opts)
   }
   for name, method in pairs(objBalancer) do self[name] = method end
   self.wheel = new_tab(self.wheelSize, 0)
-  self.unassignedSlots = new_tab(self.wheelSize, 0)
+  self.unassignedWheelIndices = new_tab(self.wheelSize, 0)
 
   -- Create a list of entries, and randomize them.
-  -- Create the wheel
-  local wheel = self.wheel
-  local slotList = self.unassignedSlots
+  local unassignedWheelIndices = self.unassignedWheelIndices
   local duplicateCheck = new_tab(self.wheelSize, 0)
   local orderlist = opts.order or randomlist(self.wheelSize)
 
   for i = 1, self.wheelSize do
-    local slot = {}
     local order = orderlist[i]
     if duplicateCheck[order] then  -- no duplicates allowed! order must be deterministic!
       -- it was a user provided value, so error out
       error("the 'order' list contains duplicates")
     end
     duplicateCheck[order] = true
-    slot.order = order           -- the order in the slot wheel
-    slot.address = nil           -- the address this slot belongs to (set by `addSlots` and `dropSlots` methods)
-    
-    wheel[order] = slot  -- slots randomly ordered on wheel!
-    slotList[i] = slot
+
+    unassignedWheelIndices[i] = order
   end
   
   -- Sort the hosts, to make order deterministic
@@ -1126,8 +1121,6 @@ _M.new = function(opts)
     end
   end
   table_sort(hosts, function(a,b) return (a.name..":"..(a.port or "") < b.name..":"..(b.port or "")) end)
-  -- setup initial slotlist
-  self.unassignedSlots = slotList  -- will be picked up by first call to redistributeSlots
   -- Insert the hosts
   for _, host in ipairs(hosts) do
     local ok, err = self:addHost(host.name, host.port, host.weight)
