@@ -125,34 +125,11 @@ local check_list = function(t)
   return size, keys
 end
 
--- returns number of entries (hash + array part)
-local table_size = function(t)
-  local s = 0
-  for _, _ in pairs(t) do s = s + 1 end
-  return s
-end
-
 -- checks the integrity of the balancer, hosts, addresses, and slots. returns the balancer.
 local check_balancer = function(balancer)
   assert.is.table(balancer)
-  -- hosts
   check_list(balancer.hosts)
-  -- slots
-  local size = check_list(balancer.slots)
-  assert.are.equal(balancer.wheelSize, size)
-  assert.are.equal(check_list(balancer.wheel), size)
-  local templist = {}
-  for i, slot in ipairs(balancer.slots) do
-    local idx = slot.order
-    assert.are.equal(balancer.wheel[idx], slot)
-    templist[slot] = i
-  end
-  assert.are.equal(balancer.wheelSize, table_size(templist))
-  for i, slot in ipairs(balancer.wheel) do
-    assert.are.equal(slot.order, i)
-    templist[slot] = nil
-  end
-  assert.are.equal(0, table_size(templist))
+  assert.are.equal(check_list(balancer.wheel), balancer.wheelSize)
   if balancer.weight == 0 then
     -- all hosts failed, so the balancer slots have no content
     assert.are.equal(balancer.wheelSize, #balancer.unassignedSlots)
@@ -552,7 +529,7 @@ describe("Loadbalancer", function()
         local ok, err = b:setPeerStatus(false, "1.2.3.4", 80, "1.2.3.4")
         assert.is_true(ok)
         assert.is_nil(err)
-        local ok, err = b:setPeerStatus(false, "4.3.2.1", 80, "kong.inc")
+        ok, err = b:setPeerStatus(false, "4.3.2.1", 80, "kong.inc")
         assert.is_true(ok)
         assert.is_nil(err)
       end)
@@ -566,7 +543,7 @@ describe("Loadbalancer", function()
         local ok, err = b:setPeerStatus(false, "1.1.1.1", 80)
         assert.is_nil(ok)
         assert.equals("no peer found by name '1.1.1.1' and address 1.1.1.1:80", err)
-        local ok, err = b:setPeerStatus(false, "1.1.1.1", 80, "kong.inc")
+        ok, err = b:setPeerStatus(false, "1.1.1.1", 80, "kong.inc")
         assert.is_nil(ok)
         assert.equals("no peer found by name 'kong.inc' and address 1.1.1.1:80", err)
       end)

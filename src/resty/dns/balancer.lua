@@ -1081,7 +1081,6 @@ _M.new = function(opts)
     hosts = {},    -- a table, index by both the hostname and index, the value being a host object
     weight = 0,    -- total weight of all hosts
     wheel = nil,   -- wheel with entries (fully randomized)
-    slots = nil,   -- list of slots in no particular order
     pointer = 1,   -- pointer to next-up slot for the round robin scheme
     wheelSize = opts.wheelSize or 1000, -- number of entries in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
@@ -1093,17 +1092,13 @@ _M.new = function(opts)
   }
   for name, method in pairs(objBalancer) do self[name] = method end
   self.wheel = new_tab(self.wheelSize, 0)
-  self.slots = new_tab(self.wheelSize, 0)
   self.unassignedSlots = new_tab(self.wheelSize, 0)
 
   -- Create a list of entries, and randomize them.
-  -- 'slots' is just for tracking the individual entries, no notion of order is necessary
-  -- 'wheel' is fully randomized, no matter how 'slots' is modified, 'wheel' remains random.
   -- Create the wheel
   local wheel = self.wheel
-  local slots = self.slots
   local slotList = self.unassignedSlots
-  local duplicateCheck = {}
+  local duplicateCheck = new_tab(self.wheelSize, 0)
   local orderlist = opts.order or randomlist(self.wheelSize)
 
   for i = 1, self.wheelSize do
@@ -1117,8 +1112,7 @@ _M.new = function(opts)
     slot.order = order           -- the order in the slot wheel
     slot.address = nil           -- the address this slot belongs to (set by `addSlots` and `dropSlots` methods)
     
-    slots[i] = slot
-    wheel[order] = slot
+    wheel[order] = slot  -- slots randomly ordered on wheel!
     slotList[i] = slot
   end
   
