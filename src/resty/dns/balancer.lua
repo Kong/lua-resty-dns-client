@@ -770,7 +770,10 @@ function objBalancer:addHost(hostname, port, weight)
       end
     end
   end
-  
+
+  if #self.unassignedSlots == 0 then
+    self.unassignedSlots = {}  -- replace table because of initial memory footprint
+  end
   return self
 end
 
@@ -804,6 +807,9 @@ function objBalancer:removeHost(hostname, port)
       table_remove(self.hosts, i)
       break
     end
+  end
+  if #self.unassignedSlots == 0 then
+    self.unassignedSlots = {}  -- replace table because of initial memory footprint
   end
   return self
 end
