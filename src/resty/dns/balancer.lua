@@ -17,13 +17,13 @@
 -- Updating the dns records is passive, meaning that when `getPeer` accesses a
 -- target, only then the check is done whether the record is stale, and if so
 -- it is updated. The one exception is the failed dns queries (because they 
--- have no slots assigned, and hence will never be hit by `getPeer`), which will
+-- have no indices assigned, and hence will never be hit by `getPeer`), which will
 -- be actively refreshed using a timer. 
 --
 -- Whenever dns resolution fails for a hostname, the host will relinguish all
--- the slots it owns, and they will be reassigned to other targets. 
+-- the indices it owns, and they will be reassigned to other targets. 
 -- Periodically the query for the hostname will be retried, and if it succeeds
--- it will get slots reassigned to it.
+-- it will get (different) indices reassigned to it.
 --
 -- __Housekeeping__; the ring-balancer does some house keeping and may insert
 -- some extra fields in dns records. Those fields will have an `__` prefix
@@ -38,7 +38,7 @@ local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
 local TTL_0_RETRY = 60      -- Maximum life-time for hosts added with ttl=0, requery after it expires
 local REQUERY_INTERVAL = 1  -- Interval for requerying failed dns queries
-local ERR_SLOT_REASSIGNED = "Cannot get peer, current slot got reassigned"
+local ERR_INDEX_REASSIGNED = "Cannot get peer, current index got reassigned to another address"
 local ERR_ADDRESS_UNAVAILABLE = "Address is marked as unavailable"
 local ERR_NO_PEERS_AVAILABLE = "No peers are available"
 
@@ -100,7 +100,7 @@ end
 -- ===========================================================================
 -- address object.
 -- Manages an ip address. It links to a `host`, and is associated with a number
--- of slots managed by the `balancer`.
+-- of indices of the balancer-wheel managed by the `balancer`.
 -- ===========================================================================
 local objAddr = {}
 
@@ -126,18 +126,18 @@ function objAddr:getPeer(cacheOnly)
   end
 end
 
--- Adds a list of slots to the address. The slots added to the address will be removed from 
--- the provided `slotList`.
--- @param availableIndicesList a list of slots to be added
--- @param count the number of slots to take from the list provided, defaults to ALL if omitted
+-- Adds a list of indices to the address. The indices added to the address will
+-- be removed from the provided `availableIndicesList`.
+-- @param availableIndicesList a list of wheel-indices available for adding
+-- @param count the number of indices to take from the list provided, defaults to ALL if omitted
 -- @return the address object
-function objAddr:addSlots(availableIndicesList, count)
+function objAddr:addIndices(availableIndicesList, count)
   count = count or #availableIndicesList
   if count > 0 then
-    local myWheelIndices = self.slots
+    local myWheelIndices = self.indices
     local size = #myWheelIndices
     if count > #availableIndicesList then
-      error("more slots requested to be added ("..count..") than provided ("..#availableIndicesList..
+      error("more indices requested to be added ("..count..") than provided ("..#availableIndicesList..
             ") for host '"..self.host.hostname..":"..self.port.."' ("..tostring(self.ip)..")") 
     end
 
@@ -155,17 +155,17 @@ function objAddr:addSlots(availableIndicesList, count)
   return self
 end
 
--- Drop an amount of slots and return them to the overall balancer.
--- @param availableIndicesList The list to add the dropped slots to
--- @param count (optional) The number of slots to drop, defaults to ALL if omitted
--- @return availableIndicesList with added to it the slots removed from this address
-function objAddr:dropSlots(availableIndicesList, count)
-  local myWheelIndices = self.slots
+-- Drop an amount of indices and return them to the overall balancer.
+-- @param availableIndicesList The list to add the dropped indices to
+-- @param count (optional) The number of indices to drop, defaults to ALL if omitted
+-- @return availableIndicesList with added to it the indices removed from this address
+function objAddr:dropIndices(availableIndicesList, count)
+  local myWheelIndices = self.indices
   local size = #myWheelIndices
   count = count or size
   if count > 0 then
     if count > size then 
-      error("more slots requested to drop ("..count..") than available ("..size..
+      error("more indices requested to drop ("..count..") than available ("..size..
             ") in address '"..self.host.hostname..":"..self.port.."' ("..self.ip..")") 
     end
 
@@ -185,14 +185,14 @@ function objAddr:dropSlots(availableIndicesList, count)
 end
 
 -- disables an address object from the balancer.
--- It will set its weight to 0, so the next slot-recalculation
+-- It will set its weight to 0, so the next indices-recalculation
 -- can delete the address by calling `delete`.
 -- @see delete
 function objAddr:disable()
   ngx_log(ngx_DEBUG, log_prefix, "disabling address: ", self.ip, ":", self.port,
           " (host ", (self.host or empty).hostname, ")")
 
-  -- weight to 0; force dropping all slots assigned, before actually removing
+  -- weight to 0; force dropping all indices assigned, before actually removing
   self.host:addWeight(-self.weight)
   self.weight = 0
   self.disabled = true
@@ -205,14 +205,14 @@ function objAddr:delete()
   ngx_log(ngx_DEBUG, log_prefix, "deleting address: ", self.ip, ":", self.port,
           " (host ", (self.host or empty).hostname, ")")
 
-  assert(#self.slots == 0, "Cannot delete address while it contains slots")
+  assert(#self.indices == 0, "Cannot delete address while it owns indices")
   self.host.balancer:callback("removed", self.ip,
                               self.port, self.host.hostname)
   self.host = nil
 end
 
 -- changes the weight of an address.
--- requires redistributing slots afterwards
+-- requires redistributing indices afterwards
 function objAddr:change(newWeight)
   ngx_log(ngx_DEBUG, log_prefix, "changing address weight: ", self.ip, ":", self.port,
           "(host ", (self.host or empty).hostname, ") ",
@@ -242,8 +242,7 @@ local newAddress = function(ip, port, weight, host)
     weight = weight,
     available = true,     -- is this target available?
     host = host,          -- the host this address belongs to
-    slots = {},           -- the slots assigned to this address
-    index = nil,          -- reverse index in the ordered part of the containing balancer
+    indices = {},         -- the indices of the wheel assigned to this address
     disabled = false,     -- has this record been disabled? (before deleting)
   }
   for name, method in pairs(objAddr) do addr[name] = method end
@@ -304,7 +303,7 @@ sorts = setmetatable(sorts,{
 
 -- Queries the DNS for this hostname. Updates the underlying address objects.
 -- This method always succeeds, but it might leave the balancer in a 0-weight
--- state if none of the hosts resolves, and hence none of the slots are allocated
+-- state if none of the hosts resolves, and hence none of the indices are allocated
 -- to 'addresss' objects.
 -- @return `true`, always succeeds
 function objHost:queryDns(cacheOnly)
@@ -325,7 +324,7 @@ function objHost:queryDns(cacheOnly)
             " failed: ", err)
 
     -- TODO: so we got an error, what to do? multiple options;
-    -- 1) disable the current information (dropping all slots for this host)
+    -- 1) disable the current information (dropping all indices for this host)
     -- 2) keep running on existing info, until some timeout, and then do 1.
     -- For now option 1.
     newQuery = {
@@ -443,12 +442,12 @@ function objHost:queryDns(cacheOnly)
   self.lastQuery = newQuery
   self.lastSorted = newSorted
   
-  if dirty then -- changes imply we need to redistribute slots
+  if dirty then -- changes imply we need to redistribute indices
     ngx_log(ngx_DEBUG, log_prefix, "updating wheel based on dns changes for ", 
             self.hostname)
 
-    -- recalculate to move slots of disabled addresses
-    self.balancer:redistributeSlots()
+    -- recalculate to move indices of disabled addresses
+    self.balancer:redistributeIndices()
     -- delete addresses previously disabled
     self:deleteAddresses()
   end
@@ -465,7 +464,7 @@ function objHost:addWeight(delta)
 end
 
 -- Updates the host nodeWeight.
--- @return `true` if something changed and slots must be redistributed
+-- @return `true` if something changed and indices must be redistributed
 function objHost:change(newWeight)
   local dirty = false
   self.nodeWeight = newWeight
@@ -537,7 +536,7 @@ function objHost:deleteAddresses()
 end
 
 -- disables a host, by setting all adressess to 0
--- Host can only be deleted after recalculating the slots!
+-- Host can only be deleted after recalculating the indices!
 -- @return true
 function objHost:disable()
   -- set weights to 0
@@ -549,7 +548,7 @@ function objHost:disable()
 end
 
 -- Cleans up a host. Only when its weight is 0.
--- Should only be called AFTER recalculating slots
+-- Should only be called AFTER recalculating indices
 -- @return true or throws an error if weight is non-0
 function objHost:delete()
   assert(self.weight == 0, "Cannot delete a host with a non-0 weight")
@@ -561,8 +560,8 @@ function objHost:delete()
   self.balancer = nil
 end
  
--- Gets address and port number from a specific slot owned by the host.
--- The slot MUST be owned by the host. Call balancer:getPeer, never this one.
+-- Gets address and port number from a specific address owned by the host.
+-- The address/index MUST be owned by the host. Call balancer:getPeer, never this one.
 -- access: balancer:getPeer->address->host->returns addr+port
 function objHost:getPeer(cacheOnly, address)
   
@@ -571,10 +570,10 @@ function objHost:getPeer(cacheOnly, address)
     self:queryDns(cacheOnly)
 
     if (address or empty).host ~= self then
-      -- our slot has been reallocated to another host, so recurse to start over
-      ngx_log(ngx_DEBUG, log_prefix, "slot previously assigned to ", self.hostname,
+      -- our index has been reallocated to another host/address, so recurse to start over
+      ngx_log(ngx_DEBUG, log_prefix, "index previously assigned to ", self.hostname,
               " was reassigned to another due to a dns update")
-      return nil, ERR_SLOT_REASSIGNED
+      return nil, ERR_INDEX_REASSIGNED
     end
   end
 
@@ -606,7 +605,7 @@ local newHost = function(hostname, port, weight, balancer)
   -- insert into our parent balancer before recalculating (in queryDns)
   -- This should actually be a responsibility of the balancer object, but in 
   -- this case we do it here, because it is needed before we can redistribute
-  -- the slots in the queryDns method just below.
+  -- the indices in the queryDns method just below.
   balancer.hosts[#balancer.hosts+1] = host
 
   ngx_log(ngx_DEBUG, log_prefix, "created a new host for: ", hostname)
@@ -649,23 +648,23 @@ function objBalancer:addressIter()
   end
 end
 
--- Recalculates the weights. Updates the slot lists for all hostnames.
+-- Recalculates the weights. Updates the indices assigned for all hostnames.
 -- Must be called whenever a weight might have changed; added/removed hosts.
 -- @return balancer object
-function objBalancer:redistributeSlots()
+function objBalancer:redistributeIndices()
   local totalWeight = self.weight
-  local slotList = self.unassignedWheelIndices
+  local movingIndexList = self.unassignedWheelIndices
   
-  -- NOTE: calculations are based on the "remaining" slots and weights, to prevent issues due to rounding;
-  -- eg. 10 equal systems with 19 slots.
-  -- Calculated to get each 1.9 slots => 9 systems would get 1, last system would get 10
-  -- by using "remaining" slots, the first would get 1 slot, the other 9 would get 2.
+  -- NOTE: calculations are based on the "remaining" indices and weights, to
+  -- prevent issues due to rounding: eg. 10 equal systems with 19 indices.
+  -- Calculated to get each 1.9 indices => 9 systems would get 1, last system would get 10
+  -- by using "remaining" indices, the first would get 1 index, the other 9 would get 2.
   
-  -- first; reclaim extraneous slots
+  -- first; reclaim extraneous indices
   local weightLeft = totalWeight
-  local slotsLeft = self.wheelSize
-  local addList = {}      -- addresses that next additional slots
-  local addListCount = {} -- how many extra slots the address needs
+  local indicesLeft = self.wheelSize
+  local addList = {}      -- addresses that need additional indices
+  local addListCount = {} -- how many extra indices the address needs
   local addCount = 0
   local dropped, added = 0, 0
 
@@ -675,34 +674,33 @@ function objBalancer:redistributeSlots()
     if weightLeft == 0 then
       count = 0
     else
-      count = math_floor(slotsLeft * (weight / weightLeft) + 0.0001) -- 0.0001 to bypass float arithmetic issues
+      count = math_floor(indicesLeft * (weight / weightLeft) + 0.0001) -- 0.0001 to bypass float arithmetic issues
     end
-    local slots = #address.slots
-    local drop = slots - count
+    local drop = #address.indices - count
     if drop > 0 then
-      -- we need to reclaim some slots
-      address:dropSlots(slotList, drop)
+      -- we need to reclaim some indices
+      address:dropIndices(movingIndexList, drop)
       dropped = dropped + drop
     elseif drop < 0 then
-      -- this one needs extra slots, so record the changes needed
+      -- this one needs extra indices, so record the changes needed
       addCount = addCount + 1
       addList[addCount] = address
       addListCount[addCount] = -drop  -- negate because we need to add them
     end
-    slotsLeft = slotsLeft - count
+    indicesLeft = indicesLeft - count
     weightLeft = weightLeft - weight
   end 
 
-  -- second: add freed slots to the recorded addresses that were short of them
+  -- second: add freed indices to the recorded addresses that were short of them
   for i, address in ipairs(addList) do
-    address:addSlots(slotList, addListCount[i])
+    address:addIndices(movingIndexList, addListCount[i])
     added = added + addListCount[i]
   end
 
-  ngx_log( #slotList == 0 and ngx_DEBUG or ngx_WARN, 
-          log_prefix, "redistributed slots, size=", self.wheelSize,
+  ngx_log( #movingIndexList == 0 and ngx_DEBUG or ngx_WARN, 
+          log_prefix, "redistributed indices, size=", self.wheelSize,
           ", dropped=", dropped, ", assigned=", added,
-          ", left unassigned=", #slotList)
+          ", left unassigned=", #movingIndexList)
 
   return self
 end
@@ -719,8 +717,8 @@ end
 -- dereference CNAME record if set to, but it will not dereference SRV records.
 -- An unresolved SRV `target` field will also be resolved by `getPeer` when requested.
 -- 
--- Only the slots assigned to the newly added targets will loose their
--- consistency, all other slots are guaranteed to remain the same.
+-- Only the wheel indices assigned to the newly added targets will loose their
+-- consistency, all other wheel indices are guaranteed to remain the same.
 --
 -- Within a balancer the combination of `hostname` and `port` must be unique, so 
 -- multiple calls with the same target will only update the `weight` of the
@@ -768,8 +766,8 @@ function objBalancer:addHost(hostname, port, weight)
     if host.nodeWeight ~= weight then
       -- weight changed, go update
       if host:change(weight) then
-        -- update had an impact so must redistribute slots
-        self:redistributeSlots()
+        -- update had an impact so must redistribute indices
+        self:redistributeIndices()
       end
     end
   end
@@ -780,9 +778,9 @@ function objBalancer:addHost(hostname, port, weight)
   return self
 end
 
---- Removes a host from a balancer. All assigned slots will be redistributed 
--- to the remaining targets. Only the slots from the removed host will loose
--- their consistency, all other slots are guaranteed to remain in place.
+--- Removes a host from a balancer. All assigned indices will be redistributed 
+-- to the remaining targets. Only the indices from the removed host will loose
+-- their consistency, all other indices are guaranteed to remain in place.
 -- Will not throw an error if the hostname is not in the current list.
 --
 -- See `addHost` for multi-server consistency.
@@ -803,7 +801,7 @@ function objBalancer:removeHost(hostname, port)
   
       -- removing hosts must always be recalculated to make sure
       -- its order is deterministic (only dns updates are not)
-      self:redistributeSlots()
+      self:redistributeIndices()
 
       -- remove host
       host:delete()
@@ -824,10 +822,10 @@ function objBalancer:addWeight(delta)
 end
 
 --- Gets the next ip address and port according to the loadbalancing scheme.
--- If the dns record attached to the requested slot is expired, then it will 
+-- If the dns record attached to the requested wheel index is expired, then it will 
 -- be renewed and as a consequence the ring-balancer might be updated.
 --
--- If the slot that is requested holds either an unresolved SRV entry (where
+-- If the wheel index that is requested holds either an unresolved SRV entry (where
 -- the `target` field contains a name instead of an ip), or a record with `ttl=0` then
 -- this call will perform the final query to resolve to an ip using the `toip` 
 -- function of the dns client (this also invokes the loadbalancing as done by 
@@ -865,14 +863,14 @@ function objBalancer:getPeer(hashValue, retryCount, cacheOnly)
     local ip, port, hostname = address.host:getPeer(cacheOnly, address)
     if ip then
       return ip, port, hostname
-    elseif port == ERR_SLOT_REASSIGNED then
-      -- we just need to retry the same slot, no change for 'pointer', just
+    elseif port == ERR_INDEX_REASSIGNED then
+      -- we just need to retry the same index, no change for 'pointer', just
       -- in case of dns updates, we need to check our weight again.
       if self.weight == 0 then
         return nil, ERR_NO_PEERS_AVAILABLE
       end
     elseif port == ERR_ADDRESS_UNAVAILABLE then
-      -- fall through to the next slot
+      -- fall through to the next wheel index
       if hashValue then
         pointer = pointer + 1
         if pointer > self.wheelSize then pointer = 1 end
@@ -898,7 +896,7 @@ end
 
 --- Sets the current status of the peer.
 -- This allows to temporarily suspend peers when they are offline/unhealthy,
--- it will not alter the slot distribution. The parameters passed in should
+-- it will not alter the index distribution. The parameters passed in should
 -- be previous results from `getPeer`.
 -- @param available `true` for enabled/healthy, `false` for disabled/unhealthy
 -- @param ip ip address of the peer
@@ -1019,8 +1017,9 @@ local function randomlist(size)
   return out
 end
 
---- Creates a new balancer. The balancer is based on a wheel with slots. The 
--- slots will be randomly distributed over the targets. The number of slots 
+--- Creates a new balancer. The balancer is based on a wheel with a number of
+-- positions (the index on the wheel). The 
+-- indices will be randomly distributed over the targets. The number of indices 
 -- assigned will be relative to the weight.
 --
 -- A single balancer can hold multiple hosts. A host can be an ip address or a
@@ -1032,16 +1031,17 @@ end
 -- - `hosts` (optional) containing hostnames, ports and weights. If omitted,
 -- ports and weights default respectively to 80 and 10. The list will be sorted
 -- before being added, so the order of entry is deterministic.
--- - `wheelSize` (optional) for total number of slots in the balancer, if omitted 
+-- - `wheelSize` (optional) for total number of positions in the balancer (the
+-- indices), if omitted 
 -- the size of `order` is used, or 1000 if `order` is not provided. It is important 
--- to have enough slots to keep the ring properly randomly distributed. If there
--- are to few slots for the number of targets then the load distribution might
+-- to have enough indices to keep the ring properly randomly distributed. If there
+-- are to few indices for the number of targets then the load distribution might
 -- become to coarse. Consider the maximum number of targets expected, as new
 -- hosts can be dynamically added, and dns renewals might yield larger record 
 -- sets. The `wheelSize` cannot be altered, only a new wheel can be created, but
 -- then all consistency would be lost. On a similar note; making it too big, 
--- will have a performance impact when the wheel is modified as too many slots
--- will have to be moved between targets. A value of 50 to 200 slots per entry 
+-- will have a performance impact when the wheel is modified as too many indices
+-- will have to be moved between targets. A value of 50 to 200 indices per entry 
 -- seems about right.
 -- - `order` (optional) if given, a list of random numbers, size `wheelSize`, used to 
 -- randomize the wheel. Duplicates are not allowed in the list.
@@ -1082,10 +1082,10 @@ _M.new = function(opts)
     hosts = {},    -- a table, index by both the hostname and index, the value being a host object
     weight = 0,    -- total weight of all hosts
     wheel = nil,   -- wheel with entries (fully randomized)
-    pointer = 1,   -- pointer to next-up slot for the round robin scheme
-    wheelSize = opts.wheelSize or 1000, -- number of entries in the wheel
+    pointer = 1,   -- pointer to next-up index for the round robin scheme
+    wheelSize = opts.wheelSize or 1000, -- number of entries (indices) in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
-    unassignedWheelIndices = nil, -- list to hold unassigned slots (initially, and when all hosts fail)
+    unassignedWheelIndices = nil, -- list to hold unassigned indices (initially, and when all hosts fail)
     requeryRunning = false,  -- requery timer is not running, see `startRequery`
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
