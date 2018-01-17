@@ -49,6 +49,10 @@ describe("testing parsing 'hosts'", function()
 127.0.0.1  admin.abcsearch.com
 127.0.0.2  www3.abcsearch.com #[Browseraid]
 127.0.0.3  www.abcsearch.com wwwsearch #[Restricted Zone site]
+
+[::1]        alsolocalhost  #support IPv6 in brackets
+[::1]:80     localport6     #allow port number
+127.0.0.1:80 localport4     #allow port number
 ]])
     local reverse, hosts = dnsutils.parseHosts(hostsfile)
     assert.is.equal(hosts[1].ip, "127.0.0.1")
@@ -56,9 +60,9 @@ describe("testing parsing 'hosts'", function()
     assert.is.Nil(hosts[1][1])  -- no aliases
     assert.is.Nil(hosts[1][2])
     assert.is.equal("127.0.0.1", reverse.localhost.ipv4)
-    assert.is.equal("::1", reverse.localhost.ipv6)
+    assert.is.equal("[::1]", reverse.localhost.ipv6)
   
-    assert.is.equal(hosts[2].ip, "::1")
+    assert.is.equal(hosts[2].ip, "[::1]")
     assert.is.equal(hosts[2].canonical, "localhost")
     
     assert.is.equal(hosts[3].ip, "192.168.1.2")
@@ -89,6 +93,26 @@ describe("testing parsing 'hosts'", function()
     assert.is.Nil(hosts[6][2])
     assert.is.equal("192.168.1.4", reverse["smtp.computer.com"].ipv4)  -- .1.4; first one wins!
     assert.is.equal("192.168.1.4", reverse["alias3"].ipv4)   -- .1.4; first one wins!
+
+    assert.is.equal(hosts[10].ip, "[::1]")
+    assert.is.equal(hosts[10].canonical, "alsolocalhost")
+    assert.is.equal(hosts[10].family, "ipv6")
+    assert.is.equal("[::1]", reverse["alsolocalhost"].ipv6)
+
+    assert.is.equal(hosts[11].ip, "[::1]")
+    assert.is.equal(hosts[11].port, 80)
+    assert.is.equal(hosts[11].canonical, "localport6")
+    assert.is.equal(hosts[11].family, "ipv6")
+    assert.is.equal("[::1]", reverse["localport6"].ipv6)
+    assert.is.equal(80, reverse["localport6"].ipv6_port)
+
+    assert.is.equal(hosts[12].ip, "127.0.0.1")
+    assert.is.equal(hosts[12].port, 80)
+    assert.is.equal(hosts[12].canonical, "localport4")
+    assert.is.equal(hosts[12].family, "ipv4")
+    assert.is.equal("127.0.0.1", reverse["localport4"].ipv4)
+    assert.is.equal(80, reverse["localport4"].ipv4_port)
+
   end)
 
 end)
