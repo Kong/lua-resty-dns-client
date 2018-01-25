@@ -114,7 +114,10 @@ function objAddr:getPeer(cacheOnly)
 
   if self.ipType == "name" then
     -- SRV type record with a named target
-    local ip, port = dns.toip(self.ip, self.port, cacheOnly)
+    local ip, port, try_list = dns.toip(self.ip, self.port, cacheOnly)
+    if not ip then
+      port = tostring(port) .. ". Tried: " .. tostring(try_list)
+    end
     -- which is the proper name to return in this case?
     -- `self.host.hostname`? or the named SRV entry: `self.ip`?
     -- use our own hostname, as it might be used to mark this address
@@ -327,14 +330,14 @@ function objHost:queryDns(cacheOnly)
   -- yield (cosockets in the dns lib). So once that is done, we're 'atomic'
   -- again, and we shouldn't have any nasty race conditions
   local dns = self.balancer.dns
-  local newQuery, err = dns.resolve(self.hostname, nil, cacheOnly)
+  local newQuery, err, try_list = dns.resolve(self.hostname, nil, cacheOnly)
 
   local oldQuery = self.lastQuery or {}
   local oldSorted = self.lastSorted or {}
   
   if err then
     ngx_log(ngx_WARN, log_prefix, "querying dns for ", self.hostname, 
-            " failed: ", err)
+            " failed: ", err , ". Tried ", tostring(try_list))
 
     -- TODO: so we got an error, what to do? multiple options;
     -- 1) disable the current information (dropping all indices for this host)
