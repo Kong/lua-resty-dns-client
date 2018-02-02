@@ -124,7 +124,7 @@ local cacheinsert = function(entry, qname, qtype)
   if not entry.expire then
     -- new record not seen before
     if e1 then
-      -- an actual record
+      -- an actual, non-empty, record
       key = (qtype or e1.type) .. ":" .. (qname or e1.name)
       
       ttl = math.huge
@@ -149,8 +149,17 @@ local cacheinsert = function(entry, qname, qtype)
       ttl = badTtl
       key = qtype..":"..qname
 
+    elseif entry.errcode == 3 then
+      -- a 'name error' (3)
+      ttl = emptyTtl
+      key = qtype..":"..qname
+
     else
-      -- empty or a 'name error' (3)
+      -- empty record
+      if (cachelookup(qname, qtype) or empty)[1] then
+        -- we still have a stale record with data, so we're not replacing that
+        return
+      end
       ttl = emptyTtl
       key = qtype..":"..qname
     end
