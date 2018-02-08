@@ -51,8 +51,6 @@ describe("testing parsing 'hosts'", function()
 127.0.0.3  www.abcsearch.com wwwsearch #[Restricted Zone site]
 
 [::1]        alsolocalhost  #support IPv6 in brackets
-[::1]:80     localport6     #allow port number
-127.0.0.1:80 localport4     #allow port number
 ]])
     local reverse, hosts = dnsutils.parseHosts(hostsfile)
     assert.is.equal(hosts[1].ip, "127.0.0.1")
@@ -98,21 +96,6 @@ describe("testing parsing 'hosts'", function()
     assert.is.equal(hosts[10].canonical, "alsolocalhost")
     assert.is.equal(hosts[10].family, "ipv6")
     assert.is.equal("[::1]", reverse["alsolocalhost"].ipv6)
-
-    assert.is.equal(hosts[11].ip, "[::1]")
-    assert.is.equal(hosts[11].port, 80)
-    assert.is.equal(hosts[11].canonical, "localport6")
-    assert.is.equal(hosts[11].family, "ipv6")
-    assert.is.equal("[::1]", reverse["localport6"].ipv6)
-    assert.is.equal(80, reverse["localport6"].ipv6_port)
-
-    assert.is.equal(hosts[12].ip, "127.0.0.1")
-    assert.is.equal(hosts[12].port, 80)
-    assert.is.equal(hosts[12].canonical, "localport4")
-    assert.is.equal(hosts[12].family, "ipv4")
-    assert.is.equal("127.0.0.1", reverse["localport4"].ipv4)
-    assert.is.equal(80, reverse["localport4"].ipv4_port)
-
   end)
 
 end)

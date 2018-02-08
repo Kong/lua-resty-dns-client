@@ -50,10 +50,8 @@ _M.MAXSEARCH = 6
 -- Does not check for correctness of ip addresses nor hostnames. Might return
 -- `nil + error` if the file cannot be read.
 --
--- __NOTE 1__: All output will be normalized to lowercase, IPv6 addresses will
+-- __NOTE__: All output will be normalized to lowercase, IPv6 addresses will
 -- always be returned in brackets.
--- __NOTE 2__: Port numbers are supported as an extension when parsing (a custom)
--- hosts file
 -- @param filename (optional) Filename to parse, or a table with the file 
 -- contents in lines (defaults to `'/etc/hosts'` if omitted)
 -- @return 1; reverse lookup table, ip addresses (table with `ipv4` and `ipv6` 
@@ -85,12 +83,12 @@ _M.parseHosts = function(filename)
     line = line:lower()
     local data, comments = line:match(PATT_COMMENT)
     if data then
-      local ip, hosts, port, family, name
+      local ip, hosts, family, name, _
       -- parse the line
       ip, hosts = data:match(PATT_IP_HOST)
       -- parse and validate the ip address
       if ip then
-        name, port, family = _M.parseHostname(ip)
+        name, _, family = _M.parseHostname(ip)
         if family ~= "ipv4" and family ~= "ipv6" then
           ip = nil  -- not a valid IP address
         else
@@ -99,7 +97,7 @@ _M.parseHosts = function(filename)
       end
       -- add the names
       if ip and hosts then
-        local entry = { ip = ip, family = family, port = port }
+        local entry = { ip = ip, family = family }
         local key = "canonical"
         for host in hosts:gmatch("%S+") do
           entry[key] = host
@@ -109,11 +107,7 @@ _M.parseHosts = function(filename)
             rev = {}
             reverse[host] = rev
           end
-          if not rev[family] then
-            -- do not overwrite, first one wins
-            rev[family] = ip
-            rev[family .. "_port"] = port
-          end
+          rev[family] = rev[family] or ip -- do not overwrite, first one wins
         end
         tinsert(result, entry)
       end

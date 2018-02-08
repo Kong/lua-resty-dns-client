@@ -391,53 +391,34 @@ _M.init = function(options)
   local ttl = 10*365*24*60*60  -- use ttl of 10 years for hostfile entries
   for name, address in pairs(hosts) do
     name = string_lower(name)
-    if address.ipv4_port or address.ipv6_port then
-      -- entry with a port number, create SRV
+    if address.ipv4 then 
       cacheinsert({{  -- NOTE: nested list! cache is a list of lists
           name = name,
-          target = address.ipv4 or address.ipv6,
-          port = address.ipv4_port or address.ipv6_port,
-          type = _M.TYPE_SRV,
+          address = address.ipv4,
+          type = _M.TYPE_A,
           class = 1,
           ttl = ttl,
-          priority = 20,  -- arbitrary...
-          weight = 10,    -- arbitrary...
         }})
-      defined_hosts[name..":".._M.TYPE_SRV] = true
-      cachesetsuccess(name, _M.TYPE_SRV)
-      log(log_DEBUG, "adding SRV-record from 'hosts' file: ",name, " = ",
-        address.ipv6 or address.ipv4, ":", address.ipv6_port or address.ipv4_port)
-    else
-      -- entry without a port number, create A or AAAA
-      if address.ipv4 then
-        cacheinsert({{  -- NOTE: nested list! cache is a list of lists
-            name = name,
-            address = address.ipv4,
-            type = _M.TYPE_A,
-            class = 1,
-            ttl = ttl,
-          }})
-        defined_hosts[name..":".._M.TYPE_A] = true
-        -- cache is empty so far, so no need to check for the ip_preference
-        -- field here, just set ipv4 as success-type.
-        cachesetsuccess(name, _M.TYPE_A)
-        log(log_DEBUG, "adding A-record from 'hosts' file: ",name, " = ", address.ipv4)
+      defined_hosts[name..":".._M.TYPE_A] = true
+      -- cache is empty so far, so no need to check for the ip_preference
+      -- field here, just set ipv4 as success-type.
+      cachesetsuccess(name, _M.TYPE_A)
+      log(log_DEBUG, "adding A-record from 'hosts' file: ",name, " = ", address.ipv4)
+    end
+    if address.ipv6 then 
+      cacheinsert({{  -- NOTE: nested list! cache is a list of lists
+          name = name,
+          address = address.ipv6,
+          type = _M.TYPE_AAAA,
+          class = 1,
+          ttl = ttl,
+        }})
+      defined_hosts[name..":".._M.TYPE_AAAA] = true
+      -- do not overwrite the A success-type unless AAAA is preferred
+      if ip_preference == "AAAA" or not cachegetsuccess(name) then
+        cachesetsuccess(name, _M.TYPE_AAAA)
       end
-      if address.ipv6 then
-        cacheinsert({{  -- NOTE: nested list! cache is a list of lists
-            name = name,
-            address = address.ipv6,
-            type = _M.TYPE_AAAA,
-            class = 1,
-            ttl = ttl,
-          }})
-        defined_hosts[name..":".._M.TYPE_AAAA] = true
-        -- do not overwrite the A success-type unless AAAA is preferred
-        if ip_preference == "AAAA" or not cachegetsuccess(name) then
-          cachesetsuccess(name, _M.TYPE_AAAA)
-        end
-        log(log_DEBUG, "adding AAAA-record from 'hosts' file: ",name, " = ", address.ipv6)
-      end
+      log(log_DEBUG, "adding AAAA-record from 'hosts' file: ",name, " = ", address.ipv6)
     end
   end
 

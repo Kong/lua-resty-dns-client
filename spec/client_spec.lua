@@ -812,9 +812,6 @@ describe("DNS client", function()
 
 123.123.123.123 mashape
 1234::1234 kong.for.president
-
-123.123.123.123:80 namewithport1  #inserted as SRV
-[1234::1234]:81 namewithport2     #inserted as SRV
 ]])
 
     assert(client.init({ hosts = f }))
@@ -835,21 +832,6 @@ describe("DNS client", function()
     answers, err = client.resolve("kong.for.president", {qtype = client.TYPE_AAAA})
     assert.is.Nil(err)
     assert.are.equal(answers[1].address, "[1234::1234]")
-
-    answers, err = client.resolve("namewithport1", {qtype = client.TYPE_SRV})
-    assert.is.Nil(err)
-    assert.are.equal(answers[1].target, "123.123.123.123")
-    assert.are.equal(answers[1].port, 80)
-    assert.are.equal(answers[1].weight, 10)
-    assert.are.equal(answers[1].priority, 20)
-
-    answers, err = client.resolve("namewithport2", {qtype = client.TYPE_SRV})
-    assert.is.Nil(err)
-    assert.are.equal(answers[1].target, "[1234::1234]")
-    assert.are.equal(answers[1].port, 81)
-    assert.are.equal(answers[1].weight, 10)
-    assert.are.equal(answers[1].priority, 20)
-
   end)
 
   describe("toip() function", function()

@@ -39,7 +39,8 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
 ### x.x.x (xx-Dec-2017) Fix
 
-- Fix: do not fail initialization without nameservers. 
+- Fix: do not fail initialization without nameservers.
+- Fix: properly recognize IPv6 in square brackets from the /etc/hosts file.
 
 ### 1.0.0 (14-Dec-2017) Fixes and IPv6
 
