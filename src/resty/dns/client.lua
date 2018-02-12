@@ -54,6 +54,8 @@ local staleTtl             -- ttl (in seconds) to serve stale data (while new lo
 local cacheSize            -- size of the lru cache
 local noSynchronisation
 local orderValids = {"LAST", "SRV", "A", "AAAA", "CNAME"} -- default order to query
+local typeOrder            -- array with order of types to try
+
 for _,v in ipairs(orderValids) do orderValids[v:upper()] = v end
 
 -- create module table
@@ -201,10 +203,26 @@ local function cachegetsuccess(qname)
 end
 
 -- Sets the last succesful query type.
--- @qparam name resolved
--- @qtype query/record type to set, or ˋnilˋ to clear
--- @return ˋtrueˋ
+-- Only if the type provided is in the list of types to try.
+-- @param qname name resolved
+-- @param qtype query/record type to set, or ˋnilˋ to clear
+-- @return `true` if set, or `false` if not
 local function cachesetsuccess(qname, qtype)
+
+  -- Test whether the qtype value is in our search/order list
+  local validType = false
+  for _, t in ipairs(typeOrder) do
+    if t == qtype then
+      validType = true
+      break
+    end
+  end
+  if not validType then
+    -- the qtype is not in the list, so we're not setting it as the
+    -- success type
+    return false
+  end
+
   dnscache:set(qname, qtype)
   return true
 end
@@ -289,7 +307,6 @@ end
 -- @section resolving
 
 
-local typeOrder
 local poolMaxWait
 local poolMaxRetry
 

@@ -44,6 +44,8 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
   the `host:getPeer()` function signature changed, this is a breaking change.
 - Fix: do not fail initialization without nameservers. 
 - Fix: properly recognize IPv6 in square brackets from the /etc/hosts file.
+- Fix: do not set success-type to types we're not looking for. Fixes
+  [Kong issue #3210](https://github.com/Kong/kong/issues/3210).
 
 ### 1.0.0 (14-Dec-2017) Fixes and IPv6
 

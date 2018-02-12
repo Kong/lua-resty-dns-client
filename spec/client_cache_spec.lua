@@ -369,4 +369,119 @@ describe("DNS client cache", function()
 
   end)
 
+-- ==============================================
+--    success type caching
+-- ==============================================
+
+
+  describe("success types", function()
+
+    local lrucache, mock_records, config
+    before_each(function()
+      config = {
+        nameservers = { "8.8.8.8" },
+        ndots = 1,
+        search = { "domain.com" },
+        hosts = {},
+        resolvConf = {},
+        order = { "LAST", "SRV", "A", "AAAA", "CNAME" },
+        badTtl = 0.5,
+        staleTtl = 0.5,
+        enable_ipv6 = false,
+      }
+      assert(client.init(config))
+      lrucache = client.getcache()
+
+      query_func = function(self, original_query_func, qname, opts)
+        return mock_records[qname..":"..opts.qtype] or { errcode = 3, errstr = "name error" }
+      end
+    end)
+
+    it("in add. section are not stored for non-listed types", function()
+      mock_records = {
+        ["demo.service.consul:" .. client.TYPE_SRV] = {
+          {
+            type = client.TYPE_SRV,
+            class = 1,
+            name = "demo.service.consul",
+            target = "192.168.5.232.node.api_test.consul",
+            priority = 1,
+            weight = 1,
+            port = 32776,
+            ttl = 0,
+          }, {
+            type = client.TYPE_TXT,  -- Not in the `order` as configured !
+            class = 1,
+            name = "192.168.5.232.node.api_test.consul",
+            txt = "consul-network-segment=",
+            ttl = 0,
+          },
+        }
+      }
+      client.toip("demo.service.consul")
+      local success = client.getcache():get("192.168.5.232.node.api_test.consul")
+      assert.not_equal(client.TYPE_TXT, success)
+    end)
+
+    it("in add. section are stored for listed types", function()
+      mock_records = {
+        ["demo.service.consul:" .. client.TYPE_SRV] = {
+          {
+            type = client.TYPE_SRV,
+            class = 1,
+            name = "demo.service.consul",
+            target = "192.168.5.232.node.api_test.consul",
+            priority = 1,
+            weight = 1,
+            port = 32776,
+            ttl = 0,
+          }, {
+            type = client.TYPE_A,    -- In configured `order` !
+            class = 1,
+            name = "192.168.5.232.node.api_test.consul",
+            address = "192.168.5.232",
+            ttl = 0,
+          }, {
+            type = client.TYPE_TXT,  -- Not in the `order` as configured !
+            class = 1,
+            name = "192.168.5.232.node.api_test.consul",
+            txt = "consul-network-segment=",
+            ttl = 0,
+          },
+        }
+      }
+      client.toip("demo.service.consul")
+      local success = client.getcache():get("192.168.5.232.node.api_test.consul")
+      assert.equal(client.TYPE_A, success)
+    end)
+
+    it("are not overwritten by add. section info", function()
+      mock_records = {
+        ["demo.service.consul:" .. client.TYPE_SRV] = {
+          {
+            type = client.TYPE_SRV,
+            class = 1,
+            name = "demo.service.consul",
+            target = "192.168.5.232.node.api_test.consul",
+            priority = 1,
+            weight = 1,
+            port = 32776,
+            ttl = 0,
+          }, {
+            type = client.TYPE_A,    -- In configured `order` !
+            class = 1,
+            name = "another.name.consul",
+            address = "192.168.5.232",
+            ttl = 0,
+          },
+        }
+      }
+      client.getcache():set("another.name.consul", client.TYPE_AAAA)
+      client.toip("demo.service.consul")
+      local success = client.getcache():get("another.name.consul")
+      assert.equal(client.TYPE_AAAA, success)
+    end)
+
+  end)
+
 end)
