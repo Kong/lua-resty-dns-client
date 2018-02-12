@@ -37,9 +37,12 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### x.x.x (xx-Dec-2017) Fix
+### 2.0.0 (xx-Jan-2018) Major performance improvement (balancer)
 
-- Fix: do not fail initialization without nameservers.
+- BREAKING: improved performance and memory footprint for large balancers.
+  80-85% less memory will be used, while creation time dropped by 85-90%. Since
+  the `host:getPeer()` function signature changed, this is a breaking change.
+- Fix: do not fail initialization without nameservers. 
 - Fix: properly recognize IPv6 in square brackets from the /etc/hosts file.
 
 ### 1.0.0 (14-Dec-2017) Fixes and IPv6

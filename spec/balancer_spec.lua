@@ -125,53 +125,30 @@ local check_list = function(t)
   return size, keys
 end
 
--- returns number of entries (hash + array part)
-local table_size = function(t)
-  local s = 0
-  for _, _ in pairs(t) do s = s + 1 end
-  return s
-end
-
--- checks the integrity of the balancer, hosts, addresses, and slots. returns the balancer.
+-- checks the integrity of the balancer, hosts, addresses, and indices. returns the balancer.
 local check_balancer = function(balancer)
   assert.is.table(balancer)
-  -- hosts
   check_list(balancer.hosts)
-  -- slots
-  local size = check_list(balancer.slots)
-  assert.are.equal(balancer.wheelSize, size)
-  assert.are.equal(check_list(balancer.wheel), size)
-  local templist = {}
-  for i, slot in ipairs(balancer.slots) do
-    local idx = slot.order
-    assert.are.equal(balancer.wheel[idx], slot)
-    templist[slot] = i
-  end
-  assert.are.equal(balancer.wheelSize, table_size(templist))
-  for i, slot in ipairs(balancer.wheel) do
-    assert.are.equal(slot.order, i)
-    templist[slot] = nil
-  end
-  assert.are.equal(0, table_size(templist))
+  assert.are.equal(balancer.wheelSize, check_list(balancer.wheel)+check_list(balancer.unassignedWheelIndices))
   if balancer.weight == 0 then
-    -- all hosts failed, so the balancer slots have no content
-    assert.are.equal(balancer.wheelSize, #balancer.unassignedSlots)
-    for _, slot in ipairs(balancer.wheel) do
-      assert.is_nil(slot.address)
+    -- all hosts failed, so the balancer indices are unassigned/empty
+    assert.are.equal(balancer.wheelSize, #balancer.unassignedWheelIndices)
+    for _, address in ipairs(balancer.wheel) do
+      assert.is_nil(address)
     end
   else
     -- addresses
     local addrlist = {}
-    for _, slot in ipairs(balancer.wheel) do -- calculate slots per address based on the wheel
-      addrlist[slot.address] = (addrlist[slot.address] or 0) + 1
+    for _, address in ipairs(balancer.wheel) do -- calculate indices per address based on the wheel
+      addrlist[address] = (addrlist[address] or 0) + 1
     end
     for addr, count in pairs(addrlist) do
-      assert.are.equal(#addr.slots, count)
+      assert.are.equal(#addr.indices, count)
     end
-    for _, host in ipairs(balancer.hosts) do -- remove slots per address based on hosts (results in 0)
+    for _, host in ipairs(balancer.hosts) do -- remove indices per address based on hosts (results in 0)
       for _, addr in ipairs(host.addresses) do
         if addr.weight > 0 then
-          for _ in ipairs(addr.slots) do
+          for _ in ipairs(addr.indices) do
             addrlist[addr] = addrlist[addr] - 1
           end
         end
@@ -184,15 +161,15 @@ local check_balancer = function(balancer)
   return balancer
 end
 
--- creates a hash table with "address:port" keys and as value the number of slots
-local function count_slots(balancer)
+-- creates a hash table with "address:port" keys and as value the number of indices
+local function count_indices(balancer)
   local r = {}
-  for _, slot in ipairs(balancer.wheel) do
-    local key = tostring(slot.address.ip)
+  for _, address in ipairs(balancer.wheel) do
+    local key = tostring(address.ip)
     if key:find(":",1,true) then
-      key = "["..key.."]:"..slot.address.port
+      key = "["..key.."]:"..address.port
     else
-      key = key..":"..slot.address.port
+      key = key..":"..address.port
     end
     r[key] = (r[key] or 0) + 1
   end
@@ -203,8 +180,8 @@ end
 -- can be used for before/after comparison
 local copyWheel = function(b)
   local copy = {}
-  for i, slot in ipairs(b.wheel) do
-    copy[i] = i.." - "..slot.address.ip.." @ "..slot.address.port.." ("..slot.address.host.hostname..")"
+  for i, address in ipairs(b.wheel) do
+    copy[i] = i.." - "..address.ip.." @ "..address.port.." ("..address.host.hostname..")"
   end
   return copy
 end
@@ -387,13 +364,13 @@ describe("Loadbalancer", function()
           dns = client,
           wheelSize = 10,
         })
-        assert.are.equal(10, #b.unassignedSlots)
+        assert.are.equal(10, #b.unassignedWheelIndices)
         b = check_balancer(balancer.new { 
           dns = client,
           wheelSize = 10,
           hosts = {},  -- empty hosts table hould work too
         })
-        assert.are.equal(10, #b.unassignedSlots)
+        assert.are.equal(10, #b.unassignedWheelIndices)
       end)
       it("succeeds with multiple hosts", function()
         dnsA({ 
@@ -552,7 +529,7 @@ describe("Loadbalancer", function()
         local ok, err = b:setPeerStatus(false, "1.2.3.4", 80, "1.2.3.4")
         assert.is_true(ok)
         assert.is_nil(err)
-        local ok, err = b:setPeerStatus(false, "4.3.2.1", 80, "kong.inc")
+        ok, err = b:setPeerStatus(false, "4.3.2.1", 80, "kong.inc")
         assert.is_true(ok)
         assert.is_nil(err)
       end)
@@ -566,7 +543,7 @@ describe("Loadbalancer", function()
         local ok, err = b:setPeerStatus(false, "1.1.1.1", 80)
         assert.is_nil(ok)
         assert.equals("no peer found by name '1.1.1.1' and address 1.1.1.1:80", err)
-        local ok, err = b:setPeerStatus(false, "1.1.1.1", 80, "kong.inc")
+        ok, err = b:setPeerStatus(false, "1.1.1.1", 80, "kong.inc")
         assert.is_nil(ok)
         assert.equals("no peer found by name 'kong.inc' and address 1.1.1.1:80", err)
       end)
@@ -733,7 +710,7 @@ describe("Loadbalancer", function()
         dns = client,
         wheelSize = 15,
       })
-      -- run down the wheel, hitting all slots once
+      -- run down the wheel, hitting all indices once
       local res = {}
       for n = 1, 15 do
         local addr, port, host = b:getPeer(n)
@@ -742,7 +719,7 @@ describe("Loadbalancer", function()
       end
       assert.equal(10, res["1.2.3.4:123"])
       assert.equal(5, res["5.6.7.8:321"])
-      -- hit one slot 15 times
+      -- hit one index 15 times
       res = {}
       local hash = 6  -- just pick one
       for _ = 1, 15 do
@@ -772,7 +749,7 @@ describe("Loadbalancer", function()
         dns = client,
         wheelSize = 10,
       })
-      -- run down the wheel, hitting all slots once
+      -- run down the wheel, hitting all indices once
       for n = 0, 9 do
         local addr1, port1, host1 = b:getPeer(n)
         local addr2, port2, host2 = b:getPeer(n+10) -- wraps around, modulo
@@ -798,7 +775,7 @@ describe("Loadbalancer", function()
         dns = client,
         wheelSize = 10,
       })
-      -- run down the wheel, slot 0, increasing retry
+      -- run down the wheel, index 0, increasing the retry counter
       local res = {}
       for n = 0, 9 do
         local addr, port, _ = b:getPeer(0, n)
@@ -1010,8 +987,8 @@ describe("Loadbalancer", function()
     end)
   end)
 
-  describe("slot manipulation", function()
-    it("equal weights and 'fitting' slots", function()
+  describe("wheel manipulation", function()
+    it("equal weights and 'fitting' indices", function()
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
         { name = "mashape.com", address = "1.2.3.5" },
@@ -1025,9 +1002,9 @@ describe("Loadbalancer", function()
         ["1.2.3.4:80"] = 5,
         ["1.2.3.5:80"] = 5,
       }
-      assert.are.same(expected, count_slots(b))
+      assert.are.same(expected, count_indices(b))
     end)
-    it("equal weights and 'non-fitting' slots", function()
+    it("equal weights and 'non-fitting' indices", function()
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.1" },
         { name = "mashape.com", address = "1.2.3.2" },
@@ -1057,7 +1034,7 @@ describe("Loadbalancer", function()
         ["1.2.3.9:80"] = 2,
         ["1.2.3.10:80"] = 2, 
       }
-      assert.are.same(expected, count_slots(b))
+      assert.are.same(expected, count_indices(b))
     end)
     it("DNS record order has no effect", function()
       dnsA({ 
@@ -1077,7 +1054,7 @@ describe("Loadbalancer", function()
         dns = client,
         wheelSize = 19,
       })
-      local expected = count_slots(b)
+      local expected = count_indices(b)
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.8" },
         { name = "mashape.com", address = "1.2.3.3" },
@@ -1096,7 +1073,7 @@ describe("Loadbalancer", function()
         wheelSize = 19,
       })
       
-      assert.are.same(expected, count_slots(b))
+      assert.are.same(expected, count_indices(b))
     end)
     it("changing hostname order has no effect", function()
       dnsA({ 
@@ -1110,15 +1087,15 @@ describe("Loadbalancer", function()
         dns = client,
         wheelSize = 3,
       }
-      local expected = count_slots(b)
+      local expected = count_indices(b)
       b = check_balancer(balancer.new { 
         hosts = {"getkong.org", "mashape.com"},  -- changed host order
         dns = client,
         wheelSize = 3,
       })
-      assert.are.same(expected, count_slots(b))
+      assert.are.same(expected, count_indices(b))
     end)
-    it("adding a host (non-fitting slots)", function()
+    it("adding a host (non-fitting indices)", function()
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
         { name = "mashape.com", address = "1.2.3.5" },
@@ -1138,9 +1115,9 @@ describe("Loadbalancer", function()
         ["1.2.3.5:80"] = 2,
         ["[::1]:8080"] = 6,
       }
-      assert.are.same(expected, count_slots(b))
+      assert.are.same(expected, count_indices(b))
     end)
-    it("adding a host (fitting slots)", function()
+    it("adding a host (fitting indices)", function()
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
         { name = "mashape.com", address = "1.2.3.5" },
@@ -1160,9 +1137,9 @@ describe("Loadbalancer", function()
         ["1.2.3.5:80"] = 500,
         ["[::1]:8080"] = 1000,
       }
-      assert.are.same(expected, count_slots(b))
+      assert.are.same(expected, count_indices(b))
     end)
-    it("removing a host, slots staying in place", function()
+    it("removing a host, indices staying in place", function()
       dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
         { name = "mashape.com", address = "1.2.3.5" },
@@ -1178,22 +1155,22 @@ describe("Loadbalancer", function()
       b:addHost("getkong.org", 8080, 10)
       check_balancer(b)
       
-      -- copy the first 500 slots, they should not move
+      -- copy the first 500 indices, they should not move
       local expected1 = {}
-      icopy(expected1, b.hosts[1].addresses[1].slots, 1, 1, 500)
+      icopy(expected1, b.hosts[1].addresses[1].indices, 1, 1, 500)
       local expected2 = {}
-      icopy(expected2, b.hosts[1].addresses[2].slots, 1, 1, 500)
+      icopy(expected2, b.hosts[1].addresses[2].indices, 1, 1, 500)
       
       b:removeHost("getkong.org")
       check_balancer(b)
       
-      -- copy the new first 500 slots as well
+      -- copy the new first 500 indices as well
       local expected1a = {}
-      icopy(expected1a, b.hosts[1].addresses[1].slots, 1, 1, 500)
+      icopy(expected1a, b.hosts[1].addresses[1].indices, 1, 1, 500)
       local expected2a = {}
-      icopy(expected2a, b.hosts[1].addresses[2].slots, 1, 1, 500)
+      icopy(expected2a, b.hosts[1].addresses[2].indices, 1, 1, 500)
 
-      -- compare previous copy against current first 500 slots to make sure they are the same
+      -- compare previous copy against current first 500 indices to make sure they are the same
       for i = 1,500 do
         assert(expected1[i] == expected1a[i])
         assert(expected1[i] == expected1a[i])
@@ -1230,7 +1207,7 @@ describe("Loadbalancer", function()
       })
       b:addHost("mashape.com", 80, 10)
       b:addHost("getkong.org", 80, 10)
-      local count = count_slots(b)
+      local count = count_indices(b)
       assert.same({
           ["1.2.3.4:80"] = 20,
           ["1.2.3.5:80"] = 20,
@@ -1238,7 +1215,7 @@ describe("Loadbalancer", function()
       }, count)
       
       b:addHost("mashape.com", 80, 25)
-      count = count_slots(b)
+      count = count_indices(b)
       assert.same({
           ["1.2.3.4:80"] = 25,
           ["1.2.3.5:80"] = 25,
@@ -1286,7 +1263,7 @@ describe("Loadbalancer", function()
         ttl0 = 2,
       })
     
-      local count = count_slots(b)
+      local count = count_indices(b)
       assert.same({
           ["mashape.com:80"] = 50,
           ["9.9.9.9:123"] = 50,
@@ -1295,7 +1272,7 @@ describe("Loadbalancer", function()
       -- update weights
       b:addHost("mashape.com", 80, 150)
       
-      count = count_slots(b)
+      count = count_indices(b)
       assert.same({
           ["mashape.com:80"] = 75,
           ["9.9.9.9:123"] = 25,
@@ -1314,7 +1291,7 @@ describe("Loadbalancer", function()
       })
       b:addHost("does.not.exist.mashape.com", 80, 10)
       b:addHost("getkong.org", 80, 10)
-      local count = count_slots(b)
+      local count = count_indices(b)
       assert.same({
           ["1.2.3.4:80"] = 30,
           ["[::1]:80"]   = 30,
@@ -1329,7 +1306,7 @@ describe("Loadbalancer", function()
       
       for _ = 1, b.wheelSize do b:getPeer() end -- hit them all to force renewal
       
-      count = count_slots(b)
+      count = count_indices(b)
       assert.same({
           --["1.2.3.4:80"] = 0,  --> failed to resolve, no more entries
           ["[::1]:80"]   = 60,
@@ -1343,7 +1320,7 @@ describe("Loadbalancer", function()
       })
       sleep(2)  -- wait for timer to re-resolve the record
       
-      count = count_slots(b)
+      count = count_indices(b)
       assert.same({
           ["1.2.3.4:80"] = 40,
           ["[::1]:80"]   = 20,
@@ -1364,7 +1341,7 @@ describe("Loadbalancer", function()
       })
       b:addHost("mashape.com", 80, 10)
       b:addHost("gelato.io", 80, 10)  --> port + weight will be ignored
-      local count = count_slots(b)
+      local count = count_indices(b)
       local state = copyWheel(b)
       assert.same({
           ["1.2.3.4:80"]   = 40,
@@ -1374,7 +1351,7 @@ describe("Loadbalancer", function()
       }, count)
       
       b:addHost("gelato.io", 80, 20)  --> port + weight will be ignored
-      count = count_slots(b)
+      count = count_indices(b)
       assert.same({
           ["1.2.3.4:80"]   = 40,
           ["1.2.3.5:80"]   = 40,
@@ -1504,10 +1481,10 @@ describe("Loadbalancer", function()
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
-      -- update 'state' to match the changes, slots should remain the same
+      -- update 'state' to match the changes, indices should remain the same
       -- only the content has changed.
       -- Note: when the record changes, all addresses are deleted, in reverse
-      -- order. So the slots from '::2' are freed first, followed by '::1'.
+      -- order. So the indices from '::2' are freed first, followed by '::1'.
       -- So when 1.2.3.5 is added, it gets the ones last freed from '::1'
       -- So order is DETERMINISTIC!
       updateWheelState(state, " %- ::1 @ ", " - 1.2.3.5 @ ")
@@ -1542,7 +1519,7 @@ describe("Loadbalancer", function()
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
-      -- update 'state' to match the changes, slots should remain the same
+      -- update 'state' to match the changes, indices should remain the same
       -- only the content has changed.
       -- Note: when the record changes, the addresses are deleted in order
       -- so 1.2.3.4 goes first, followed by 1.2.3.5. Adding is also in order
@@ -1580,7 +1557,7 @@ describe("Loadbalancer", function()
         b:getPeer()  -- invoke balancer, to expire record and re-query dns
       end
       assert.spy(client.resolve).was_called_with("mashape.com",nil, nil)
-      -- update 'state' to match the changes, slots should remain the same
+      -- update 'state' to match the changes, indices should remain the same
       -- only the content has changed.
       --
       -- Note: order was changed, 1.2.3.5 moved from 2nd to 1st position
@@ -1616,7 +1593,7 @@ describe("Loadbalancer", function()
       -- run entire wheel to make sure the expired one is requested, and updated
       for _ = 1, b.wheelSize do b:getPeer() end 
       -- all old 'mashape.com @ 1.2.3.5' should now be 'mashape.com @ 1.2.3.6'
-      -- and more important; all others should not have moved slot positions!
+      -- and more important; all others should not have moved indices/positions!
       updateWheelState(state, " %- 1%.2%.3%.5 @ ", " - 1.2.3.6 @ ")
       assert.same(state, copyWheel(b))
     end)
@@ -1653,7 +1630,7 @@ describe("Loadbalancer", function()
       record.expire = gettime() -1 -- expire current dns cache record
       -- run entire wheel to make sure the expired one is requested, so it can fail
       for _ = 1, b.wheelSize do b:getPeer() end
-      -- all slots are now getkong.org
+      -- all indices are now getkong.org
       updateWheelState(state2, " %- 1%.2%.3%.4 @ 80 %(mashape%.com%)", " - 9.9.9.9 @ 123 (getkong.org)")
       
       assert.same(state2, copyWheel(b))
@@ -1764,8 +1741,8 @@ describe("Loadbalancer", function()
       assert.same(res, res2)
 
     end)
-    it("low weight with zero-slots assigned doesn't fail", function()
-      -- depending on order of insertion it is either 1 or 0 slots
+    it("low weight with zero-indices assigned doesn't fail", function()
+      -- depending on order of insertion it is either 1 or 0 indices
       -- but it may never error.
       local record = dnsA({ 
         { name = "mashape.com", address = "1.2.3.4" },
@@ -1798,7 +1775,7 @@ describe("Loadbalancer", function()
       })
     end)
     it("SRV record with 0 weight doesn't fail resolving", function()
-      -- depending on order of insertion it is either 1 or 0 slots
+      -- depending on order of insertion it is either 1 or 0 indices
       -- but it may never error.
       dnsSRV({
         { name = "gelato.io", target = "1.2.3.6", port = 8001, weight = 0 },
@@ -1866,7 +1843,7 @@ describe("Loadbalancer", function()
       local state = copyWheel(b)
       -- run it down, count the dns queries done
       for _ = 1, b.wheelSize do b:getPeer() end 
-      assert.equal(b.wheelSize/2, toip_count)  -- one resolver hit for each slot entry
+      assert.equal(b.wheelSize/2, toip_count)  -- one resolver hit for each index
       assert.equal(1, resolve_count) -- hit once, when adding the host to the balancer
       
       -- wait for expiring the 0-ttl setting
@@ -1880,7 +1857,7 @@ describe("Loadbalancer", function()
       assert.equal(0, toip_count)
       assert.equal(1, resolve_count) -- hit once, when updating the 0-ttl entry
       
-      -- finally check whether slots didn't move around
+      -- finally check whether indices didn't move around
       updateWheelState(state, " %- mashape%.com @ ", " - 1.2.3.4 @ ")
       assert.same(state, copyWheel(b))
     end)
