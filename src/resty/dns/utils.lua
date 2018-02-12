@@ -22,7 +22,7 @@ local time = ngx.now
 -- 2nd capture is the comment after the # or ;
 local PATT_COMMENT = "^([^#;]+)[#;]*(.*)$"
 -- Splits a string in IP and hostnames part, drops leading/trailing whitespace
-local PATT_IP_HOST = "^%s*([%x%.%:]+)%s+(%S.-%S)%s*$"
+local PATT_IP_HOST = "^%s*([%[%]%x%.%:]+)%s+(%S.-%S)%s*$"
 
 local _DEFAULT_HOSTS = "/etc/hosts"              -- hosts filename to use when omitted
 local _DEFAULT_RESOLV_CONF = "/etc/resolv.conf"  -- resolv.conf default filename
@@ -47,10 +47,11 @@ _M.MAXSEARCH = 6
 -- @section parsing
 
 --- Parses a `hosts` file or table.
--- Does not check for correctness of ip addresses nor hostnames (hostnames will 
--- be forced to lowercase). Might return `nil + error` if the file cannot be read.
+-- Does not check for correctness of ip addresses nor hostnames. Might return
+-- `nil + error` if the file cannot be read.
 --
--- __NOTE__: All hostnames and aliases will be returned in lowercase.
+-- __NOTE__: All output will be normalized to lowercase, IPv6 addresses will
+-- always be returned in brackets.
 -- @param filename (optional) Filename to parse, or a table with the file 
 -- contents in lines (defaults to `'/etc/hosts'` if omitted)
 -- @return 1; reverse lookup table, ip addresses (table with `ipv4` and `ipv6` 
@@ -78,13 +79,24 @@ _M.parseHosts = function(filename)
   end
   local result = {}
   local reverse = {}
-  for _,line in ipairs(lines) do 
+  for _, line in ipairs(lines) do
+    line = line:lower()
     local data, comments = line:match(PATT_COMMENT)
     if data then
-      local ip, hosts = data:match(PATT_IP_HOST)
+      local ip, hosts, family, name, _
+      -- parse the line
+      ip, hosts = data:match(PATT_IP_HOST)
+      -- parse and validate the ip address
+      if ip then
+        name, _, family = _M.parseHostname(ip)
+        if family ~= "ipv4" and family ~= "ipv6" then
+          ip = nil  -- not a valid IP address
+        else
+          ip = name
+        end
+      end
+      -- add the names
       if ip and hosts then
-        hosts = hosts:lower()
-        local family = ip:find(":",1, true) and "ipv6" or "ipv4"
         local entry = { ip = ip, family = family }
         local key = "canonical"
         for host in hosts:gmatch("%S+") do

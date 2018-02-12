@@ -403,7 +403,7 @@ _M.init = function(options)
       -- cache is empty so far, so no need to check for the ip_preference
       -- field here, just set ipv4 as success-type.
       cachesetsuccess(name, _M.TYPE_A)
-      log(log_DEBUG, "adding from 'hosts' file: ",name, " = ", address.ipv4)
+      log(log_DEBUG, "adding A-record from 'hosts' file: ",name, " = ", address.ipv4)
     end
     if address.ipv6 then 
       cacheinsert({{  -- NOTE: nested list! cache is a list of lists
@@ -418,7 +418,7 @@ _M.init = function(options)
       if ip_preference == "AAAA" or not cachegetsuccess(name) then
         cachesetsuccess(name, _M.TYPE_AAAA)
       end
-      log(log_DEBUG, "adding from 'hosts' file: ",name, " = ", address.ipv6)
+      log(log_DEBUG, "adding AAAA-record from 'hosts' file: ",name, " = ", address.ipv6)
     end
   end
 
