@@ -55,6 +55,10 @@ local cacheSize            -- size of the lru cache
 local noSynchronisation
 local orderValids = {"LAST", "SRV", "A", "AAAA", "CNAME"} -- default order to query
 local typeOrder            -- array with order of types to try
+local clientErrors = {     -- client specific errors
+  [100] = "cache only lookup failed",
+  [101] = "empty record received",
+}
 
 for _,v in ipairs(orderValids) do orderValids[v:upper()] = v end
 
@@ -724,8 +728,8 @@ local function lookup(qname, r_opts, dnsCacheOnly, try_list)
       -- we can't do a lookup, so return an error
       try_list = try_add(try_list, qname, r_opts.qtype, "cache only lookup failed")
       return {
-        errcode = 4,                                         -- standard is "server failure"
-        errstr = "server failure, cache only lookup failed", -- extended description
+        errcode = 100,
+        errstr = clientErrors[100]
       }, nil, try_list
     end
     -- perform a sync lookup, as we have no stale data to fall back to
@@ -1037,7 +1041,7 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
 
     elseif #records == 0 then
       -- empty: fall through to the next entry in our search sequence
-      err = "dns server error: 3 name error" -- ensure same error message as "not found"
+      err = ("dns client error: %s %s"):format(101, clientErrors[101])
       records = nil
 
     else

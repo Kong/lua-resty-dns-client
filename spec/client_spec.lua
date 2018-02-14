@@ -6,6 +6,7 @@ local pretty = require("pl.pretty").write
 -- empty records and not found errors should be identical, hence we
 -- define a constant for that error message
 local NOT_FOUND_ERROR = "dns server error: 3 name error"
+local EMPTY_ERROR = "dns client error: 101 empty record received"
 
 local gettime, sleep
 if ngx then
@@ -536,7 +537,7 @@ describe("DNS client", function()
 
     local answers, err, r, history = client.resolve(host, {qtype = typ})
     assert.is_nil(answers)  -- returns nil
-    assert.equal(NOT_FOUND_ERROR, err)
+    assert.equal(EMPTY_ERROR, err)
   end)
 
   it("fetching non-existing records", function()
