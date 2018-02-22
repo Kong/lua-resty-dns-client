@@ -1,4 +1,5 @@
 local pretty = require("pl.pretty").write
+local deepcopy = require("pl.tablex").deepcopy
 local _
 
 -- empty records and not found errors should be identical, hence we
@@ -400,6 +401,45 @@ describe("DNS client cache", function()
       -- background resolve is now complete, check the cache, it should still have the 
       -- stale record, and it should not have been replaced by the empty record
       assert.equal(rec1, lrucache:get(client.TYPE_A..":myhost9.domain.com"))
+    end)
+
+    it("AS records do replace stale records", function()
+      -- when the additional section provides recordds, they should be stored
+      -- in the cache, as in some cases lookups of certain types (eg. CNAME) are
+      -- blocked, and then we rely on the A record to get them in the AS
+      -- (additional section), but then they must be stored obviously.
+      local CNAME1 = {
+        type = client.TYPE_CNAME,
+        cname = "myotherhost.domain.com",
+        class = 1,
+        name = "myhost9.domain.com",
+        ttl = 0.1, 
+      }
+      local A2 = {
+        type = client.TYPE_A,
+        address = "1.2.3.4",
+        class = 1,
+        name = "myotherhost.domain.com",
+        ttl = 60, 
+      }
+      mock_records = setmetatable({
+        ["myhost9.domain.com:"..client.TYPE_CNAME] = { deepcopy(CNAME1) },  -- copy to make it different
+        ["myhost9.domain.com:"..client.TYPE_A] = { CNAME1, A2 },  -- not there, just a reference and target
+        ["myotherhost.domain.com:"..client.TYPE_A] = { A2 },
+      }, {
+        -- do not do lookups, return empty on anything else
+        __index = function(self, key)
+          --print("looking for ",key)
+          return {}
+        end,
+      })
+
+      local result, err = client.resolve("myhost9", { qtype = client.TYPE_CNAME })
+      ngx.sleep(0.2)  -- wait for it to become stale
+      result, err = client.toip("myhost9")
+
+      local cached = lrucache:get(client.TYPE_CNAME..":myhost9.domain.com")
+      assert.are.equal(CNAME1, cached[1])
     end)
 
   end)
