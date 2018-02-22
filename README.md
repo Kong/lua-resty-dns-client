@@ -37,7 +37,7 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### 2.0.0 (xx-Jan-2018) Major performance improvement (balancer)
+### 2.0.0 (22-Feb-2018) Major performance improvement (balancer) and bugfixes
 
 - BREAKING: improved performance and memory footprint for large balancers.
   80-85% less memory will be used, while creation time dropped by 85-90%. Since
