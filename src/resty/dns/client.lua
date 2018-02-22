@@ -594,11 +594,7 @@ local function parseAnswer(qname, qtype, answers, try_list)
   end
   if next(others) then
     for _, lst in pairs(others) do
-      -- only store if not already cached (this is only a 'by-product')
-      -- or replace it if the cache contains an error
-      if #(cachelookup(lst[1].name, lst[1].type) or empty) == 0 then
-        cacheinsert(lst)
-      end
+      cacheinsert(lst)
       -- set success-type, only if not set (this is only a 'by-product')
       if not cachegetsuccess(lst[1].name) then
         cachesetsuccess(lst[1].name, lst[1].type)
