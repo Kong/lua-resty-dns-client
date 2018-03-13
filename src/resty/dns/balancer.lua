@@ -1098,7 +1098,7 @@ _M.new = function(opts)
     hosts = {},    -- a table, index by both the hostname and index, the value being a host object
     weight = 0,    -- total weight of all hosts
     wheel = nil,   -- wheel with entries (fully randomized)
-    pointer = 1,   -- pointer to next-up index for the round robin scheme
+    pointer = nil, -- pointer to next-up index for the round robin scheme
     wheelSize = opts.wheelSize or 1000, -- number of entries (indices) in the wheel
     dns = opts.dns,  -- the configured dns client to use for resolving
     unassignedWheelIndices = nil, -- list to hold unassigned indices (initially, and when all hosts fail)
@@ -1110,6 +1110,7 @@ _M.new = function(opts)
   for name, method in pairs(objBalancer) do self[name] = method end
   self.wheel = new_tab(self.wheelSize, 0)
   self.unassignedWheelIndices = new_tab(self.wheelSize, 0)
+  self.pointer = math.random(1, self.wheelSize)  -- ensure each worker starts somewhere else
 
   -- Create a list of entries, and randomize them.
   local unassignedWheelIndices = self.unassignedWheelIndices

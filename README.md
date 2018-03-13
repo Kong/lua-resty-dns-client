@@ -37,6 +37,11 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
+### x.x.x (xx-xxx-2018) Fixes
+
+- Fix: the round robin scheme for the balanceer starts at a randomized position
+  to prevent all workers from starting with the same peer.
+
 ### 2.0.0 (22-Feb-2018) Major performance improvement (balancer) and bugfixes
 
 - BREAKING: improved performance and memory footprint for large balancers.
