@@ -516,7 +516,7 @@ function objHost:addAddress(entry)
   local addresses = self.addresses
   addresses[#addresses+1] = newAddress(
     entry.address or entry.target,
-    entry.port or self.port,
+    (entry.port ~= 0 and entry.port) or self.port,
     weight or self.nodeWeight,
     self
   )

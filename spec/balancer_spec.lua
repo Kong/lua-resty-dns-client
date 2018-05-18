@@ -564,6 +564,19 @@ describe("Loadbalancer", function()
         assert.is_nil(ok)
         assert.equals("no peer found by name 'mashape.com' and address mashape1.com:80", err)
       end)
+      it("SRV target with port=0 returns the default port", function()
+        local b = check_balancer(balancer.new { dns = client })
+        dnsA({
+          { name = "mashape1.com", address = "12.34.56.78" },
+        })
+        dnsSRV({
+          { name = "mashape.com", target = "mashape1.com", port = 0, weight = 5 },
+        })
+        b:addHost("mashape.com", 80, 10)
+        local ip, port = b:getPeer()
+        assert.equals("12.34.56.78", ip)
+        assert.equals(80, port)
+      end)
     end)
 
   end)
