@@ -24,7 +24,7 @@ end
 describe("DNS client cache", function()
 
   local client, resolver, query_func
-  
+
   before_each(function()
     _G._TEST = true
     client = require("resty.dns.client")
@@ -35,7 +35,7 @@ describe("DNS client cache", function()
     query_func = function(self, original_query_func, name, options)
       return original_query_func(self, name, options)
     end
-  
+
     -- patch the resolver lib, such that any new resolver created will query
     -- using the `query_func` upvalue defined above
     local old_new = resolver.new
@@ -53,7 +53,7 @@ describe("DNS client cache", function()
       return r
     end
   end)
-  
+
   after_each(function()
     package.loaded["resty.dns.client"] = nil
     package.loaded["resty.dns.resolver"] = nil
@@ -70,7 +70,7 @@ describe("DNS client cache", function()
 
 
   describe("shortnames", function()
-    
+
     local lrucache, mock_records, config
     before_each(function()
       config = {
@@ -86,7 +86,7 @@ describe("DNS client cache", function()
       }
       assert(client.init(config))
       lrucache = client.getcache()
-      
+
       query_func = function(self, original_query_func, qname, opts)
         return mock_records[qname..":"..opts.qtype] or { errcode = 3, errstr = "name error" }
       end
@@ -99,7 +99,7 @@ describe("DNS client cache", function()
           address = "1.2.3.4",
           class = 1,
           name = "myhost1.domain.com",
-          ttl = 30, 
+          ttl = 30,
         }}
       }
 
@@ -114,7 +114,7 @@ describe("DNS client cache", function()
           address = "1.2.3.4",
           class = 1,
           name = "myhost2.domain.com",
-          ttl = 30, 
+          ttl = 30,
         }}
       }
 
@@ -129,7 +129,7 @@ describe("DNS client cache", function()
           address = "1.2.3.4",
           class = 1,
           name = "myhost3.domain.com",
-          ttl = 30, 
+          ttl = 30,
         },
         ttl = 30,
         expire = gettime() + 30,
@@ -146,7 +146,7 @@ describe("DNS client cache", function()
           address = "1.2.3.4",
           class = 1,
           name = "myhost4.domain.com",
-          ttl = 30, 
+          ttl = 30,
         },
         ttl = 30,
         expire = gettime() + 30,
@@ -163,14 +163,14 @@ describe("DNS client cache", function()
           class = 1,
           name = "myhost5.domain.com",
           cname = "mytarget.domain.com",
-          ttl = 30, 
+          ttl = 30,
         }},
         ["mytarget.domain.com:"..client.TYPE_A] = {{
           type = client.TYPE_A,
           address = "1.2.3.4",
           class = 1,
           name = "mytarget.domain.com",
-          ttl = 30, 
+          ttl = 30,
         }}
       }
       local result = client.resolve("myhost5")
@@ -192,39 +192,39 @@ describe("DNS client cache", function()
           address = "1.2.3.4",
           class = 1,
           name = "myhost6.domain.com",
-          ttl = 0.1, 
+          ttl = 0.1,
         }}
       }
       local mock_copy = require("pl.tablex").deepcopy(mock_records)
-      
+
       -- resolve and check whether we got the mocked record
       local result = client.resolve("myhost6")
       assert.equal(result, mock_records["myhost6.domain.com:"..client.TYPE_A])
-      
+
       -- replace our mocked list with the copy made (new table, so no equality)
       mock_records = mock_copy
-      
+
       -- wait for expiring
       sleep(0.1 + config.staleTtl / 2)
-      
+
       -- resolve again, now getting same record, but stale, this will trigger
       -- background refresh query
       local result2 = client.resolve("myhost6")
       assert.equal(result2, result)
       assert.is_true(result2.expired)  -- stale; marked as expired
-      
+
       -- wait for refresh to complete
       sleep(0.1)
-      
+
       -- resolve and check whether we got the new record from the mock copy
       local result3 = client.resolve("myhost6")
       assert.not_equal(result, result3)  -- must be a different record now
       assert.equal(result3, mock_records["myhost6.domain.com:"..client.TYPE_A])
-      
+
       -- the 'result3' resolve call above will also trigger a new background query
       -- (because the sleep of 0.1 equals the records ttl of 0.1)
       -- so let's yield to activate that background thread now. If not done so,
-      -- the `after_each` will clear `query_func` and an error will appear on the 
+      -- the `after_each` will clear `query_func` and an error will appear on the
       -- next test after this one that will yield.
       sleep(0.1)
     end)
@@ -270,7 +270,7 @@ describe("DNS client cache", function()
 
 
   describe("fqdn", function()
-    
+
     local lrucache, mock_records, config
     before_each(function()
       config = {
@@ -286,7 +286,7 @@ describe("DNS client cache", function()
       }
       assert(client.init(config))
       lrucache = client.getcache()
-      
+
       query_func = function(self, original_query_func, qname, opts)
         return mock_records[qname..":"..opts.qtype] or { errcode = 3, errstr = "name error" }
       end
@@ -298,7 +298,7 @@ describe("DNS client cache", function()
         address = "1.2.3.4",
         class = 1,
         name = "myhost9.domain.com",
-        ttl = 0.1, 
+        ttl = 0.1,
       }}
       mock_records = {
         ["myhost9.domain.com:"..client.TYPE_A] = rec1,
@@ -309,7 +309,7 @@ describe("DNS client cache", function()
       assert.equal(rec1, result)
       assert.is_nil(err)
       assert.equal(rec1, lrucache:get(client.TYPE_A..":myhost9.domain.com"))
-      
+
       sleep(0.15) -- make sure we surpass the ttl of 0.1 of the record, so it is now stale.
       -- new mock records, such that we return server failures instaed of records
       local rec2 = {
@@ -325,7 +325,7 @@ describe("DNS client cache", function()
       assert.is_true(result.expired)  -- we get the stale record, now marked as expired
       -- wait again for the background query to complete
       sleep(0.1)
-      -- background resolve is now complete, check the cache, it should still have the 
+      -- background resolve is now complete, check the cache, it should still have the
       -- stale record, and it should not have been replaced by the error
       assert.equal(rec1, lrucache:get(client.TYPE_A..":myhost9.domain.com"))
     end)
@@ -336,7 +336,7 @@ describe("DNS client cache", function()
         address = "1.2.3.4",
         class = 1,
         name = "myhost9.domain.com",
-        ttl = 0.1, 
+        ttl = 0.1,
       }}
       mock_records = {
         ["myhost9.domain.com:"..client.TYPE_A] = rec1,
@@ -347,7 +347,7 @@ describe("DNS client cache", function()
       assert.equal(rec1, result)
       assert.is_nil(err)
       assert.equal(rec1, lrucache:get(client.TYPE_A..":myhost9.domain.com"))
-      
+
       sleep(0.15) -- make sure we surpass the ttl of 0.1 of the record, so it is now stale.
       -- clear mock records, such that we return name errors instead of records
       local rec2 = {
@@ -374,7 +374,7 @@ describe("DNS client cache", function()
         address = "1.2.3.4",
         class = 1,
         name = "myhost9.domain.com",
-        ttl = 0.1, 
+        ttl = 0.1,
       }}
       mock_records = {
         ["myhost9.domain.com:"..client.TYPE_A] = rec1,
@@ -385,7 +385,7 @@ describe("DNS client cache", function()
       assert.equal(rec1, result)
       assert.is_nil(err)
       assert.equal(rec1, lrucache:get(client.TYPE_A..":myhost9.domain.com"))
-      
+
       sleep(0.15) -- make sure we surpass the ttl of 0.1 of the record, so it is now stale.
       -- clear mock records, such that we return name errors instead of records
       local rec2 = {}
@@ -398,7 +398,7 @@ describe("DNS client cache", function()
       assert.is_true(result.expired)  -- we get the stale record, now marked as expired
       -- wait again for the background query to complete
       sleep(0.1)
-      -- background resolve is now complete, check the cache, it should still have the 
+      -- background resolve is now complete, check the cache, it should still have the
       -- stale record, and it should not have been replaced by the empty record
       assert.equal(rec1, lrucache:get(client.TYPE_A..":myhost9.domain.com"))
     end)
@@ -413,14 +413,14 @@ describe("DNS client cache", function()
         cname = "myotherhost.domain.com",
         class = 1,
         name = "myhost9.domain.com",
-        ttl = 0.1, 
+        ttl = 0.1,
       }
       local A2 = {
         type = client.TYPE_A,
         address = "1.2.3.4",
         class = 1,
         name = "myotherhost.domain.com",
-        ttl = 60, 
+        ttl = 60,
       }
       mock_records = setmetatable({
         ["myhost9.domain.com:"..client.TYPE_CNAME] = { deepcopy(CNAME1) },  -- copy to make it different

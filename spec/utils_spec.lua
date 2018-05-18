@@ -59,35 +59,35 @@ describe("testing parsing 'hosts'", function()
     assert.is.Nil(hosts[1][2])
     assert.is.equal("127.0.0.1", reverse.localhost.ipv4)
     assert.is.equal("[::1]", reverse.localhost.ipv6)
-  
+
     assert.is.equal(hosts[2].ip, "[::1]")
     assert.is.equal(hosts[2].canonical, "localhost")
-    
+
     assert.is.equal(hosts[3].ip, "192.168.1.2")
     assert.is.equal(hosts[3].canonical, "test.computer.com")
     assert.is.Nil(hosts[3][1])  -- no aliases
     assert.is.Nil(hosts[3][2])
     assert.is.equal("192.168.1.2", reverse["test.computer.com"].ipv4)
-    
+
     assert.is.equal(hosts[4].ip, "192.168.1.3")
     assert.is.equal(hosts[4].canonical, "ftp.computer.com")   -- converted to lowercase!
-    assert.is.equal(hosts[4][1], "alias1")  
-    assert.is.equal(hosts[4][2], "alias2")  
+    assert.is.equal(hosts[4][1], "alias1")
+    assert.is.equal(hosts[4][2], "alias2")
     assert.is.Nil(hosts[4][3])
     assert.is.equal("192.168.1.3", reverse["ftp.computer.com"].ipv4)
     assert.is.equal("192.168.1.3", reverse["alias1"].ipv4)
     assert.is.equal("192.168.1.3", reverse["alias2"].ipv4)
-    
+
     assert.is.equal(hosts[5].ip, "192.168.1.4")
     assert.is.equal(hosts[5].canonical, "smtp.computer.com")
-    assert.is.equal(hosts[5][1], "alias3")  
+    assert.is.equal(hosts[5][1], "alias3")
     assert.is.Nil(hosts[5][2])
     assert.is.equal("192.168.1.4", reverse["smtp.computer.com"].ipv4)
     assert.is.equal("192.168.1.4", reverse["alias3"].ipv4)
-    
+
     assert.is.equal(hosts[6].ip, "192.168.1.5")
     assert.is.equal(hosts[6].canonical, "smtp.computer.com")
-    assert.is.equal(hosts[6][1], "alias3")  
+    assert.is.equal(hosts[6][1], "alias3")
     assert.is.Nil(hosts[6][2])
     assert.is.equal("192.168.1.4", reverse["smtp.computer.com"].ipv4)  -- .1.4; first one wins!
     assert.is.equal("192.168.1.4", reverse["alias3"].ipv4)   -- .1.4; first one wins!
@@ -101,7 +101,7 @@ describe("testing parsing 'hosts'", function()
 end)
 
 describe("testing parsing 'resolv.conf'", function()
-    
+
   -- override os.getenv to insert env variables
   local old_getenv = os.getenv
   local envvars  -- whatever is in this table, gets served first
@@ -111,7 +111,7 @@ describe("testing parsing 'resolv.conf'", function()
       return envvars[name] or old_getenv(name)
     end
   end)
-  
+
   after_each(function()
     os.getenv = old_getenv
     envvars = nil
@@ -139,7 +139,7 @@ describe("testing parsing 'resolv.conf'", function()
 
 domain myservice.com
 
-nameserver 8.8.8.8 
+nameserver 8.8.8.8
 nameserver 2602:306:bca8:1ac0::1 ; and a comment here
 nameserver 8.8.8.8:1234 ; this one has a port number (limited systems support this)
 nameserver 1.2.3.4 ; this one is 4th, so should be ignored
@@ -158,8 +158,8 @@ options rotate ; let's see about a comment here
 options no-check-names
 options inet6
 ; here's annother comment
-options ip6-bytestring  
-options ip6-dotint 
+options ip6-bytestring
+options ip6-dotint
 options no-ip6-dotint
 options edns0
 options single-request
@@ -172,7 +172,7 @@ options use-vc
     assert.is.equal("myservice.com", resolv.domain)
     assert.is.same({ "8.8.8.8", "2602:306:bca8:1ac0::1", "8.8.8.8:1234" }, resolv.nameserver)
     assert.is.same({ "list1", "list2" }, resolv.sortlist)
-    assert.is.same({ ndots = 2, timeout = 3, attempts = 4, debug = true, rotate = true, 
+    assert.is.same({ ndots = 2, timeout = 3, attempts = 4, debug = true, rotate = true,
         ["no-check-names"] = true, inet6 = true, ["ip6-bytestring"] = true,
         ["ip6-dotint"] = nil,  -- overridden by the next one, mutually exclusive
         ["no-ip6-dotint"] = true, edns0 = true, ["single-request"] = true,
@@ -205,11 +205,11 @@ search domain1.com domain2.com domain3.com domain4.com domain5.com domain6.com d
     assert.is.Nil(err)
     assert.is.Nil(resolv.domain)
     assert.is.same({
-        "domain1.com", 
+        "domain1.com",
         "domain2.com",
-        "domain3.com", 
+        "domain3.com",
         "domain4.com",
-        "domain5.com", 
+        "domain5.com",
         "domain6.com",
       }, resolv.search)
   end)
@@ -219,21 +219,21 @@ search domain1.com domain2.com domain3.com domain4.com domain5.com domain6.com d
     [[# this is just a comment line
 domain myservice.com
 
-nameserver 8.8.8.8 
+nameserver 8.8.8.8
 nameserver 8.8.4.4 ; and a comment here
 
 options ndots:1
 ]])
     local resolv, err = dnsutils.parseResolvConf(file)
     assert.is.Nil(err)
-    
+
     envvars.LOCALDOMAIN = "domaina.com domainb.com"
     envvars.RES_OPTIONS = "ndots:2 debug"
     resolv = dnsutils.applyEnv(resolv)
-    
+
     assert.is.Nil(resolv.domain)  -- must be nil, mutually exclusive
     assert.is.same({ "domaina.com", "domainb.com" }, resolv.search)
-    
+
     assert.is.same({ ndots = 2, debug = true }, resolv.options)
   end)
 
@@ -242,20 +242,20 @@ options ndots:1
     [[# this is just a comment line
 domain myservice.com
 
-nameserver 8.8.8.8 
+nameserver 8.8.8.8
 nameserver 8.8.4.4 ; and a comment here
 
 options ndots:2
 ]])
     local resolv, err = dnsutils.parseResolvConf(file)
     assert.is.Nil(err)
-    
+
     envvars.LOCALDOMAIN = ""
     envvars.RES_OPTIONS = ""
     resolv = dnsutils.applyEnv(resolv)
-    
+
     assert.is.equals("myservice.com", resolv.domain)  -- must be nil, mutually exclusive
-    
+
     assert.is.same({ ndots = 2 }, resolv.options)
   end)
 
@@ -270,10 +270,10 @@ options ndots:2
 end)
 
 describe("cached versions", function()
-  
+
   local utils = require("pl.utils")
   local oldreadlines = utils.readlines
-  
+
   before_each(function()
     utils.readlines = function(name)
       if name:match("hosts") then
@@ -290,22 +290,22 @@ describe("cached versions", function()
       end
     end
   end)
-  
+
   after_each(function()
     utils.readlines = oldreadlines
   end)
-  
+
   it("tests caching the hosts file", function()
     local val1r, val1 = dnsutils.getHosts()
     local val2r, val2 = dnsutils.getHosts()
     assert.Not.equal(val1, val2) -- no ttl specified, so distinct tables
     assert.Not.equal(val1r, val2r) -- no ttl specified, so distinct tables
-    
+
     val1r, val1 = dnsutils.getHosts(1)
     val2r, val2 = dnsutils.getHosts()
     assert.are.equal(val1, val2)   -- ttl specified, so same tables
     assert.are.equal(val1r, val2r) -- ttl specified, so same tables
-    
+
     -- wait for cache to expire
     sleep(2)
 
@@ -313,16 +313,16 @@ describe("cached versions", function()
     assert.Not.equal(val1, val2) -- ttl timed out, so distinct tables
     assert.Not.equal(val1r, val2r) -- ttl timed out, so distinct tables
   end)
-  
+
   it("tests caching the resolv.conf file & variables", function()
     local val1 = dnsutils.getResolv()
     local val2 = dnsutils.getResolv()
     assert.Not.equal(val1, val2) -- no ttl specified, so distinct tables
-    
+
     val1 = dnsutils.getResolv(1)
     val2 = dnsutils.getResolv()
     assert.are.equal(val1, val2)   -- ttl specified, so same tables
-    
+
     -- wait for cache to expire
     sleep(2)
 

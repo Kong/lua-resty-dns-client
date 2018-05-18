@@ -2,17 +2,17 @@
 -- DNS client.
 --
 -- Works with OpenResty only. Requires the [`lua-resty-dns`](https://github.com/openresty/lua-resty-dns) module.
--- 
--- _NOTES_: 
--- 
+--
+-- _NOTES_:
+--
 -- 1. parsing the config files upon initialization uses blocking i/o, so use with
 -- care. See `init` for details.
--- 2. All returned records are directly from the cache. _So do not modify them!_ 
+-- 2. All returned records are directly from the cache. _So do not modify them!_
 -- If you need to, copy them first.
--- 3. TTL for records is the TTL returned by the server at the time of fetching 
+-- 3. TTL for records is the TTL returned by the server at the time of fetching
 -- and won't be updated while the client serves the records from its cache.
 -- 4. resolving IPv4 (A-type) and IPv6 (AAAA-type) addresses is explicitly supported. If
--- the hostname to be resolved is a valid IP address, it will be cached with a ttl of 
+-- the hostname to be resolved is a valid IP address, it will be cached with a ttl of
 -- 10 years. So the user doesn't have to check for ip adresses.
 --
 -- @copyright 2016-2017 Kong Inc.
@@ -41,7 +41,7 @@ local table_insert = table.insert
 local table_concat = table.concat
 local string_lower = string.lower
 
-local empty = setmetatable({}, 
+local empty = setmetatable({},
   {__newindex = function() error("The 'empty' table is read-only") end})
 
 -- resolver options
@@ -110,8 +110,8 @@ end
 
 -- hostname lru-cache indexed by "recordtype:hostname" returning address list.
 -- short names are indexed by "recordtype:short:hostname"
--- Result is a list with entries. 
--- Keys only by "hostname" only contain the last succesfull lookup type 
+-- Result is a list with entries.
+-- Keys only by "hostname" only contain the last succesfull lookup type
 -- for this name, see `resolve` function.
 local dnscache
 
@@ -123,7 +123,7 @@ local cachelookup = function(qname, qtype)
   local now = time()
   local key = qtype..":"..qname
   local cached = dnscache:get(key)
-  
+
   if cached then
     cached.touch = now
     if (cached.expire < now) then
@@ -160,7 +160,7 @@ local cacheinsert = function(entry, qname, qtype)
     if e1 then
       -- an actual, non-empty, record
       key = (qtype or e1.type) .. ":" .. (qname or e1.name)
-      
+
       ttl = math.huge
       for i = 1, #entry do
         local record = entry[i]
@@ -203,7 +203,7 @@ local cacheinsert = function(entry, qname, qtype)
       ttl = emptyTtl
       key = qtype..":"..qname
     end
-   
+
     -- set expire time
     entry.touch = now
     entry.ttl = ttl
@@ -365,7 +365,7 @@ end
 -- stale data immediately, whilst continuing to resolve the name in the
 -- background.
 --
--- The `dnsCacheOnly` parameter found with `resolve` and `toip` can be used in 
+-- The `dnsCacheOnly` parameter found with `resolve` and `toip` can be used in
 -- contexts where the co-socket api is unavailable. When the flag is set
 -- only cached data is returned, but it will never use blocking io.
 -- @section resolving
@@ -374,9 +374,9 @@ end
 local poolMaxWait
 local poolMaxRetry
 
---- Initialize the client. Can be called multiple times. When called again it 
+--- Initialize the client. Can be called multiple times. When called again it
 -- will clear the cache.
--- @param options Same table as the [OpenResty dns resolver](https://github.com/openresty/lua-resty-dns), 
+-- @param options Same table as the [OpenResty dns resolver](https://github.com/openresty/lua-resty-dns),
 -- with some extra fields explained in the example below.
 -- @return `true` on success, `nil+error`, or throw an error on bad input
 -- @usage -- config files to parse
@@ -391,7 +391,7 @@ local poolMaxRetry
 --
 -- -- Order in which to try different dns record types when resolving
 -- -- 'last'; will try the last previously successful type for a hostname.
--- local order = { "last", "SRV", "A", "AAAA", "CNAME" } 
+-- local order = { "last", "SRV", "A", "AAAA", "CNAME" }
 --
 -- -- Stale ttl for how long a stale record will be served from the cache
 -- -- while a background lookup is in progress.
@@ -413,9 +413,9 @@ local poolMaxRetry
 --   "mydomain.com",
 --   "site.domain.org",
 -- }
--- 
+--
 -- assert(client.init({
---          hosts = hosts, 
+--          hosts = hosts,
 --          resolvConf = resolvConf,
 --          ndots = ndots,
 --          search = search,
@@ -427,7 +427,7 @@ local poolMaxRetry
 --        })
 -- )
 _M.init = function(options)
-  
+
   log(DEBUG, PREFIX, "(re)configuring dns client")
   local resolv, hosts, err
   options = options or {}
@@ -439,11 +439,11 @@ _M.init = function(options)
 
   dnscache = lrucache.new(cacheSize)  -- clear cache on (re)initialization
   defined_hosts = {}  -- reset hosts hash table
-  
+
   local order = options.order or orderValids
   typeOrder = {} -- clear existing upvalue
   local ip_preference
-  for i,v in ipairs(order) do 
+  for i,v in ipairs(order) do
     local t = v:upper()
     if not ip_preference and (t == "A" or t == "AAAA") then
       -- the first one up in the list is the IP type (v4 or v6) that we
@@ -456,9 +456,9 @@ _M.init = function(options)
   assert(#typeOrder > 0, "Invalid order list; cannot be empty")
   log(DEBUG, PREFIX, "query order = ", table_concat(order,", "))
 
-  
+
   -- Deal with the `hosts` file
-  
+
   local hostsfile = options.hosts or utils.DEFAULT_HOSTS
 
   if ((type(hostsfile) == "string") and (fileexists(hostsfile)) or
@@ -474,7 +474,7 @@ _M.init = function(options)
   local ttl = 10*365*24*60*60  -- use ttl of 10 years for hostfile entries
   for name, address in pairs(hosts) do
     name = string_lower(name)
-    if address.ipv4 then 
+    if address.ipv4 then
       cacheinsert({{  -- NOTE: nested list! cache is a list of lists
           name = name,
           address = address.ipv4,
@@ -488,7 +488,7 @@ _M.init = function(options)
       cachesetsuccess(name, _M.TYPE_A)
       log(DEBUG, PREFIX, "adding A-record from 'hosts' file: ",name, " = ", address.ipv4)
     end
-    if address.ipv6 then 
+    if address.ipv6 then
       cacheinsert({{  -- NOTE: nested list! cache is a list of lists
           name = name,
           address = address.ipv6,
@@ -545,10 +545,10 @@ _M.init = function(options)
       log(DEBUG, PREFIX, "nameserver ", type(r) == "table" and (r[1]..":"..r[2]) or r)
     end
   end
-  
+
   options.retrans = options.retrans or resolv.options.attempts or 5 -- 5 is openresty default
   log(DEBUG, PREFIX, "attempts = ", options.retrans)
-  
+
   if not options.timeout then
     if resolv.options.timeout then
       options.timeout = resolv.options.timeout * 1000
@@ -563,22 +563,22 @@ _M.init = function(options)
   log(DEBUG, PREFIX, "ndots = ", options.ndots)
   options.search = options.search or resolv.search or { resolv.domain }
   log(DEBUG, PREFIX, "search = ", table_concat(options.search,", "))
-  
-  
+
+
   -- other options
-  
+
   badTtl = options.badTtl or 1
   log(DEBUG, PREFIX, "badTtl = ", badTtl, " s")
   emptyTtl = options.emptyTtl or 30
   log(DEBUG, PREFIX, "emptyTtl = ", emptyTtl, " s")
-  
+
   -- options.no_recurse = -- not touching this one for now
-  
+
   config = options -- store it in our module level global
-  
+
   poolMaxRetry = 1  -- do one retry, dns resolver is already doing 'retrans' number of retries on top
   poolMaxWait = options.timeout / 1000 * options.retrans -- default is to wait for the dns resolver to hit its timeouts
-  
+
   return true
 end
 
@@ -881,7 +881,7 @@ local function check_ipv6(qname, qtype, try_list)
       name = qname,
       ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
     }}
-    cachesetsuccess(qname, _M.TYPE_AAAA) 
+    cachesetsuccess(qname, _M.TYPE_AAAA)
   else
     -- not a valid IPv6 address, or a bad type (non ipv6)
     -- return a "server error"
@@ -919,7 +919,7 @@ local function check_ipv4(qname, qtype, try_list)
       name = qname,
       ttl = 10 * 365 * 24 * 60 * 60 -- TTL = 10 years
     }}
-    cachesetsuccess(qname, _M.TYPE_A) 
+    cachesetsuccess(qname, _M.TYPE_A)
   else
     -- bad query type for this ipv4 address
     -- return a "server error"
@@ -937,7 +937,7 @@ end
 -- iterator that iterates over all names and types to look up based on the
 -- provided name, the `typeOrder`, `hosts`, `ndots` and `search` settings
 -- @param qname the name to look up
--- @param qtype (optional) the type to look for, if omitted it will try the 
+-- @param qtype (optional) the type to look for, if omitted it will try the
 -- full `typeOrder` list
 -- @return in order all the fully qualified names + types to look up
 local function search_iter(qname, qtype)
@@ -952,13 +952,13 @@ local function search_iter(qname, qtype)
     type_start = 0   -- just start at the beginning
   end
   type_end = #type_list
-  
+
   local i_type = type_start
   local search = config.search
   local i_search, search_start, search_end
   local type_done = {}
   local type_current
-  
+
   return  function()
             while true do
               -- advance the type-loop
@@ -1001,26 +1001,26 @@ local function search_iter(qname, qtype)
           end
 end
 
---- Resolve a name. 
--- If `r_opts.qtype` is given, then it will fetch that specific type only. If 
+--- Resolve a name.
+-- If `r_opts.qtype` is given, then it will fetch that specific type only. If
 -- `r_opts.qtype` is not provided, then it will try to resolve
 -- the name using the record types, in the order as provided to `init`.
--- 
+--
 -- Note that unless explictly requesting a CNAME record (by setting `r_opts.qtype`) this
 -- function will dereference the CNAME records.
 --
 -- So requesting `my.domain.com` (assuming to be an AAAA record, and default `order`) will try to resolve
 -- it (the first time) as;
 --
--- - SRV, 
--- - then A, 
+-- - SRV,
+-- - then A,
 -- - then AAAA (success),
 -- - then CNAME (after AAAA success, this will not be tried)
 --
 -- A second lookup will now try (assuming the cached entry expired);
 --
 -- - AAAA (as it was the last successful lookup),
--- - then SRV, 
+-- - then SRV,
 -- - then A,
 -- - then CNAME.
 --
@@ -1028,9 +1028,9 @@ end
 -- those, the inner loop will be the query/record type.
 -- @function resolve
 -- @param qname Name to resolve
--- @param r_opts Options table, see remark about the `qtype` field above and 
+-- @param r_opts Options table, see remark about the `qtype` field above and
 -- [OpenResty docs](https://github.com/openresty/lua-resty-dns) for more options.
--- @param dnsCacheOnly Only check the cache, won't do server lookups 
+-- @param dnsCacheOnly Only check the cache, won't do server lookups
 -- @param try_list (optional) list of tries to add to
 -- @return `list of records + nil + try_list`, or `nil + err + try_list`.
 local function resolve(qname, r_opts, dnsCacheOnly, try_list)
@@ -1065,7 +1065,7 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
 
     try_list = try_add(try_list, "(short)"..qname, qtype, "cache-hit")
     if records.expired then
-      -- if the record is already stale/expired we have to traverse the 
+      -- if the record is already stale/expired we have to traverse the
       -- iterator as that is required to start the async refresh queries
       records = nil
       try_list = try_status(try_list, "stale")
@@ -1101,7 +1101,7 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
 
     if records.errcode then
       -- the query type didn't match the ip address, or a bad ip address
-      return nil, 
+      return nil,
              ("dns server error: %s %s"):format(records.errcode, records.errstr),
              try_list
     end
@@ -1158,7 +1158,7 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
 
         if cnt == #records then
           -- fully recursive SRV record, specific Kubernetes problem
-          -- which generates a SRV record for each host, pointing to 
+          -- which generates a SRV record for each host, pointing to
           -- itself, hence causing a recursion loop.
           -- So we delete the record, set an error, so it falls through
           -- and retries other record types in the main loop here.
@@ -1247,7 +1247,7 @@ local function gcdl(list)
 end
 
 -- reduce a list of weights to their smallest relative counterparts.
--- eg. 20, 5, 5 --> 4, 1, 1 
+-- eg. 20, 5, 5 --> 4, 1, 1
 -- @return 2 values; reduced list (index == original index) and
 -- the sum of all the (reduced) weights
 local function reducedWeights(list)
@@ -1266,10 +1266,10 @@ local function roundRobinW(rec)
     md = {}
     metadataCache[rec] = md
   end
-  
+
   -- determine priority; stick to current or lower priority
   local prioList = md.prioList -- list with indexes-to-entries having the lowest priority
-  
+
   if not prioList then
     -- 1st time we're seeing this record, so go and
     -- find lowest priorities
@@ -1327,19 +1327,19 @@ local function roundRobinW(rec)
     rrwPointer = x-1  -- we have 1 entry in the higher-part now
     if rrwPointer == 0 then rrwPointer = x end
   end
-  
+
   -- all structures are in place, so we can just serve the next up record
   local idx = math_random(1, rrwPointer)
   local target = rrwList[idx]
-  
+
   -- rotate to next
   rrwList[idx], rrwList[rrwPointer] = rrwList[rrwPointer], rrwList[idx]
-  if rrwPointer == 1 then 
-    md.rrwPointer = #rrwList 
+  if rrwPointer == 1 then
+    md.rrwPointer = #rrwList
   else
     md.rrwPointer = rrwPointer-1
   end
-  
+
   return target
 end
 
@@ -1347,15 +1347,15 @@ end
 -- Builds on top of `resolve`, but will also further dereference SRV type records.
 --
 -- When calling multiple times on cached records, it will apply load-balancing
--- based on a round-robin (RR) scheme. For SRV records this will be a _weighted_ 
--- round-robin (WRR) scheme (because of the weights it will be randomized). It will 
--- apply the round-robin schemes on each level 
+-- based on a round-robin (RR) scheme. For SRV records this will be a _weighted_
+-- round-robin (WRR) scheme (because of the weights it will be randomized). It will
+-- apply the round-robin schemes on each level
 -- individually.
 --
 -- __Example__;
 --
 -- SRV record for "my.domain.com", containing 2 entries (this is the 1st level);
--- 
+--
 --   - `target = 127.0.0.1, port = 80, weight = 10`
 --   - `target = "other.domain.com", port = 8080, weight = 5`
 --
@@ -1381,9 +1381,9 @@ end
 -- If you need to log it, just log `tostring(try_list)` from the caller code.
 -- @function toip
 -- @param qname hostname to resolve
--- @param port (optional) default port number to return if none was found in 
+-- @param port (optional) default port number to return if none was found in
 -- the lookup chain (only SRV records carry port information, SRV with `port=0` will be ignored)
--- @param dnsCacheOnly Only check the cache, won't do server lookups (will 
+-- @param dnsCacheOnly Only check the cache, won't do server lookups (will
 -- not invalidate any ttl expired data and will hence possibly return expired data)
 -- @param try_list (optional) list of tries to add to
 -- @return `ip address + port + try_list`, or in case of an error `nil + error + try_list`
@@ -1415,7 +1415,7 @@ end
 -- This builds on top of `toip`. If the name resolves to an SRV record,
 -- the port returned by the DNS server will override the one provided.
 --
--- __NOTE__: can also be used for other connect methods, eg. http/redis 
+-- __NOTE__: can also be used for other connect methods, eg. http/redis
 -- clients, as long as the argument order is the same
 -- @function connect
 -- @param sock the tcp socket
@@ -1425,9 +1425,9 @@ end
 -- @return `success`, or `nil + error`
 local function connect(sock, host, port, sock_opts)
   local targetIp, targetPort = toip(host, port)
-  
+
   if not targetIp then
-    return nil, targetPort 
+    return nil, targetPort
   else
     -- need to do the extra check here: https://github.com/openresty/lua-nginx-module/issues/860
     if not sock_opts then
@@ -1466,10 +1466,10 @@ _M.connect = connect
 _M.setpeername = setpeername
 
 -- export the locals in case we're testing
-if _TEST then 
-  _M.getcache = function() return dnscache end 
+if _TEST then
+  _M.getcache = function() return dnscache end
   _M._search_iter = search_iter -- export as different name!
-end 
+end
 
 return _M
 

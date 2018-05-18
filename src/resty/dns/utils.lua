@@ -1,8 +1,8 @@
 --------------------------------------------------------------------------
--- DNS utility module. 
+-- DNS utility module.
 --
--- Parses the `/etc/hosts` and `/etc/resolv.conf` configuration files, caches them, 
--- and provides some utility functions. 
+-- Parses the `/etc/hosts` and `/etc/resolv.conf` configuration files, caches them,
+-- and provides some utility functions.
 --
 -- _NOTE_: parsing the files is done using blocking i/o file operations.
 --
@@ -52,11 +52,11 @@ _M.MAXSEARCH = 6
 --
 -- __NOTE__: All output will be normalized to lowercase, IPv6 addresses will
 -- always be returned in brackets.
--- @param filename (optional) Filename to parse, or a table with the file 
+-- @param filename (optional) Filename to parse, or a table with the file
 -- contents in lines (defaults to `'/etc/hosts'` if omitted)
--- @return 1; reverse lookup table, ip addresses (table with `ipv4` and `ipv6` 
+-- @return 1; reverse lookup table, ip addresses (table with `ipv4` and `ipv6`
 -- fields) indexed by their canonical names and aliases
--- @return 2; list with all entries. Containing fields `ip`, `canonical` and `family`, 
+-- @return 2; list with all entries. Containing fields `ip`, `canonical` and `family`,
 -- and a list of aliasses
 -- @usage local lookup, list = utils.parseHosts({
 --   "127.0.0.1   localhost",
@@ -64,7 +64,7 @@ _M.MAXSEARCH = 6
 --   "192.168.1.2 test.computer.com",
 --   "192.168.1.3 ftp.COMPUTER.com alias1 alias2",
 -- })
--- 
+--
 -- print(lookup["localhost"])         --> "127.0.0.1"
 -- print(lookup["ftp.computer.com"])  --> "192.168.1.3" note: name in lowercase!
 -- print(lookup["alias1"])            --> "192.168.1.3"
@@ -117,8 +117,8 @@ _M.parseHosts = function(filename)
 end
 
 
-local boolOptions = { "debug", "rotate", "no-check-names", "inet6", 
-                       "ip6-bytestring", "ip6-dotint", "no-ip6-dotint", 
+local boolOptions = { "debug", "rotate", "no-check-names", "inet6",
+                       "ip6-bytestring", "ip6-dotint", "no-ip6-dotint",
                        "edns0", "single-request", "single-request-reopen",
                        "no-tld-query", "use-vc"}
 for i, name in ipairs(boolOptions) do boolOptions[name] = name boolOptions[i] = nil end
@@ -142,9 +142,9 @@ local parseOption = function(target, details)
 end
 
 --- Parses a `resolv.conf` file or table.
--- Does not check for correctness of ip addresses nor hostnames, bad options 
+-- Does not check for correctness of ip addresses nor hostnames, bad options
 -- will be ignored. Might return `nil + error` if the file cannot be read.
--- @param filename (optional) File to parse (defaults to `'/etc/resolv.conf'` if 
+-- @param filename (optional) File to parse (defaults to `'/etc/resolv.conf'` if
 -- omitted) or a table with the file contents in lines.
 -- @return a table with fields `nameserver` (table), `domain` (string), `search` (table),
 -- `sortlist` (table) and `options` (table)
@@ -159,7 +159,7 @@ _M.parseResolvConf = function(filename)
     if not lines then return lines, err end
   end
   local result = {}
-  for _,line in ipairs(lines) do 
+  for _,line in ipairs(lines) do
     local data, comments = line:match(PATT_COMMENT)
     if data then
       local option, details = data:match("^%s*(%a+)%s+(.-)%s*$")
@@ -198,17 +198,17 @@ end
 --- Will parse `LOCALDOMAIN` and `RES_OPTIONS` environment variables.
 -- It will insert them into the given `resolv.conf` based configuration table.
 --
--- __NOTE__: if the input is `nil+error` it will return the input, to allow for 
+-- __NOTE__: if the input is `nil+error` it will return the input, to allow for
 -- pass-through error handling
 -- @param config Options table, as parsed by `parseResolvConf`, or an empty table to get only the environment options
 -- @return modified table
 -- @see parseResolvConf
 -- @usage -- errors are passed through, so this;
 -- local config, err = utils.parseResolvConf()
--- if config then 
+-- if config then
 --   config, err = utils.applyEnv(config)
 -- end
--- 
+--
 -- -- Is identical to;
 -- local config, err = utils.applyEnv(utils.parseResolvConf())
 _M.applyEnv = function(config, err)
@@ -245,7 +245,7 @@ local ttlHosts   -- time to live for cache
 --- returns the `parseHosts` results, but cached.
 -- Once `ttl` has been provided, only after it expires the file will be parsed again.
 --
--- __NOTE__: if cached, the _SAME_ tables will be returned, so do not modify them 
+-- __NOTE__: if cached, the _SAME_ tables will be returned, so do not modify them
 -- unless you know what you are doing!
 -- @param ttl cache time-to-live in seconds (can be updated in following calls)
 -- @return reverse and list tables, same as `parseHosts`.
@@ -262,7 +262,7 @@ _M.getHosts = function(ttl)
     cacheHostsr, cacheHosts = _M.parseHosts()
     lastHosts = now
   end
-  
+
   return cacheHostsr, cacheHosts
 end
 
@@ -274,7 +274,7 @@ local ttlResolv   -- time to live for cache
 --- returns the `applyEnv` results, but cached.
 -- Once `ttl` has been provided, only after it expires it will be parsed again.
 --
--- __NOTE__: if cached, the _SAME_ table will be returned, so do not modify them 
+-- __NOTE__: if cached, the _SAME_ table will be returned, so do not modify them
 -- unless you know what you are doing!
 -- @param ttl cache time-to-live in seconds (can be updated in following calls)
 -- @return configuration table, same as `parseResolveConf`.
@@ -290,7 +290,7 @@ _M.getResolv = function(ttl)
     lastResolv = now
     cacheResolv = _M.applyEnv(_M.parseResolvConf())
   end
-  
+
   return cacheResolv
 end
 

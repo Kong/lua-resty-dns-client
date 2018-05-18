@@ -4,16 +4,16 @@ client.init()
 
 local function go(host, typ)
   local resp, err
-  if typ then 
+  if typ then
     resp, err = client.resolve(host, {qtype = client["TYPE_"..typ]})
   else
     resp, err = client.resolve(host)
   end
-  
-  if not resp then 
+
+  if not resp then
     print("Query failed: "..tostring(err))
   end
-  
+
   print(pretty(resp))
   return resp
 end
@@ -24,7 +24,7 @@ go ("txttest.thijsschreijer.nl", "TXT")
 print "Multiple A records"
 go "atest.thijsschreijer.nl"
 
-print "AAAA record" 
+print "AAAA record"
 go ("google.com", "AAAA")
 
 print "A record redirected through 2 CNAME records"

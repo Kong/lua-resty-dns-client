@@ -3,7 +3,7 @@ Overview
 
 Lua library containing a dns client, several utilities, and a load-balancer.
 
-The module is currently OpenResty only, and builds on top of the 
+The module is currently OpenResty only, and builds on top of the
 [`lua-resty-dns`](https://github.com/openresty/lua-resty-dns) library
 
 Features
@@ -49,7 +49,7 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
   the `host:getPeer()` function signature changed, this is a breaking change.
 - Change: BREAKING the errors for cache-only lookup failures and empty records
   have been changed.
-- Fix: do not fail initialization without nameservers. 
+- Fix: do not fail initialization without nameservers.
 - Fix: properly recognize IPv6 in square brackets from the /etc/hosts file.
 - Fix: do not set success-type to types we're not looking for. Fixes
   [Kong issue #3210](https://github.com/Kong/kong/issues/3210).
@@ -152,15 +152,15 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 - change: max life-time interval configurable for ttl=0 dns records (ring-balancer)
 
 ### 0.2.1 (24-Oct-2016) Bugfix
- 
+
 - fix: `toip()` failed on SRV records with only 1 entry
 
 ### 0.2 (18-Oct-2016) Added the balancer
- 
+
 - fix: was creating resolver objects even if serving from cache
 - change: change resolver order (SRV is now first by default) for dns servers that create both SRV and A records for each entry
 - feature: make resolver order configurable
 - feature: ring-balancer (experimental, no full test coverage yet)
 - other: more test coverage for the dns client
-   
+
 ### 0.1 (09-Sep-2016) Initial released version
