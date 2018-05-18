@@ -73,6 +73,18 @@ describe("DNS client", function()
       assert.has.no.error(function() client.init( {nameservers = {}, resolvConf = {} } ) end)
     end)
 
+    it("skips ipv6 nameservers with scopes", function()
+      assert.has.no.error(function() client.init({
+              enable_ipv6 = true,
+              resolvConf = {"nameserver [fe80::1%enp0s20f0u1u1]"},
+            })
+          end)
+      local ip, port = client.toip("thijsschreijer.nl")
+      assert.is_nil(ip)
+      assert.not_matches([[failed to parse host name "[fe80::1%enp0s20f0u1u1]": invalid IPv6 address]], port, nil, true)
+      assert.matches([[failed to create a resolver: no nameservers specified]], port, nil, true)
+    end)
+
     it("fails with order being empty", function()
       -- fails with an empty one
       assert.has.error(

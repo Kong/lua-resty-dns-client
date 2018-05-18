@@ -528,6 +528,9 @@ _M.init = function(options)
       if t == "ipv6" and not options.enable_ipv6 then
         -- should not add this one
         log(DEBUG, PREFIX, "skipping IPv6 nameserver ", port and (ip..":"..port) or ip)
+      elseif t == "ipv6" and ip:find([[%]], nil, true) then
+        -- ipv6 with a scope
+        log(DEBUG, PREFIX, "skipping IPv6 nameserver (scope not supported) ", port and (ip..":"..port) or ip)
       else
         if port then
           options.nameservers[#options.nameservers + 1] = { ip, port }
