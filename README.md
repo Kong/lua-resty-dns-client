@@ -45,7 +45,8 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
   port, the default port is now returned.
 - Fix: ipv6 nameservers with a scope in their address are not supported. This
   fix will simply skip them instead of throwing errors upon resolving. Fixes
-  [issue 43][https://github.com/Kong/lua-resty-dns-client/issues/43].
+  [issue 43](https://github.com/Kong/lua-resty-dns-client/issues/43).
+- Minor: improved logging in the balancer
 
 ### 2.0.0 (22-Feb-2018) Major performance improvement (balancer) and bugfixes
 
