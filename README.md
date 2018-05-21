@@ -47,6 +47,8 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
   fix will simply skip them instead of throwing errors upon resolving. Fixes
   [issue 43](https://github.com/Kong/lua-resty-dns-client/issues/43).
 - Minor: improved logging in the balancer
+- Minor: relax requery default interval for failed dns queries from 1 to 30
+  seconds.
 
 ### 2.0.0 (22-Feb-2018) Major performance improvement (balancer) and bugfixes
 

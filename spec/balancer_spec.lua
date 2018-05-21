@@ -1301,6 +1301,7 @@ describe("Loadbalancer", function()
       local b = check_balancer(balancer.new {
         dns = client,
         wheelSize = 60,
+        requery = 1,
       })
       b:addHost("does.not.exist.mashape.com", 80, 10)
       b:addHost("getkong.org", 80, 10)

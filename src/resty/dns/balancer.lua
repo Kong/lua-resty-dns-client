@@ -37,7 +37,7 @@
 local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
 local TTL_0_RETRY = 60      -- Maximum life-time for hosts added with ttl=0, requery after it expires
-local REQUERY_INTERVAL = 1  -- Interval for requerying failed dns queries
+local REQUERY_INTERVAL = 30 -- Interval for requerying failed dns queries
 local ERR_INDEX_REASSIGNED = "Cannot get peer, current index got reassigned to another address"
 local ERR_ADDRESS_UNAVAILABLE = "Address is marked as unavailable"
 local ERR_NO_PEERS_AVAILABLE = "No peers are available"
