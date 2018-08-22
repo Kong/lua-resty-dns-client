@@ -81,7 +81,7 @@ _M.parseHosts = function(filename)
   local reverse = {}
   for _, line in ipairs(lines) do
     line = line:lower()
-    local data, comments = line:match(PATT_COMMENT)
+    local data, _ = line:match(PATT_COMMENT)
     if data then
       local ip, hosts, family, name, _
       -- parse the line
@@ -160,7 +160,7 @@ _M.parseResolvConf = function(filename)
   end
   local result = {}
   for _,line in ipairs(lines) do
-    local data, comments = line:match(PATT_COMMENT)
+    local data, _ = line:match(PATT_COMMENT)
     if data then
       local option, details = data:match("^%s*(%a+)%s+(.-)%s*$")
       if option == "nameserver" then

@@ -19,9 +19,11 @@ else
 end
 
 -- simple debug function
+-- luacheck: push no unused
 local dump = function(...)
   print(pretty({...}))
 end
+-- luacheck: pop
 
 describe("DNS client", function()
 
@@ -343,7 +345,7 @@ describe("DNS client", function()
     local host = "thijsschreijer.nl"
     local typ = client.TYPE_A
 
-    local answers, err, try_list = client.resolve(host, { qtype = typ })
+    local answers, err, _ = client.resolve(host, { qtype = typ })
     assert.is_nil(answers)
     assert(err:find("failed to create a resolver: no nameservers specified"))
   end)
@@ -379,7 +381,7 @@ describe("DNS client", function()
     local host = "txttest.thijsschreijer.nl"
     local typ = client.TYPE_TXT
 
-    local answers, err, history = assert(client.resolve(host, { qtype = typ }))
+    local answers, _, _ = assert(client.resolve(host, { qtype = typ }))
 
     local now = gettime()
     local touch_diff = math.abs(now - answers.touch)
@@ -421,7 +423,7 @@ describe("DNS client", function()
       }
     end
 
-    local res, err, history = client.resolve(
+    local res, _, _ = client.resolve(
       "some.upper.CASE",
       { qtype = client.TYPE_A },
       false)
@@ -463,7 +465,7 @@ describe("DNS client", function()
 
     local host = "smtp.thijsschreijer.nl"
     local typ = client.TYPE_A
-    local answers, err, history = assert(client.resolve(host))
+    local answers, _, _ = assert(client.resolve(host))
 
     -- check first CNAME
     local key1 = client.TYPE_CNAME..":"..host
@@ -547,7 +549,7 @@ describe("DNS client", function()
     local host = "srvtest.thijsschreijer.nl"
     local typ = client.TYPE_A   --> the entry is SRV not A
 
-    local answers, err, r, history = client.resolve(host, {qtype = typ})
+    local answers, err, _ = client.resolve(host, {qtype = typ})
     assert.is_nil(answers)  -- returns nil
     assert.equal(EMPTY_ERROR, err)
   end)
@@ -562,7 +564,7 @@ describe("DNS client", function()
 
     local host = "IsNotHere.thijsschreijer.nl"
 
-    local answers, err, r, history = client.resolve(host)
+    local answers, err, _ = client.resolve(host)
     assert.is_nil(answers)
     assert.equal(NOT_FOUND_ERROR, err)
   end)
@@ -590,7 +592,7 @@ describe("DNS client", function()
       return original_query_func(self, name, options)
     end
 
-    local res, err, try_list = client.resolve(
+    local _, err, _ = client.resolve(
       "1.2.3.4",
       { qtype = client.TYPE_SRV },
       false
@@ -638,7 +640,7 @@ describe("DNS client", function()
       return original_query_func(self, name, options)
     end
 
-    local res, err, trylist = client.resolve(
+    local _, err, _ = client.resolve(
       "[1:2::3:4]",
       { qtype = client.TYPE_SRV },
       false
@@ -687,7 +689,7 @@ describe("DNS client", function()
       return original_query_func(self, name, options)
     end
 
-    local res, err, trylist = client.resolve(
+    local res, _, _ = client.resolve(
       host,
       { qtype = client.TYPE_SRV },
       false
@@ -718,7 +720,7 @@ describe("DNS client", function()
               }
     end
 
-    local result, err, history = client.resolve("hello.world")
+    local result, err, _ = client.resolve("hello.world")
     assert.is_nil(result)
     assert.are.equal("recursion detected", err)
   end)
@@ -746,7 +748,7 @@ describe("DNS client", function()
     lrucache:set(entry1[1].type..":"..entry1[1].name, entry1)
 
     -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
-    local result, err, history = client.resolve("hello.world", nil, true)
+    local result, err, _ = client.resolve("hello.world", nil, true)
     assert.is_nil(result)
     assert.are.equal("recursion detected", err)
   end)
@@ -786,7 +788,7 @@ describe("DNS client", function()
     lrucache:set(entry2[1].type..":"..entry2[1].name, entry2)
 
     -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
-    local result, err, history = client.resolve("hello.world", nil, true)
+    local result, err, _ = client.resolve("hello.world", nil, true)
     assert.is_nil(result)
     assert.are.equal("recursion detected", err)
   end)
@@ -978,7 +980,7 @@ describe("DNS client", function()
       -- of the other ones.
       local track = {}
       for _ = 1 , 202 do  --> run around twice
-        local ip, port = assert(client.toip(host))
+        local ip, _ = assert(client.toip(host))
         track[ip] = (track[ip] or 0) + 1
       end
       assert.equal(100, track["1.2.3.5"])
@@ -1028,12 +1030,12 @@ describe("DNS client", function()
               "nameserver 8.8.8.8",
             },
           }))
-      local ip, record, port, host, history, err
+      local ip, record, port, host, err, _
       host = "srvrecurse.thijsschreijer.nl"
 
       -- resolve SRV specific should return the record including its
       -- recursive entry
-      record, err, history = client.resolve(host, { qtype = client.TYPE_SRV })
+      record, err, _ = client.resolve(host, { qtype = client.TYPE_SRV })
       assert.is_table(record)
       assert.equal(1, #record)
       assert.equal(host, record[1].target)
@@ -1042,7 +1044,7 @@ describe("DNS client", function()
 
       -- default order, SRV, A; the recursive SRV record fails, and it falls
       -- back to the IP4 address
-      ip, port, history = client.toip(host)
+      ip, port, _ = client.toip(host)
       assert.is_string(ip)
       assert.is_equal("10.0.0.44", ip)
       assert.is_nil(port)
@@ -1135,7 +1137,7 @@ describe("DNS client", function()
       lrucache:set(entry2[1].type..":"..entry2[1].name, entry2)
 
       -- Note: the bad case would be that the below lookup would hang due to round-robin on an empty table
-      local ip, port, try_list = client.toip("hello.world", 123, true)
+      local ip, port, _ = client.toip("hello.world", 123, true)
       assert.is_nil(ip)
       assert.are.equal("recursion detected", port)
     end)
@@ -1165,8 +1167,8 @@ describe("DNS client", function()
 
 
     -- make a first request, populating the cache
-    local res1, res2, err1, err2, history
-    res1, err1, history = client.resolve(
+    local res1, res2, err1, err2, _
+    res1, err1, _ = client.resolve(
       qname,
       { qtype = client.TYPE_A }
     )
@@ -1177,7 +1179,7 @@ describe("DNS client", function()
 
 
     -- make a second request, result from cache, still called only once
-    res2, err2, history = client.resolve(
+    res2, err2, _ = client.resolve(
       qname,
       { qtype = client.TYPE_A }
     )
@@ -1240,8 +1242,8 @@ describe("DNS client", function()
 
 
     -- initial request to populate the cache
-    local res1, res2, err1, err2, history
-    res1, err1, history = client.resolve(
+    local res1, res2, err1, err2, _
+    res1, err1, _ = client.resolve(
       qname,
       { qtype = client.TYPE_A }
     )
@@ -1252,7 +1254,7 @@ describe("DNS client", function()
 
 
     -- try again, from cache, should still be called only once
-    res2, err2, history = client.resolve(
+    res2, err2, _ = client.resolve(
       qname,
       { qtype = client.TYPE_A }
     )
@@ -1266,7 +1268,7 @@ describe("DNS client", function()
 
     -- wait for expiry of ttl and retry, still 1 call, but now stale result
     sleep(badTtl + 0.5 * staleTtl)
-    res2, err2, history = client.resolve(
+    res2, err2, _ = client.resolve(
       qname,
       { qtype = client.TYPE_A }
     )
@@ -1279,7 +1281,7 @@ describe("DNS client", function()
 
     -- wait for expiry of staleTtl and retry, 2 calls, new result
     sleep(0.75 * staleTtl)
-    res2, err2, history = client.resolve(
+    res2, err2, _ = client.resolve(
       qname,
       { qtype = client.TYPE_A }
     )
@@ -1313,10 +1315,10 @@ describe("DNS client", function()
         -- so the scheduler loop can first schedule them all before actually
         -- starting resolving
         coroutine.yield(coroutine.running())
-        local result, err, history = client.resolve(
-                                        "thijsschreijer.nl",
-                                        { qtype = client.TYPE_A }
-                                      )
+        local result, _, _ = client.resolve(
+                                "thijsschreijer.nl",
+                                { qtype = client.TYPE_A }
+                              )
         table.insert(results, result)
       end
 
@@ -1386,7 +1388,7 @@ describe("DNS client", function()
         -- so the scheduler loop can first schedule them all before actually
         -- starting resolving
         coroutine.yield(coroutine.running())
-        local result, err, history = client.resolve(name, {qtype = client.TYPE_A})
+        local result, err, _ = client.resolve(name, {qtype = client.TYPE_A})
         table.insert(results, (result or err))
       end
 
@@ -1449,7 +1451,7 @@ describe("DNS client", function()
       -- so the scheduler loop can first schedule them all before actually
       -- starting resolving
       coroutine.yield(coroutine.running())
-      local result, err, history = client.resolve(name, {qtype = client.TYPE_A})
+      local _, _, _ = client.resolve(name, {qtype = client.TYPE_A})
     end
 
     -- schedule a bunch of the same lookups

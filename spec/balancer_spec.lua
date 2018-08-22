@@ -592,7 +592,9 @@ describe("Loadbalancer", function()
     local t = 0
     while t<10 do
       if t>0.5 then -- let the timer do its work, only dismiss after 0.5 seconds
+        -- luacheck: push no unused
         b = nil -- mark it for GC
+        -- luacheck: pop
       end
       sleep(0.1)
       collectgarbage()
@@ -1600,7 +1602,7 @@ describe("Loadbalancer", function()
       })
       local state = copyWheel(b)
       record.expire = gettime() -1 -- expire current dns cache record
-      record = dnsA({              -- insert an updated record
+      dnsA({                       -- insert an updated record
         { name = "mashape.com", address = "1.2.3.4" },
         { name = "mashape.com", address = "1.2.3.6" },  -- target updated
       })
@@ -1758,7 +1760,7 @@ describe("Loadbalancer", function()
     it("low weight with zero-indices assigned doesn't fail", function()
       -- depending on order of insertion it is either 1 or 0 indices
       -- but it may never error.
-      local record = dnsA({
+      dnsA({
         { name = "mashape.com", address = "1.2.3.4" },
       })
       dnsA({
@@ -1773,7 +1775,7 @@ describe("Loadbalancer", function()
         wheelSize = 100,
       })
       -- Now the order reversed (weights exchanged)
-      record = dnsA({
+      dnsA({
         { name = "mashape.com", address = "1.2.3.4" },
       })
       dnsA({

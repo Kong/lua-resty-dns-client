@@ -1,10 +1,4 @@
-local pretty = require("pl.pretty").write
 local deepcopy = require("pl.tablex").deepcopy
-local _
-
--- empty records and not found errors should be identical, hence we
--- define a constant for that error message
-local NOT_FOUND_ERROR = "dns server error: 3 name error"
 
 local gettime, sleep
 if ngx then
@@ -321,7 +315,7 @@ describe("DNS client cache", function()
         ["myhost9:"..client.TYPE_A] = rec2,
       }
       -- doing a resolve will trigger the background query now
-      result, err = client.resolve("myhost9", { qtype = client.TYPE_A })
+      result = client.resolve("myhost9", { qtype = client.TYPE_A })
       assert.is_true(result.expired)  -- we get the stale record, now marked as expired
       -- wait again for the background query to complete
       sleep(0.1)
@@ -359,7 +353,7 @@ describe("DNS client cache", function()
         ["myhost9:"..client.TYPE_A] = rec2,
       }
       -- doing a resolve will trigger the background query now
-      result, err = client.resolve("myhost9", { qtype = client.TYPE_A })
+      result = client.resolve("myhost9", { qtype = client.TYPE_A })
       assert.is_true(result.expired)  -- we get the stale record, now marked as expired
       -- wait again for the background query to complete
       sleep(0.1)
@@ -394,7 +388,7 @@ describe("DNS client cache", function()
         ["myhost9:"..client.TYPE_A] = rec2,
       }
       -- doing a resolve will trigger the background query now
-      result, err = client.resolve("myhost9", { qtype = client.TYPE_A })
+      result = client.resolve("myhost9", { qtype = client.TYPE_A })
       assert.is_true(result.expired)  -- we get the stale record, now marked as expired
       -- wait again for the background query to complete
       sleep(0.1)
@@ -434,9 +428,9 @@ describe("DNS client cache", function()
         end,
       })
 
-      local result, err = client.resolve("myhost9", { qtype = client.TYPE_CNAME })
+      assert(client.resolve("myhost9", { qtype = client.TYPE_CNAME }))
       ngx.sleep(0.2)  -- wait for it to become stale
-      result, err = client.toip("myhost9")
+      assert(client.toip("myhost9"))
 
       local cached = lrucache:get(client.TYPE_CNAME..":myhost9.domain.com")
       assert.are.equal(CNAME1, cached[1])
@@ -451,7 +445,7 @@ describe("DNS client cache", function()
 
   describe("success types", function()
 
-    local lrucache, mock_records, config
+    local lrucache, mock_records, config  -- luacheck: ignore
     before_each(function()
       config = {
         nameservers = { "8.8.8.8" },
