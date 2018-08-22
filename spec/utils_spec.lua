@@ -3,13 +3,13 @@ local splitlines = require("pl.stringx").splitlines
 local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname
 
-local gettime, sleep
+local sleep
 if ngx then
-  gettime = ngx.now
+  gettime = ngx.now                -- luacheck: ignore
   sleep = ngx.sleep
 else
   local socket = require("socket")
-  gettime = socket.gettime
+  gettime = socket.gettime         -- luacheck: ignore
   sleep = socket.sleep
 end
 
@@ -107,13 +107,13 @@ describe("testing parsing 'resolv.conf'", function()
   local envvars  -- whatever is in this table, gets served first
   before_each(function()
     envvars = {}
-    os.getenv = function(name)
+    os.getenv = function(name)     -- luacheck: ignore
       return envvars[name] or old_getenv(name)
     end
   end)
 
   after_each(function()
-    os.getenv = old_getenv
+    os.getenv = old_getenv         -- luacheck: ignore
     envvars = nil
   end)
 

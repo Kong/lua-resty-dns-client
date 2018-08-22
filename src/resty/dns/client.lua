@@ -19,6 +19,7 @@
 -- @author Thijs Schreijer
 -- @license Apache 2.0
 
+local _
 local utils = require("resty.dns.utils")
 local fileexists = require("pl.path").exists
 local semaphore = require("ngx.semaphore").new
@@ -130,14 +131,12 @@ local cachelookup = function(qname, qtype)
       cached.expired = true
       --[[
       log(DEBUG, PREFIX, "cache get (stale): ", key, " ", frecord(cached))
-      --]]
     else
-      --[[
       log(DEBUG, PREFIX, "cache get: ", key, " ", frecord(cached))
       --]]
     end
-  else
     --[[
+  else
     log(DEBUG, PREFIX, "cache get (miss): ", key)
     --]]
   end
@@ -151,12 +150,13 @@ end
 -- @param qtype the query type for which to store the record (optional for records, not for errors)
 -- @return nothing
 local cacheinsert = function(entry, qname, qtype)
-  local ttl, key, lru_ttl
+  local key, lru_ttl
   local now = time()
   local e1 = entry[1]
 
   if not entry.expire then
     -- new record not seen before
+    local ttl
     if e1 then
       -- an actual, non-empty, record
       key = (qtype or e1.type) .. ":" .. (qname or e1.name)
@@ -217,7 +217,6 @@ local cacheinsert = function(entry, qname, qtype)
   else
     -- an existing record reinserted (under a shortname for example)
     -- must calculate remaining ttl, cannot get it from lrucache
-    ttl = entry.ttl
     key = (qtype or e1.type) .. ":" .. (qname or e1.name)
     lru_ttl = entry.expire - now + staleTtl
     --[[
@@ -679,9 +678,7 @@ local function executeQuery(premature, item)
       --[[
       log(DEBUG, PREFIX, "Query parsed answer: ", item.qname, ":", item.r_opts.qtype, " ", fquery(item),
               " ", frecord(item.result))
-      --]]
     else
-      --[[
       log(DEBUG, PREFIX, "Query error: ", item.qname, ":", item.r_opts.qtype, " err=", tostring(err))
       --]]
     end
@@ -1059,7 +1056,9 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
     if try_list then
       -- check for recursion
       if try_list["(short)"..qname..":"..tostring(qtype)] then
+        -- luacheck: push no unused
         records = nil
+        -- luacheck: pop
         err = "recursion detected"
         try_status(try_list, "recursion detected")
         return nil, err, try_list
@@ -1070,7 +1069,9 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
     if records.expired then
       -- if the record is already stale/expired we have to traverse the
       -- iterator as that is required to start the async refresh queries
+      -- luacheck: push no unused
       records = nil
+      -- luacheck: pop
       try_list = try_status(try_list, "stale")
 
     else
@@ -1094,12 +1095,12 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
   if name_type ~= "name" then
     if name_type == "ipv4" then
       -- if no qtype is given, we're supposed to search, so forcing TYPE_A is safe
-      records, err, try_list = check_ipv4(qname, qtype or _M.TYPE_A, try_list)
+      records, _, try_list = check_ipv4(qname, qtype or _M.TYPE_A, try_list)
     else
 
       -- it is 'ipv6'
       -- if no qtype is given, we're supposed to search, so forcing TYPE_AAAA is safe
-      records, err, try_list = check_ipv6(qname, qtype or _M.TYPE_AAAA, try_list)
+      records, _, try_list = check_ipv6(qname, qtype or _M.TYPE_AAAA, try_list)
     end
 
     if records.errcode then
@@ -1125,19 +1126,23 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
       records, err, try_list = lookup(try_name, opts, dnsCacheOnly, try_list)
     end
 
-    if not records then
+    if not records then  -- luacheck: ignore
       -- nothing to do, an error
       -- fall through to the next entry in our search sequence
 
     elseif records.errcode then
       -- dns error: fall through to the next entry in our search sequence
       err = ("dns server error: %s %s"):format(records.errcode, records.errstr)
+      -- luacheck: push no unused
       records = nil
+      -- luacheck: pop
 
     elseif #records == 0 then
       -- empty: fall through to the next entry in our search sequence
       err = ("dns client error: %s %s"):format(101, clientErrors[101])
+      -- luacheck: push no unused
       records = nil
+      -- luacheck: pop
 
     else
       -- we got some records, update the cache
@@ -1469,7 +1474,7 @@ _M.connect = connect
 _M.setpeername = setpeername
 
 -- export the locals in case we're testing
-if _TEST then
+if _TEST then    -- luacheck: ignore
   _M.getcache = function() return dnscache end
   _M._search_iter = search_iter -- export as different name!
 end

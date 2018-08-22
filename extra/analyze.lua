@@ -43,7 +43,6 @@ local list = {}
 local token_match = "(%<%<.-%>%>)"
 
 
-local i = 0
 for token in file:gmatch(token_match) do
   if not tokens[token] then
     tokens[token] = 1
@@ -104,7 +103,7 @@ local substitutes = {
 
 -- escape the tokens, and replace all occurences
 for token, substitute in pairs(substitutes) do
-  l = {}
+  local l = {}
   for i = 1, #token do
     --table.insert(l, "%")
     table.insert(l, token:sub(i,i))
@@ -118,7 +117,9 @@ end
 
 -- write output
 writefile(output, file)
-file = nil  -- save memory
+-- luacheck: push no unused
+file = nil  -- save memory  luacheck: no unused
+-- luacheck: pop
 local lines = readlines(output)  -- read again, as lines
 
 
@@ -148,7 +149,7 @@ for i = 1, #lines do
       prefix, json = line:match("^(.-)(%[%{.+%}%])$")
     end
     if json then
-      local t, err = assert(decode(json))
+      local t = assert(decode(json))
       if t then
         t = indent(pretty(t), 4)
         if t:sub(-1,-1) == "\n" then t = t:sub(1,-2) end
