@@ -118,6 +118,63 @@ describe("DNS client", function()
       assert.are.equal(#client.getcache(), 0) -- no hosts file record should have been imported
     end)
 
+    describe("inject localhost:", function()
+
+      it("if absent", function()
+        local result, err, record
+        result, err = assert(client.init({
+            nameservers = { "8.8.8.8:53" },
+            resolvConf = {},
+            hosts = {},
+          }))
+        assert.is.True(result)
+        assert.is.Nil(err)
+        record = client.getcache():get("28:localhost")
+        assert.equal("[::1]", record[1].address)
+        record = client.getcache():get("1:localhost")
+        assert.equal("127.0.0.1", record[1].address)
+      end)
+
+      it("not if ipv4 exists", function()
+        local result, err, record
+        result, err = assert(client.init({
+            nameservers = { "8.8.8.8:53" },
+            resolvConf = {},
+            hosts = {"1.2.3.4 localhost"},
+          }))
+        assert.is.True(result)
+        assert.is.Nil(err)
+
+        -- IPv6 is not defined
+        record = client.getcache():get("28:localhost")
+        assert.is_nil(record)
+
+        -- IPv4 is not overwritten
+        record = client.getcache():get("1:localhost")
+        assert.equal("1.2.3.4", record[1].address)
+      end)
+
+      it("not if ipv6 exists", function()
+        local result, err, record
+        result, err = assert(client.init({
+            nameservers = { "8.8.8.8:53" },
+            resolvConf = {},
+            hosts = {"::1:2:3:4 localhost"},
+          }))
+        assert.is.True(result)
+        assert.is.Nil(err)
+
+        -- IPv6 is not overwritten
+        record = client.getcache():get("28:localhost")
+        assert.equal("[::1:2:3:4]", record[1].address)
+
+        -- IPv4 is not defined
+        record = client.getcache():get("1:localhost")
+        assert.is_nil(record)
+      end)
+
+    end)
+
   end)
 
 

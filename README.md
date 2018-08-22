@@ -42,6 +42,7 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 - Added: a new option `validTtl` that, if set, will forcefully override the
   `ttl` value of any valid answer received. [Issue 48](https://github.com/Kong/lua-resty-dns-client/issues/48).
 - Fix: remove multiline log entries, now encoded as single-line json. [Issue 52](https://github.com/Kong/lua-resty-dns-client/issues/52).
+- Fix: always inject a `localhost` value, even if not in `/etc/hosts`. [Issue 54](https://github.com/Kong/lua-resty-dns-client/issues/54).
 
 ### 2.1.0 (21-May-2018) Fixes
 
