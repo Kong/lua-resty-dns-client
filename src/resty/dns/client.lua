@@ -485,6 +485,14 @@ _M.init = function(options)
     hosts = {}
   end
 
+  -- treat `localhost` special, by always defining it, RFC 6761: Section 6.3.3
+  if not hosts.localhost then
+    hosts.localhost = {
+      ipv4 = "127.0.0.1",
+      ipv6 = "[::1]",
+    }
+  end
+
   -- Populate the DNS cache with the hosts (and aliasses) from the hosts file.
   local ttl = 10*365*24*60*60  -- use ttl of 10 years for hostfile entries
   for name, address in pairs(hosts) do
