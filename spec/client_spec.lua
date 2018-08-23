@@ -1144,6 +1144,44 @@ describe("DNS client", function()
   end)
 
 
+  it("verifies validTtl", function()
+    local validTtl = 0.1
+    local emptyTtl = 0.1
+    local staleTtl = 0.1
+    local qname = "konghq.com"
+    assert(client.init({
+          emptyTtl = emptyTtl,
+          staleTtl = staleTtl,
+          validTtl = validTtl,
+          resolvConf = {
+            -- resolv.conf without `search` and `domain` options
+            "nameserver 8.8.8.8",
+          },
+        }))
+
+    -- mock query function to return a default record
+    query_func = function(self, original_query_func, name, options)
+      return  {
+                {
+                  type = client.TYPE_A,
+                  address = "5.6.7.8",
+                  class = 1,
+                  name = qname,
+                  ttl = 10,   -- should be overridden by the validTtl setting
+                },
+              }
+    end
+
+    -- do a query
+    local res1, _, _ = client.resolve(
+      qname,
+      { qtype = client.TYPE_A }
+    )
+
+    assert.equal(validTtl, res1[1].ttl)
+    assert.is_near(validTtl, res1.expire - gettime(), 0.1)
+  end)
+
   it("verifies ttl and caching of empty responses and name errors", function()
     --empty/error responses should be cached for a configurable time
     local emptyTtl = 0.1

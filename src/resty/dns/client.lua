@@ -53,6 +53,7 @@ local defined_hosts        -- hash table to lookup names originating from the ho
 local emptyTtl             -- ttl (in seconds) for empty and 'name error' (3) errors
 local badTtl               -- ttl (in seconds) for a other dns error results
 local staleTtl             -- ttl (in seconds) to serve stale data (while new lookup is in progress)
+local validTtl             -- ttl (in seconds) to use to override ttl of any valid answer
 local cacheSize            -- size of the lru cache
 local noSynchronisation
 local orderValids = {"LAST", "SRV", "A", "AAAA", "CNAME"} -- default order to query
@@ -161,11 +162,16 @@ local cacheinsert = function(entry, qname, qtype)
       -- an actual, non-empty, record
       key = (qtype or e1.type) .. ":" .. (qname or e1.name)
 
-      ttl = math.huge
+      ttl = validTtl or math.huge
       for i = 1, #entry do
         local record = entry[i]
-        -- determine minimum ttl of all answer records
-        ttl = math_min(ttl, record.ttl)
+        if validTtl then
+          -- force configured ttl
+          record.ttl = validTtl
+        else
+          -- determine minimum ttl of all answer records
+          ttl = math_min(ttl, record.ttl)
+        end
         -- update IPv6 address format to include square brackets
         if record.type == _M.TYPE_AAAA then
           record.address = utils.parseHostname(record.address)
@@ -402,6 +408,9 @@ local poolMaxRetry
 -- -- Cache ttl for other error responses
 -- local badTtl = 1.0      -- in seconds (can have fractions)
 --
+-- -- Overriding ttl for valid queries, if given
+-- local validTtl = nil    -- in seconds (can have fractions)
+--
 -- -- `ndots`, same as the `resolv.conf` option, if not given it is taken from
 -- -- `resolv.conf` or otherwise set to 1
 -- local ndots = 1
@@ -422,6 +431,7 @@ local poolMaxRetry
 --          badTtl = badTtl,
 --          emptyTtl = emptTtl,
 --          staleTtl = staleTtl,
+--          validTtl = validTtl,
 --          enable_ipv6 = enable_ipv6,
 --        })
 -- )
@@ -430,8 +440,13 @@ _M.init = function(options)
   log(DEBUG, PREFIX, "(re)configuring dns client")
   local resolv, hosts, err
   options = options or {}
+
   staleTtl = options.staleTtl or 4
   log(DEBUG, PREFIX, "staleTtl = ", staleTtl)
+
+  validTtl = options.validTtl
+  log(DEBUG, PREFIX, "validTtl = ", tostring(validTtl))
+
   cacheSize = options.cacheSize or 10000  -- default set here to be able to reset the cache
   noSynchronisation = options.noSynchronisation
   log(DEBUG, PREFIX, "noSynchronisation = ", tostring(noSynchronisation))
