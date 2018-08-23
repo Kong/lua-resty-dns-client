@@ -324,7 +324,8 @@ local try_list_mt = {
       end
       l[i]="\n"
     end
-    return table_concat(l)
+    -- concatenate result and encode as json array
+    return '[ "' .. table_concat(l, "", 1, i-1):gsub('"',"'"):gsub("\n",'", "') .. '" ]'
   end
 }
 
