@@ -43,6 +43,8 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
   `ttl` value of any valid answer received. [Issue 48](https://github.com/Kong/lua-resty-dns-client/issues/48).
 - Fix: remove multiline log entries, now encoded as single-line json. [Issue 52](https://github.com/Kong/lua-resty-dns-client/issues/52).
 - Fix: always inject a `localhost` value, even if not in `/etc/hosts`. [Issue 54](https://github.com/Kong/lua-resty-dns-client/issues/54).
+- Fix: added a workaround for Amazon Route 53 nameservers replying with a
+  `ttl=0` whilst the record has a non-0 ttl. [Issue 56](https://github.com/Kong/lua-resty-dns-client/issues/56).
 
 ### 2.1.0 (21-May-2018) Fixes
 
