@@ -311,10 +311,11 @@ local try_list_mt = {
   __tostring = function(self)
     local l, i = {}, 0
     for _, entry in ipairs(self) do
+      l[i] = '","'
       l[i+1] = entry.qname
       l[i+2] = ":"
       l[i+3] = entry.qtype or "(na)"
-      local m = tostring(entry.msg)
+      local m = tostring(entry.msg):gsub('"',"'")
       if m == "" then
         i = i + 4
       else
@@ -322,10 +323,9 @@ local try_list_mt = {
         l[i+5] = m
         i = i + 6
       end
-      l[i]="\n"
     end
     -- concatenate result and encode as json array
-    return '[ "' .. table_concat(l, "", 1, i-1):gsub('"',"'"):gsub("\n",'", "') .. '" ]'
+    return '["' .. table_concat(l) .. '"]'
   end
 }
 
