@@ -37,7 +37,7 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### 2.2.0 (xx-Sep-2018) unreleased...
+### 2.2.0 (28-Aug-2018) Fixes and a new option
 
 - Added: a new option `validTtl` that, if set, will forcefully override the
   `ttl` value of any valid answer received. [Issue 48](https://github.com/Kong/lua-resty-dns-client/issues/48).
