@@ -921,6 +921,7 @@ end
 -- This allows to temporarily suspend peers when they are offline/unhealthy,
 -- it will not alter the index distribution. The parameters passed in should
 -- be previous results from `getPeer`.
+-- @function setPeerStatus
 -- @param available `true` for enabled/healthy, `false` for disabled/unhealthy
 -- @param ip ip address of the peer
 -- @param port the port of the peer (in address object, not as recorded with the Host!)
@@ -1003,14 +1004,21 @@ function objBalancer:startRequery()
 end
 
 --- Sets an event callback for user code.
--- @param callback a function called when an address is added (after DNS
--- resolution for example). Signature of the callback is
--- `function(balancer, action, ip, port, hostname)`, where `ip` might also
+-- Signature of the callback is:
+--
+--   `function(balancer, action, ip, port, hostname)`
+--
+-- where `ip` might also
 -- be a hostname if the DNS resolution returns another name (usually in
--- SRV records). The `action` parameter will be either "added" or "removed".
+-- SRV records). The `action` parameter will be either `"added"` or `"removed"`.
+-- @function setCallback
+-- @param callback a function called when an address is added (after DNS
+-- resolution for example).
+-- @return `true`, or throws an error on bad input
 function objBalancer:setCallback(callback)
   assert(type(callback) == "function", "expected a callback function")
   self.callback = callback
+  return true
 end
 
 local randomlist_cache = {}
@@ -1071,19 +1079,16 @@ end
 -- - `dns` (required) a configured `dns.client` object for querying the dns server.
 -- - `requery` (optional) interval of requerying the dns server for previously
 -- failed queries. Defaults to 1 if omitted (in seconds)
--- - `ttl0` (optional) Maximum lifetime for records inserted with ttl=0, to verify
+-- - `ttl0` (optional) Maximum lifetime for records inserted with `ttl=0`, to verify
 -- the ttl is still 0. Defaults to 60 if omitted (in seconds)
--- - `callback` (optional) a function called when an address is added (after dns
--- resolution for example). Signature of the callback is
--- `function(balancer, action, ip, port, hostname)`, where `ip` might also be a hostname if the
--- dns resolution returns another name (usually in SRV records). The `action` parameter
--- will be either "added" or "removed".
+-- - `callback` (optional) a function called when an address is added. See
+-- `setCallback` for details.
 -- @param opts table with options
 -- @return new balancer object or nil+error
--- @usage -- hosts
+-- @usage -- hosts example
 -- local hosts = {
---   "kong.com",                                        -- name only, as string
---   { name = "gelato.io" },                            -- name only, as table
+--   "konghq.com",                                      -- name only, as string
+--   { name = "github.com" },                           -- name only, as table
 --   { name = "getkong.org", port = 80, weight = 25 },  -- fully specified, as table
 -- }
 _M.new = function(opts)

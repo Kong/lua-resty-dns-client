@@ -111,16 +111,16 @@
 	<td class="summary">Creates a new balancer.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#objBalancer:setCallback">objBalancer:setCallback (callback)</a></td>
+	<td class="name" nowrap><a href="#removeHost">removeHost (hostname, port)</a></td>
+	<td class="summary">Removes a host from a balancer.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#setCallback">setCallback (callback)</a></td>
 	<td class="summary">Sets an event callback for user code.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#objBalancer:setPeerStatus">objBalancer:setPeerStatus (available, ip, port, hostname)</a></td>
+	<td class="name" nowrap><a href="#setPeerStatus">setPeerStatus (available, ip, port, hostname)</a></td>
 	<td class="summary">Sets the current status of the peer.</td>
-	</tr>
-	<tr>
-	<td class="name" nowrap><a href="#removeHost">removeHost (hostname, port)</a></td>
-	<td class="summary">Removes a host from a balancer.</td>
 	</tr>
 </table>
 
@@ -165,7 +165,7 @@
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">hostname</span>
-         hostname to add (note: not validated, as long as it's a
+         hostname to add (note: not validated, as long as it&rsquo;s a
  string it will be accepted, but remain unresolved!)
         </li>
         <li><span class="parameter">port</span>
@@ -288,8 +288,7 @@
     <strong>new (opts)</strong>
     </dt>
     <dd>
-
-<p>Creates a new balancer.  The balancer is based on a wheel with a number of
+    <p>Creates a new balancer.  The balancer is based on a wheel with a number of
  positions (the index on the wheel). The
  indices will be randomly distributed over the targets. The number of indices
  assigned will be relative to the weight.</p>
@@ -301,33 +300,30 @@
 <p> The options table has the following fields;</p>
 
 <ul>
-    <li><code>hosts</code> (optional) containing hostnames, ports and weights. If omitted,
-    ports and weights default respectively to 80 and 10. The list will be sorted
-    before being added, so the order of entry is deterministic.</li>
-    <li><code>wheelSize</code> (optional) for total number of positions in the balancer (the
-    indices), if omitted
-    the size of <code>order</code> is used, or 1000 if <code>order</code> is not provided. It is important
-    to have enough indices to keep the ring properly randomly distributed. If there
-    are to few indices for the number of targets then the load distribution might
-    become to coarse. Consider the maximum number of targets expected, as new
-    hosts can be dynamically added, and dns renewals might yield larger record
-    sets. The <code>wheelSize</code> cannot be altered, only a new wheel can be created, but
-    then all consistency would be lost. On a similar note; making it too big,
-    will have a performance impact when the wheel is modified as too many indices
-    will have to be moved between targets. A value of 50 to 200 indices per entry
-    seems about right.</li>
-    <li><code>order</code> (optional) if given, a list of random numbers, size <code>wheelSize</code>, used to
-    randomize the wheel. Duplicates are not allowed in the list.</li>
-    <li><code>dns</code> (required) a configured <a href="../modules/resty.dns.client.html">dns.client</a> object for querying the dns server.</li>
-    <li><code>requery</code> (optional) interval of requerying the dns server for previously
-    failed queries. Defaults to 1 if omitted (in seconds)</li>
-    <li><code>ttl0</code> (optional) Maximum lifetime for records inserted with ttl=0, to verify
-    the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
-    <li><code>callback</code> (optional) a function called when an address is added (after dns
-    resolution for example). Signature of the callback is
-    <code>function(balancer, action, ip, port, hostname)</code>, where <code>ip</code> might also be a hostname if the
-    dns resolution returns another name (usually in SRV records). The <code>action</code> parameter
-    will be either "added" or "removed".</li>
+<li><code>hosts</code> (optional) containing hostnames, ports and weights. If omitted,
+ports and weights default respectively to 80 and 10. The list will be sorted
+before being added, so the order of entry is deterministic.</li>
+<li><code>wheelSize</code> (optional) for total number of positions in the balancer (the
+indices), if omitted
+the size of <code>order</code> is used, or 1000 if <code>order</code> is not provided. It is important
+to have enough indices to keep the ring properly randomly distributed. If there
+are to few indices for the number of targets then the load distribution might
+become to coarse. Consider the maximum number of targets expected, as new
+hosts can be dynamically added, and dns renewals might yield larger record
+sets. The <code>wheelSize</code> cannot be altered, only a new wheel can be created, but
+then all consistency would be lost. On a similar note; making it too big,
+will have a performance impact when the wheel is modified as too many indices
+will have to be moved between targets. A value of 50 to 200 indices per entry
+seems about right.</li>
+<li><code>order</code> (optional) if given, a list of random numbers, size <code>wheelSize</code>, used to
+randomize the wheel. Duplicates are not allowed in the list.</li>
+<li><code>dns</code> (required) a configured <a href="../modules/resty.dns.client.html">dns.client</a> object for querying the dns server.</li>
+<li><code>requery</code> (optional) interval of requerying the dns server for previously
+failed queries. Defaults to 1 if omitted (in seconds)</li>
+<li><code>ttl0</code> (optional) Maximum lifetime for records inserted with <code>ttl=0</code>, to verify
+the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
+<li><code>callback</code> (optional) a function called when an address is added. See
+<a href="../modules/resty.dns.balancer.html#setCallback">setCallback</a> for details.</li>
 </ul>
 
 
@@ -349,74 +345,13 @@
 
     <h3>Usage:</h3>
     <ul>
-        <pre class="example"><span class="comment">-- hosts
+        <pre class="example"><span class="comment">-- hosts example
 </span><span class="keyword">local</span> hosts = {
-  <span class="string">"kong.com"</span>,                                        <span class="comment">-- name only, as string
-</span>  { name = <span class="string">"gelato.io"</span> },                            <span class="comment">-- name only, as table
+  <span class="string">"konghq.com"</span>,                                      <span class="comment">-- name only, as string
+</span>  { name = <span class="string">"github.com"</span> },                           <span class="comment">-- name only, as table
 </span>  { name = <span class="string">"getkong.org"</span>, port = <span class="number">80</span>, weight = <span class="number">25</span> },  <span class="comment">-- fully specified, as table
 </span>}</pre>
     </ul>
-
-</dd>
-    <dt>
-    <a name = "objBalancer:setCallback"></a>
-    <strong>objBalancer:setCallback (callback)</strong>
-    </dt>
-    <dd>
-    Sets an event callback for user code.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">callback</span>
-         a function called when an address is added (after DNS
- resolution for example). Signature of the callback is
- <code>function(balancer, action, ip, port, hostname)</code>, where <code>ip</code> might also
- be a hostname if the DNS resolution returns another name (usually in
- SRV records). The <code>action</code> parameter will be either "added" or "removed".
-        </li>
-    </ul>
-
-
-
-
-
-</dd>
-    <dt>
-    <a name = "objBalancer:setPeerStatus"></a>
-    <strong>objBalancer:setPeerStatus (available, ip, port, hostname)</strong>
-    </dt>
-    <dd>
-    Sets the current status of the peer.
- This allows to temporarily suspend peers when they are offline/unhealthy,
- it will not alter the index distribution. The parameters passed in should
- be previous results from <a href="../modules/resty.dns.balancer.html#getPeer">getPeer</a>.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">available</span>
-         <code>true</code> for enabled/healthy, <code>false</code> for disabled/unhealthy
-        </li>
-        <li><span class="parameter">ip</span>
-         ip address of the peer
-        </li>
-        <li><span class="parameter">port</span>
-         the port of the peer (in address object, not as recorded with the Host!)
-        </li>
-        <li><span class="parameter">hostname</span>
-         (optional, defaults to the value of <code>ip</code>) the hostname
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        <code>true</code> on success, or <code>nil+err</code> if not found
-    </ol>
-
-
-
 
 </dd>
     <dt>
@@ -452,6 +387,76 @@
 
 
 </dd>
+    <dt>
+    <a name = "setCallback"></a>
+    <strong>setCallback (callback)</strong>
+    </dt>
+    <dd>
+    Sets an event callback for user code.
+ Signature of the callback is:</p>
+
+<p>   <code>function(balancer, action, ip, port, hostname)</code></p>
+
+<p> where <code>ip</code> might also
+ be a hostname if the DNS resolution returns another name (usually in
+ SRV records). The <code>action</code> parameter will be either <code>&quot;added&quot;</code> or <code>&quot;removed&quot;</code>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">callback</span>
+         a function called when an address is added (after DNS
+ resolution for example).
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        <code>true</code>, or throws an error on bad input
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "setPeerStatus"></a>
+    <strong>setPeerStatus (available, ip, port, hostname)</strong>
+    </dt>
+    <dd>
+    Sets the current status of the peer.
+ This allows to temporarily suspend peers when they are offline/unhealthy,
+ it will not alter the index distribution. The parameters passed in should
+ be previous results from <a href="../modules/resty.dns.balancer.html#getPeer">getPeer</a>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">available</span>
+         <code>true</code> for enabled/healthy, <code>false</code> for disabled/unhealthy
+        </li>
+        <li><span class="parameter">ip</span>
+         ip address of the peer
+        </li>
+        <li><span class="parameter">port</span>
+         the port of the peer (in address object, not as recorded with the Host!)
+        </li>
+        <li><span class="parameter">hostname</span>
+         (optional, defaults to the value of <code>ip</code>) the hostname
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        <code>true</code> on success, or <code>nil+err</code> if not found
+    </ol>
+
+
+
+
+</dd>
 </dl>
 
 
@@ -459,7 +464,7 @@
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2018-08-28 18:25:56 </i>
+<i style="float:right;">Last updated 2018-10-19 10:00:01 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
