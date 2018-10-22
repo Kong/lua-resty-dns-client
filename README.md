@@ -121,7 +121,7 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 - Fix: timeout and retrans options from `resolv.conf` were ignored by the
   `client` module.
 - Fix: nameservers with an ipv6 address would not be used properly. Also
-  added a flag `enable_ipv6` (default == `false`) to enable the useage of
+  added a flag `enable_ipv6` (default == `false`) to enable the usage of
   ipv6 nameservers.
 
 ### 0.4.1 (21-Apr-2017) Bugfix
