@@ -8,105 +8,13 @@ local icopy = require("pl.tablex").icopy
 ------------------------
 local dnscache, client, balancer
 
-local gettime, sleep
-if ngx then
-  gettime = ngx.now
-  sleep = ngx.sleep
-else
-  local socket = require("socket")
-  gettime = socket.gettime
-  sleep = socket.sleep
-end
+local helpers = require "spec.test_helpers"
+local gettime = helpers.gettime
+local sleep = helpers.sleep
+local dnsSRV = function(...) return helpers.dnsSRV(client, ...) end
+local dnsA = function(...) return helpers.dnsA(client, ...) end
+local dnsAAAA = function(...) return helpers.dnsAAAA(client, ...) end
 
--- creates an SRV record in the cache
-local dnsSRV = function(records, staleTtl)
-  -- if single table, then insert into a new list
-  if not records[1] then records = { records } end
-
-  for _, record in ipairs(records) do
-    record.type = client.TYPE_SRV
-
-    -- check required input
-    assert(record.target, "target field is required for SRV record")
-    assert(record.name, "name field is required for SRV record")
-    assert(record.port, "port field is required for SRV record")
-    record.name = record.name:lower()
-
-    -- optionals, insert defaults
-    record.weight = record.weight or 10
-    record.ttl = record.ttl or 600
-    record.priority = record.priority or 20
-    record.class = record.class or 1
-  end
-  -- set timeouts
-  records.touch = gettime()
-  records.expire = gettime() + records[1].ttl
-
-  -- create key, and insert it
-  local key = records[1].type..":"..records[1].name
-  dnscache:set(key, records, records[1].ttl + (staleTtl or 4))
-  -- insert last-succesful lookup type
-  dnscache:set(records[1].name, records[1].type)
-  return records
-end
-
--- creates an A record in the cache
-local dnsA = function(records, staleTtl)
-  -- if single table, then insert into a new list
-  if not records[1] then records = { records } end
-
-  for _, record in ipairs(records) do
-    record.type = client.TYPE_A
-
-    -- check required input
-    assert(record.address, "address field is required for A record")
-    assert(record.name, "name field is required for A record")
-    record.name = record.name:lower()
-
-    -- optionals, insert defaults
-    record.ttl = record.ttl or 600
-    record.class = record.class or 1
-  end
-  -- set timeouts
-  records.touch = gettime()
-  records.expire = gettime() + records[1].ttl
-
-  -- create key, and insert it
-  local key = records[1].type..":"..records[1].name
-  dnscache:set(key, records, records[1].ttl + (staleTtl or 4))
-  -- insert last-succesful lookup type
-  dnscache:set(records[1].name, records[1].type)
-  return records
-end
-
--- creates an AAAA record in the cache
-local dnsAAAA = function(records, staleTtl)
-  -- if single table, then insert into a new list
-  if not records[1] then records = { records } end
-
-  for _, record in ipairs(records) do
-    record.type = client.TYPE_AAAA
-
-    -- check required input
-    assert(record.address, "address field is required for AAAA record")
-    assert(record.name, "name field is required for AAAA record")
-    record.name = record.name:lower()
-
-    -- optionals, insert defaults
-    record.ttl = record.ttl or 600
-    record.class = record.class or 1
-  end
-  -- set timeouts
-  records.touch = gettime()
-  records.expire = gettime() + records[1].ttl
-
-  -- create key, and insert it
-  local key = records[1].type..":"..records[1].name
-  dnscache:set(key, records, records[1].ttl + (staleTtl or 4))
-  -- insert last-succesful lookup type
-  dnscache:set(records[1].name, records[1].type)
-  return records
-end
 
 -- checks the integrity of a list, returns the length of list + number of non-array keys
 local check_list = function(t)

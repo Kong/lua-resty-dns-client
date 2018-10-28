@@ -17,6 +17,7 @@ dependencies = {
   "lua >= 5.1, < 5.4",
   "penlight > 1.1, < 2.0",
   "lrandom",
+  "lua-resty-timer < 1.0",
 }
 build = {
   type = "builtin",
