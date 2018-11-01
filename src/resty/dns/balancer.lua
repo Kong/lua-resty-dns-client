@@ -278,15 +278,32 @@ function ring_balancer:removeHost(hostname, port)
 end
 
 
-function ring_balancer:getPeer(hashValue, retryCount, cacheOnly)
+function ring_balancer:getPeer(cacheOnly, handle, hashValue)
   local pointer
   if self.weight == 0 then
     return nil, balancer_base.errors.ERR_NO_PEERS_AVAILABLE
   end
 
+  if handle then
+    -- existing handle, so it's a retry
+    if hashValue then
+      -- we have a new hashValue, use it anyway
+      handle.hashValue = hashValue
+    else
+      hashValue = handle.hashValue  -- reuse existing (if any) hashvalue
+    end
+    handle.retryCount = handle.retryCount + 1
+  else
+    -- no handle, so this is a first try
+    handle = {
+      retryCount = 0,
+      hashValue = hashValue,
+    }
+  end
+
   -- calculate starting point
   if hashValue then
-    hashValue = hashValue + (retryCount or 0)
+    hashValue = hashValue + handle.retryCount
     pointer = 1 + (hashValue % self.wheelSize)
   else
     -- no hash, so get the next one, round-robin like
@@ -303,7 +320,9 @@ function ring_balancer:getPeer(hashValue, retryCount, cacheOnly)
     local address = self.wheel[pointer]
     local ip, port, hostname = address:getPeer(cacheOnly)
     if ip then
-      return ip, port, hostname
+      -- success, update handle
+      handle.address = address
+      return ip, port, hostname, handle
 
     elseif port == balancer_base.errors.ERR_DNS_UPDATED then
       -- we just need to retry the same index, no change for 'pointer', just
