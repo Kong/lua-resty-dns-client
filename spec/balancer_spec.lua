@@ -440,6 +440,17 @@ describe("[ringbalancer]", function()
         assert.is_true(ok)
         assert.is_nil(err)
       end)
+      it("valid handle accepted", function()
+        local b = check_balancer(balancer.new { dns = client })
+        dnsA({
+          { name = "kong.inc", address = "4.3.2.1" },
+        })
+        b:addHost("kong.inc", 80, 10)
+        local _, _, _, handle = b:getPeer()
+        local ok, err = b:setPeerStatus(false, handle)
+        assert.is_true(ok)
+        assert.is_nil(err)
+      end)
       it("invalid target returns an error", function()
         local b = check_balancer(balancer.new { dns = client })
         dnsA({
@@ -470,6 +481,35 @@ describe("[ringbalancer]", function()
         local ok, err = b:setPeerStatus(false, "mashape1.com", 80, "mashape.com")
         assert.is_nil(ok)
         assert.equals("no peer found by name 'mashape.com' and address mashape1.com:80", err)
+      end)
+      it("SRV target with A record targets can be changed with a handle", function()
+        local b = check_balancer(balancer.new { dns = client })
+        dnsA({
+          { name = "mashape1.com", address = "12.34.56.1" },
+        })
+        dnsA({
+          { name = "mashape2.com", address = "12.34.56.2" },
+        })
+        dnsSRV({
+          { name = "mashape.com", target = "mashape1.com", port = 8001, weight = 5 },
+          { name = "mashape.com", target = "mashape2.com", port = 8002, weight = 5 },
+        })
+        b:addHost("mashape.com", 80, 10)
+
+        local _, _, _, handle = b:getPeer()
+        local ok, err = b:setPeerStatus(false, handle)
+        assert.is_true(ok)
+        assert.is_nil(err)
+
+        _, _, _, handle = b:getPeer()
+        ok, err = b:setPeerStatus(false, handle)
+        assert.is_true(ok)
+        assert.is_nil(err)
+
+        local ip, port = b:getPeer()
+        assert.is_nil(ip)
+        assert.matches("No peers are available", port)
+
       end)
       it("SRV target with port=0 returns the default port", function()
         local b = check_balancer(balancer.new { dns = client })
@@ -530,7 +570,6 @@ describe("[ringbalancer]", function()
         },
         dns = client,
       })
-      -- run down the wheel twice
       local addr, port, host = b:getPeer()
       assert.equal("1.2.3.4", addr)
       assert.equal(8001, port)
@@ -635,7 +674,7 @@ describe("[ringbalancer]", function()
       -- run down the wheel, hitting all indices once
       local res = {}
       for n = 1, 15 do
-        local addr, port, host = b:getPeer(n)
+        local addr, port, host = b:getPeer(false, nil, n)
         res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
         res[host..":"..port] = (res[host..":"..port] or 0) + 1
       end
@@ -645,7 +684,7 @@ describe("[ringbalancer]", function()
       res = {}
       local hash = 6  -- just pick one
       for _ = 1, 15 do
-        local addr, port, host = b:getPeer(hash)
+        local addr, port, host = b:getPeer(false, nil, hash)
         res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
         res[host..":"..port] = (res[host..":"..port] or 0) + 1
       end
@@ -673,8 +712,8 @@ describe("[ringbalancer]", function()
       })
       -- run down the wheel, hitting all indices once
       for n = 0, 9 do
-        local addr1, port1, host1 = b:getPeer(n)
-        local addr2, port2, host2 = b:getPeer(n+10) -- wraps around, modulo
+        local addr1, port1, host1 = b:getPeer(false, nil, n)
+        local addr2, port2, host2 = b:getPeer(false, nil, n + 10) -- wraps around, modulo
         assert.equal(addr1, addr2)
         assert.equal(port1, port2)
         assert.equal(host1, host2)
@@ -699,8 +738,10 @@ describe("[ringbalancer]", function()
       })
       -- run down the wheel, index 0, increasing the retry counter
       local res = {}
+      local handle
       for n = 0, 9 do
-        local addr, port, _ = b:getPeer(0, n)
+        local addr, port, _
+        addr, port, _, handle = b:getPeer(false, handle, 0, n)
         assert.string(addr)
         assert.number(port)
         local key = addr..":"..port
@@ -730,7 +771,7 @@ describe("[ringbalancer]", function()
       -- run down the wheel twice
       local res = {}
       for n = 1, 15*2 do
-        local addr, port, host = b:getPeer(n)
+        local addr, port, host = b:getPeer(false, nil, n)
         res[addr..":"..port] = (res[addr..":"..port] or 0) + 1
         res[host..":"..port] = (res[host..":"..port] or 0) + 1
       end
@@ -759,7 +800,7 @@ describe("[ringbalancer]", function()
       assert(b:setPeerStatus(false, "5.6.7.8", 321, "getkong.org"))
       -- getPeer fails with `nil` and `err` when there are no more available peers
       for n = 1, 15*2 do
-        local ok, err = b:getPeer(n)
+        local ok, err = b:getPeer(false, nil, n)
         assert.falsy(ok)
         assert.same("No peers are available", err)
       end
@@ -781,7 +822,7 @@ describe("[ringbalancer]", function()
       spy.on(client, "resolve")
       local hash = nil
       local cache_only = true
-      local ip, port, host = b:getPeer(hash, nil, cache_only)
+      local ip, port, host = b:getPeer(cache_only, nil, hash)
       assert.spy(client.resolve).Not.called_with("mashape.com",nil, nil)
       assert.equal("1.2.3.4", ip)  -- initial un-updated ip address
       assert.equal(80, port)
@@ -798,7 +839,7 @@ describe("[ringbalancer]", function()
       assert.equals("No peers are available", port)
       assert.is_nil(host)
 
-      ip, port, host = b:getPeer(6) -- just pick a hash
+      ip, port, host = b:getPeer(false, nil, 6) -- just pick a hash
       assert.is_nil(ip)
       assert.equals("No peers are available", port)
       assert.is_nil(host)
