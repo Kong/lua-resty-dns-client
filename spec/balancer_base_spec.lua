@@ -1,13 +1,13 @@
 
-local dnscache, client, balancer_base
+local client, balancer_base
 
 
 local helpers = require "spec.test_helpers"
-local gettime = helpers.gettime
-local sleep = helpers.sleep
+--local gettime = helpers.gettime
+--local sleep = helpers.sleep
 local dnsSRV = function(...) return helpers.dnsSRV(client, ...) end
 local dnsA = function(...) return helpers.dnsA(client, ...) end
-local dnsAAAA = function(...) return helpers.dnsAAAA(client, ...) end
+--local dnsAAAA = function(...) return helpers.dnsAAAA(client, ...) end
 local dnsExpire = helpers.dnsExpire
 
 
@@ -30,7 +30,6 @@ describe("[balancer_base]", function()
         "nameserver 8.8.8.8"
       },
     })
-    dnscache = client.getcache()  -- must be after 'init' call because it is replaced
     snapshot = assert:snapshot()
   end)
 

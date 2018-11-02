@@ -6,7 +6,7 @@ local icopy = require("pl.tablex").icopy
 ------------------------
 -- START TEST HELPERS --
 ------------------------
-local dnscache, client, balancer
+local client, balancer
 
 local helpers = require "spec.test_helpers"
 local gettime = helpers.gettime
@@ -123,7 +123,6 @@ describe("[ringbalancer]", function()
         "nameserver 8.8.8.8"
       },
     })
-    dnscache = client.getcache()  -- must be after 'init' call because it is replaced
     snapshot = assert:snapshot()
   end)
 
@@ -1549,8 +1548,6 @@ describe("[ringbalancer]", function()
           "nameserver 127.0.0.1:22000" -- make sure dns query fails
         },
       })
-      -- refetch the cache, since the 'init' call above caused it to be replaced
-      dnscache = client.getcache()
       record.expire = gettime() -1 -- expire current dns cache record
       -- run entire wheel to make sure the expired one is requested, so it can fail
       for _ = 1, b.wheelSize do b:getPeer() end
@@ -1565,8 +1562,6 @@ describe("[ringbalancer]", function()
           "nameserver 8.8.8.8"
         },
       })
-      -- refetch the cache, since the 'init' call above caused it to be replaced
-      dnscache = client.getcache()
       dnsA({
         { name = "mashape.com", address = "1.2.3.4" },
       })
