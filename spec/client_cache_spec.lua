@@ -15,7 +15,7 @@ local dump = function(...)
   print(require("pl.pretty").write({...}))
 end
 
-describe("DNS client cache", function()
+describe("[DNS client cache]", function()
 
   local client, resolver, query_func
 
