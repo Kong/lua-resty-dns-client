@@ -100,6 +100,7 @@ local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
 local TTL_0_RETRY = 60      -- Maximum life-time for hosts added with ttl=0, requery after it expires
 local REQUERY_INTERVAL = 30 -- Interval for requerying failed dns queries
+local SRV_0_WEIGHT = 1      -- SRV record with weight 0 should be hit minimally, hence we replace by 1
 
 local dns_client = require "resty.dns.client"
 local dns_utils = require "resty.dns.utils"
@@ -257,6 +258,7 @@ function objBalancer:newAddress(addr)
 
   ngx_log(ngx_DEBUG, addr.host.log_prefix, "new address for host '", addr.host.hostname,
           "' created: ", addr.ip, ":", addr.port, " (weight ", addr.weight,")")
+
   addr.host.balancer:callback("added", addr.ip, addr.port, addr.host.hostname)
   addr.host.balancer:onAddAddress(addr)
   return addr
@@ -290,7 +292,7 @@ local sorts = {
     -- build table with keys
     for i, v in ipairs(result) do
       sorted[i] = v
-      v.__balancerSortKey = string_format("%06d:%s:%s:%s", v.priority, v.target, v.port, v.weight)
+      v.__balancerSortKey = string_format("%06d:%s:%s", v.priority, v.target, v.port)
     end
     -- sort by the keys
     table_sort(sorted, sortQuery)
@@ -424,10 +426,18 @@ function objHost:queryDns(cacheOnly)
         self:addAddress(newEntry)
         dirty = true
       else
-        -- it already existed (same ip, port and weight)
-        ngx_log(ngx_DEBUG, self.log_prefix, "unchanged dns record entry for ",
-                self.hostname, ": ", (newEntry.target or newEntry.address),
-                ":", newEntry.port) -- port = nil for A or AAAA records
+        -- it already existed (same ip, port)
+        if newEntry.weight and
+           newEntry.weight ~= oldEntry.weight and
+           not (newEntry.weight == 0  and oldEntry.weight == SRV_0_WEIGHT) then
+          -- weight changed (can only be an SRV)
+          self:findAddress(oldEntry):change(newEntry.weight == 0 and SRV_0_WEIGHT or newEntry.weight)
+          dirty = true
+        else
+          ngx_log(ngx_DEBUG, self.log_prefix, "unchanged dns record entry for ",
+                  self.hostname, ": ", (newEntry.target or newEntry.address),
+                  ":", newEntry.port) -- port = nil for A or AAAA records
+        end
         done[key] = true
         dCount = dCount + 1
       end
@@ -506,7 +516,7 @@ function objHost:addAddress(entry)
     -- Special case: SRV with weight = 0 should be included, but with
     -- the lowest possible probability of being hit. So we force it to
     -- weight 1.
-    weight = 1
+    weight = SRV_0_WEIGHT
   end
   local addresses = self.addresses
   addresses[#addresses + 1] = self.balancer:newAddress {
@@ -517,20 +527,29 @@ function objHost:addAddress(entry)
   }
 end
 
+-- Looks up an `address` by a dns entry
+-- @param entry (table) DNS entry (single entry, not the full record)
+-- @return address object or nil if not found
+function objHost:findAddress(entry)
+  for _, addr in ipairs(self.addresses) do
+    if (addr.ip == (entry.address or entry.target)) and
+        addr.port == (entry.port or self.port) then
+      -- found it
+      return addr
+    end
+  end
+  return -- not found
+end
+
 -- Looks up and disables an `address` object from the `host`.
 -- @param entry (table) DNS entry (single entry, not the full record)
 -- @return address object that was disabled
 function objHost:disableAddress(entry)
-  -- first lookup address object
-  for _, addr in ipairs(self.addresses) do
-    if (addr.ip == (entry.address or entry.target)) and
-        addr.port == (entry.port or self.port) and
-        not addr.disabled then
-      -- found it
-      addr:disable()
-      return addr
-    end
+  local addr = self:findAddress(entry)
+  if addr and not addr.disabled then
+    addr:disable()
   end
+  return addr
 end
 
 -- Looks up and deletes previously disabled `address` objects from the `host`.
