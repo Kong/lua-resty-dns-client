@@ -25,7 +25,7 @@ local dump = function(...)
 end
 -- luacheck: pop
 
-describe("DNS client", function()
+describe("[DNS client]", function()
 
   local client, resolver, query_func
 

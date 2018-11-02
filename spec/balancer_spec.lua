@@ -105,7 +105,7 @@ end
 ----------------------
 
 
-describe("Loadbalancer", function()
+describe("[ringbalancer]", function()
 
   local snapshot
 
