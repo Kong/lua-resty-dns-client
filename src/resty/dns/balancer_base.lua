@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------
--- __Base-balancer__
+-- Base-balancer.
 --
 -- The base class for balancers. It implements DNS resolution and fanning
 -- out hostnames to addresses. It builds and maintains a tree structure:
@@ -73,12 +73,44 @@
 -- dereference them (so they will be resolved at balancer-runtime, not at
 -- balancer-buildtime).
 --
+-- __Handle management__
+--
+-- handles are used to retain state between consecutive invocations (calls to
+-- the `objBalancer:getPeer` method). The handles are re-used and tracked for
+-- garbage collection. There are two uses:
+--
+--  1. tracking progress (eg. keeping a retry count)
+--  2. tracking resources (eg. with least connections a handle 'owns' 1
+--  connection, to be released when the connection is finished)
+--
+-- The basic flow and related responsibilities:
+--
+--  - user code calls `getPeer` to get an ip/port/hostname according to the load
+--  balancing algorithm.
+--  - `getPeer` both takes a handle (on a retry), and returns it (on success).
+--  - handles are managed by the base balancer, and `getPeer` can call
+--  `objBalancer:getHandle` to get one.
+--  - on a retry `getPeer` should call `objAddress:release(handle, ignore)` to release
+--  the previous (failed) try, and it should clear the `handle.address` field.
+--  - on success `getPeer` should set `handle.address` with the address object that
+--  returned the ip, port, and hostname, and return the handle with those.
+--  - at the end of the connection life cycle the user code should call
+--  `objBalancer:release` to release the resources, and/or collect necessary
+--  statistics.
+--  - as a safety check the handles will have a GC method attached. So in case
+--  they are not explicitly released the (default) GC handler will call
+--  `handle.address:release(handle, true)` to make sure no resources leak. The
+--  default GC handler can be replaced by supplying one to
+--  `objBalancer:getHandle` when called by `getPeer` to get a handle.
+--
+--
 -- __Clustering__
 --
--- The balancer is deterministic in the way it adds/removes elements. So as long as
--- the confguration is the same, and adding/removing hosts is done in the same order
--- the exact same balancer will be created. This is important in case of
--- consistent-hashing approaches, since each cluster member needs to behave the same.
+-- The base-balancer is deterministic in the way it adds/removes elements. So
+-- as long as the confguration is the same, and adding/removing hosts is done
+-- in the same order the exact same balancer will be created. This is important
+-- in case of consistent-hashing approaches, since each cluster member needs to
+-- behave the same.
 --
 -- _NOTE_: there is one caveat, DNS resolution is not deterministic, because timing
 -- differences might cause different orders of adding/removing. Hence the structures
@@ -104,6 +136,7 @@ local SRV_0_WEIGHT = 1      -- SRV record with weight 0 should be hit minimally,
 
 local dns_client = require "resty.dns.client"
 local dns_utils = require "resty.dns.utils"
+local dns_handle = require "resty.dns.handle"
 local resty_timer = require "resty.timer"
 local time = ngx.now
 local table_sort = table.sort
@@ -225,6 +258,20 @@ end
 -- Set the availability of the address.
 function objAddr:setState(available)
   self.available = not not available -- force to boolean
+end
+
+-- Release any connection resources or record statistics.
+-- This method is called from:
+--
+--  - `objBalancer:getPeer` on a retry (at least it should!, to release anything
+--    from the previous attempt).
+--  - `objBalancer:release` when called explicitly, by user code.
+--  - `objBalancer:release` when called implicitly through the default GC handler
+--    (see `objBalancer:getHandle` to provide your custom GC handler)
+--
+-- @param handle the `handle` as returned by `getPeer`.
+-- @param ignore if truthy, indicate to ignore collected statistics
+function objAddr:release(handle, ignore)
 end
 
 
@@ -711,6 +758,14 @@ end
 -- Within a balancer the combination of `hostname` and `port` must be unique, so
 -- multiple calls with the same target will only update the `weight` of the
 -- existing entry.
+-- @param hostname the hostname/ip to add. It will be resolved and based on
+-- that 1 or more addresses will be added to the balancer.
+-- @param port the port to use for the addresses. If the hostname resolves to
+-- an SRV record, this will be ignored, and the port will be taken from the
+-- SRV record.
+-- @param nodeWeight the weight to use for the addresses. If the hostname
+-- resolves to an SRV record, this will be ignored, and the weight will be
+-- taken from the SRV record.
 -- @return balancer object, or throw an error on bad input
 -- @within User properties
 function objBalancer:addHost(hostname, port, nodeWeight)
@@ -803,7 +858,7 @@ end
 -- Will not throw an error if the hostname is not in the current list.
 -- @param hostname hostname to remove
 -- @param port port to remove (optional, defaults to 80 if omitted)
--- @return balancer object, or an error on bad input
+-- @return balancer object, or throws an error on bad input
 -- @within User properties
 function objBalancer:removeHost(hostname, port)
   assert(type(hostname) == "string", "expected a hostname (string), got "..tostring(hostname))
@@ -863,12 +918,13 @@ function objBalancer:getPeer(cacheOnly, handle, hashValue)
       hashValue = handle.hashValue  -- reuse exiting (if any) hashvalue
     end
     handle.retryCount = handle.retryCount + 1
+    handle.address:release(handle, true)  -- release any resources
+    handle.address = nil -- resources have been released, so prevent GC from kicking in again
   else
     -- no handle, so this is a first try
-    handle = {
-      retryCount = 0,
-      hashValue = hashValue,
-    }
+    handle = self:getHandle()  -- insert GC method if required
+    handle.retryCount = 0,
+    handle.hashValue = hashValue,
   end
 
   local address
@@ -877,6 +933,7 @@ function objBalancer:getPeer(cacheOnly, handle, hashValue)
       -- the balancer weight is 0, so we have no targets at all.
       -- This check must be inside the loop, since caling getPeer could
       -- cause a DNS update.
+      self:release(handle, true)  -- no address is set, just release handle itself
       return nil, errors.ERR_NO_PEERS_AVAILABLE
     end
 
@@ -894,10 +951,12 @@ function objBalancer:getPeer(cacheOnly, handle, hashValue)
     elseif port == errors.ERR_ADDRESS_UNAVAILABLE then
       -- the address was marked as unavailable, keep track here
       -- if all of them fail, then do:
+      self:release(handle, true)  -- no address is set, just release handle itself
       return nil, errors.ERR_NO_PEERS_AVAILABLE
 
     elseif port ~= errors.ERR_DNS_UPDATED then
       -- an unknown error
+      self:release(handle, true)  -- no address is set, just release handle itself
       return nil, port
     end
 
@@ -1025,6 +1084,43 @@ function objBalancer:setCallback(callback)
   self.callback = callback
   return true
 end
+
+
+--- Releases any resources held by `handle`.
+-- When a request/connection is completed, call this function to release
+-- any resources. When implementing a new algorithm do not override this
+-- function, but instead override `objAddr:release`.
+--
+-- NOTE: `objAddr:release` releases the connection resources, this method releases
+-- the connection resources AND the handle itself! So don't call this if you
+-- need to re-use the handle! (eg. a retry in `getPeer`)
+-- @param handle the `handle` as returned by `getPeer`.
+-- @param ignore if truthy, indicate to ignore collected statistics
+function objBalancer:release(handle, ignore)
+  if handle.address then
+    handle.address:release(handle, ignore)
+  end
+  dns_handle.release(handle)
+end
+
+
+local function default_gc_handler(handle)
+  if handle.address then
+    handle.address:release(handle, true)
+  end
+end
+
+
+--- Gets a handle to be returned by `getPeer`.
+-- The default __gc method (if nothing is provided). It will be calling
+-- `address:release(handle, true)`.
+-- @param gc_handler (optional) a custome GC method for when the handle is
+-- not explicitly released.
+-- @return handle
+function objBalancer:getHandle(gc_handler)
+  return dns_handle.get(gc_handler or default_gc_handler)
+end
+
 
 --- Creates a new base balancer.
 --

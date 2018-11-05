@@ -42,6 +42,120 @@ describe("[balancer_base]", function()
 
 
 
+  describe("handles", function()
+
+    local b, gc_count, release, release_ignore
+
+    setup(function()
+      b = balancer_base.new({
+        dns = client,
+      })
+
+      function b:newAddress(addr)
+        addr = self.super.newAddress(self, addr)
+        function addr:release(handle, ignore)
+          if ignore then
+            release_ignore = (release_ignore or 0) + 1
+          else
+            release = (release or 0) + 1
+          end
+        end
+      end
+
+      local gc = function(handle)
+        gc_count = (gc_count or 0) + 1
+      end
+
+      function b:getPeer(cacheOnly, handle, hashValue)
+        handle = handle or self:getHandle(gc)
+        local addr = self.addresses[1]
+        handle.address = addr
+        return addr.ip, addr.port, addr.host.hostname, handle
+      end
+    end)
+
+    before_each(function()
+      dnsSRV({
+        { name = "konghq.com", target = "1.1.1.1", port = 3, weight = 6 },
+      })
+      gc_count = 0
+      release = 0
+      release_ignore = 0
+    end)
+
+    it("releasing a handle doesn't call GC", function()
+      b:addHost("konghq.com", 8000, 100)
+      local _, _, _, handle = b:getPeer()
+      b:release(handle, false)
+      collectgarbage()
+      collectgarbage()
+      assert.equal(0, gc_count)
+      assert.equal(1, release)
+      assert.equal(0, release_ignore)
+    end)
+
+    it("releasing a handle doesn't call GC (ignore)", function()
+      b:addHost("konghq.com", 8000, 100)
+      local _, _, _, handle = b:getPeer()
+      b:release(handle, true)
+      collectgarbage()
+      collectgarbage()
+      assert.equal(0, gc_count)
+      assert.equal(0, release)
+      assert.equal(1, release_ignore)
+    end)
+
+    it("not-releasing a handle does call GC, with ignore", function()
+      b:addHost("konghq.com", 8000, 100)
+      local _, _, _, handle = b:getPeer()
+      handle = nil
+      collectgarbage()
+      collectgarbage()
+      assert.equal(1, gc_count)
+      assert.equal(0, release)
+      assert.equal(0, release_ignore)
+    end)
+
+    it("releasing re-uses a handle", function()
+      b:addHost("konghq.com", 8000, 100)
+      local _, _, _, handle = b:getPeer()
+      local handle_id = tostring(handle)
+      b:release(handle)
+      handle = nil
+      collectgarbage()
+      collectgarbage()
+      _, _, _, handle = b:getPeer()
+      assert.equal(handle_id, tostring(handle))
+    end)
+
+    it("not-releasing a handle does not re-use it", function()
+      b:addHost("konghq.com", 8000, 100)
+      local _, _, _, handle = b:getPeer()
+      local handle_id = tostring(handle)
+      handle = nil
+      collectgarbage()
+      collectgarbage()
+      _, _, _, handle = b:getPeer()
+      --assert.not_equal(handle_id, tostring(handle))
+      if handle_id == tostring(handle) then
+        -- hmmmmm they are the same....
+        -- seems that occasionally the new table gets allocated at the exact
+        -- same location, causing false positives. So let's drop the new table
+        -- again, and check that the GC was called twice!
+        handle = nil
+        collectgarbage()
+        collectgarbage()
+        assert.equal(2, gc_count)
+        assert.equal(0, release)
+        assert.equal(0, release_ignore)
+      end
+
+    end)
+
+  end)
+
+
+
   describe("event order", function()
 
     local event_list, b
