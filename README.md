@@ -15,7 +15,11 @@ Features
  - caches dns query results in memory
  - synchronizes requests (a single request for many requestors, eg. when cached ttl expires under heavy load)
  - `toip` applies a local (weighted) round-robin scheme on the query results
- - ring-balancer for round-robin and consistent-hashing approaches
+ - ring-balancer for:
+   - (weighted) round-robin, and
+   - consistent-hashing balancing
+ - least-connections balancer
+
 
 Copyright and license
 =====================
