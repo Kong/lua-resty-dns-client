@@ -18,6 +18,7 @@ dependencies = {
   "penlight > 1.1, < 2.0",
   "lrandom",
   "lua-resty-timer < 1.0",
+  "binaryheap >= 0.4",
 }
 build = {
   type = "builtin",
