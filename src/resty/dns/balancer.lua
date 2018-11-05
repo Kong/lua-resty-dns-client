@@ -293,12 +293,12 @@ function ring_balancer:getPeer(cacheOnly, handle, hashValue)
       hashValue = handle.hashValue  -- reuse existing (if any) hashvalue
     end
     handle.retryCount = handle.retryCount + 1
+    --handle.address:release(handle, true)  -- not needed, nothing to release
   else
     -- no handle, so this is a first try
-    handle = {
-      retryCount = 0,
-      hashValue = hashValue,
-    }
+    handle = self:getHandle()  -- no GC specific handler needed
+    handle.retryCount = 0
+    handle.hashValue = hashValue
   end
 
   -- calculate starting point
