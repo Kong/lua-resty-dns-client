@@ -7,7 +7,7 @@ describe("[handle]", function()
   local handle
 
   before_each(function()
-    handle = require "resty.dns.handle"
+    handle = require "resty.dns.balancer.handle"
   end)
 
 

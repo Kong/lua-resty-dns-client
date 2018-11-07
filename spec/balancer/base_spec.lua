@@ -16,9 +16,9 @@ describe("[balancer_base]", function()
   local snapshot
 
   setup(function()
-    _G.package.loaded["dns.client"] = nil -- make sure module is reloaded
+    _G.package.loaded["resty.dns.client"] = nil -- make sure module is reloaded
     _G._TEST = true  -- expose internals for test purposes
-    balancer_base = require "resty.dns.balancer_base"
+    balancer_base = require "resty.dns.balancer.base"
     client = require "resty.dns.client"
   end)
 
@@ -86,7 +86,7 @@ describe("[balancer_base]", function()
     it("releasing a handle doesn't call GC", function()
       b:addHost("konghq.com", 8000, 100)
       local _, _, _, handle = b:getPeer()
-      b:release(handle, false)
+      handle:release(false)
       collectgarbage()
       collectgarbage()
       assert.equal(0, gc_count)
@@ -97,7 +97,7 @@ describe("[balancer_base]", function()
     it("releasing a handle doesn't call GC (ignore)", function()
       b:addHost("konghq.com", 8000, 100)
       local _, _, _, handle = b:getPeer()
-      b:release(handle, true)
+      handle:release(true)
       collectgarbage()
       collectgarbage()
       assert.equal(0, gc_count)
@@ -120,7 +120,7 @@ describe("[balancer_base]", function()
       b:addHost("konghq.com", 8000, 100)
       local _, _, _, handle = b:getPeer()
       local handle_id = tostring(handle)
-      b:release(handle)
+      handle:release(false)
       handle = nil
       collectgarbage()
       collectgarbage()

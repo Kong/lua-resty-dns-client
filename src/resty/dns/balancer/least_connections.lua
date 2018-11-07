@@ -14,7 +14,7 @@
 -- @license Apache 2.0
 
 
-local balancer_base = require "resty.dns.balancer_base"
+local balancer_base = require "resty.dns.balancer.base"
 local binaryHeap = require "binaryheap"
 local ngx_log = ngx.log
 local ngx_DEBUG = ngx.DEBUG
@@ -101,7 +101,6 @@ end
 -- removing the address, so delete from binaryHeap
 function lc:onRemoveAddress(address)
   self.binaryHeap:remove(address)
-  self.super.onRemoveAddress(self, address)
 end
 
 
@@ -202,7 +201,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
     return ip, port, host, handle
   else
     handle.address = nil
-    self:release(handle, true)
+    handle:release(true)
     return nil, port
   end
 end

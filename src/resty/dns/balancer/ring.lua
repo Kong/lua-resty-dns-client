@@ -34,7 +34,7 @@
 -- @license Apache 2.0
 
 
-local balancer_base = require "resty.dns.balancer_base"
+local balancer_base = require "resty.dns.balancer.base"
 local lrandom = require "random"
 local bit = require "bit"
 local math_floor = math.floor
@@ -257,14 +257,12 @@ end
 function ring_balancer:afterHostUpdate(host)
   -- recalculate to move indices of added/disabled addresses
   self:redistributeIndices()
-  return self.super.afterHostUpdate(self, host)
 end
 
 
 function ring_balancer:beforeHostDelete(host)
   -- recalculate to move indices of disabled hosts
   self:redistributeIndices()
-  return self.super.beforeHostDelete(self, host)
 end
 
 

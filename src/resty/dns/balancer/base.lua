@@ -95,13 +95,11 @@
 --  - on success `getPeer` should set `handle.address` with the address object that
 --  returned the ip, port, and hostname, and return the handle with those.
 --  - at the end of the connection life cycle the user code should call
---  `objBalancer:release` to release the resources, and/or collect necessary
+--  `handle:release` to release the resources, and/or collect necessary
 --  statistics.
 --  - as a safety check the handles will have a GC method attached. So in case
 --  they are not explicitly released the (default) GC handler will call
---  `handle.address:release(handle, true)` to make sure no resources leak. The
---  default GC handler can be replaced by supplying one to
---  `objBalancer:getHandle` when called by `getPeer` to get a handle.
+--  `handle.address:release(handle, true)` to make sure no resources leak.
 --
 --
 -- __Clustering__
@@ -136,7 +134,7 @@ local SRV_0_WEIGHT = 1      -- SRV record with weight 0 should be hit minimally,
 
 local dns_client = require "resty.dns.client"
 local dns_utils = require "resty.dns.utils"
-local dns_handle = require "resty.dns.handle"
+local dns_handle = require "resty.dns.balancer.handle"
 local resty_timer = require "resty.timer"
 local time = ngx.now
 local table_sort = table.sort
@@ -241,7 +239,7 @@ function objAddr:delete()
 
   self.host.balancer:callback("removed", self.ip,
                               self.port, self.host.hostname)
-  self.host.balancer:onRemoveAddress(self)
+  self.host.balancer:removeAddress(self)
   self.host = nil
 end
 
@@ -306,8 +304,7 @@ function objBalancer:newAddress(addr)
   ngx_log(ngx_DEBUG, addr.host.log_prefix, "new address for host '", addr.host.hostname,
           "' created: ", addr.ip, ":", addr.port, " (weight ", addr.weight,")")
 
-  addr.host.balancer:callback("added", addr.ip, addr.port, addr.host.hostname)
-  addr.host.balancer:onAddAddress(addr)
+  addr.host.balancer:addAddress(addr)
   return addr
 end
 
@@ -829,10 +826,15 @@ end
 --
 -- When implementing a new balancer algorithm, you might want to override this method.
 function objBalancer:onAddAddress(address)
+end
+
+function objBalancer:addAddress(address)
+  self:callback("added", address.ip, address.port, address.host.hostname)
   local list = self.addresses
   assert(list[address] == nil, "Can't add address twice")
 
   list[#list + 1] = address
+  self:onAddAddress(address)
 end
 
 
@@ -840,6 +842,9 @@ end
 --
 -- When implementing a new balancer algorithm, you might want to override this method.
 function objBalancer:onRemoveAddress(address)
+end
+
+function objBalancer:removeAddress(address)
   local list = self.addresses
 
   -- go remove it
@@ -847,6 +852,7 @@ function objBalancer:onRemoveAddress(address)
     if addr == address then
       -- found it
       table_remove(list, i)
+      self:onRemoveAddress(address)
       return
     end
   end
@@ -892,15 +898,31 @@ end
 
 
 --- Gets the next ip address and port according to the loadbalancing scheme.
--- If the dns record attached to the requested wheel index is expired, then it will
+-- If the dns record attached to the requested address is expired, then it will
 -- be renewed and as a consequence the balancer algorithm might be updated.
 -- @param cacheOnly If truthy, no dns lookups will be done, only cache.
 -- @param handle the `handle` returned by a previous call to `getPeer`. This will
 -- retain some state over retries. See also `setPeerStatus`.
--- @param hashValue (optional) number for consistent hashing, round-robins if
--- omitted. The hashValue must be an (evenly distributed) `integer >= 0`.
+-- @param hashValue (optional) number for consistent hashing, if supported by
+-- the algorithm. The hashValue must be an (evenly distributed) `integer >= 0`.
 -- @return `ip + port + hostname` + `handle`, or `nil+error`
 -- @within User properties
+-- @usage
+-- -- get an IP address
+-- local ip, port, hostname, handle = b:getPeer()
+--
+-- -- go do the connection stuff here...
+--
+-- -- on a retry do:
+-- ip, port, port, handle = b:getPeer(true, handle)  -- pass in previous 'handle'
+--
+-- -- go try again
+--
+-- -- when it finally fails
+-- handle:release(true)  -- release resources, but ignore stats
+--
+-- -- on a successful connection
+-- handle:release()  -- release resources, and collect stats
 function objBalancer:getPeer(cacheOnly, handle, hashValue)
 
   error(("Not implemented. cacheOnly: %s hashValue: %s"):format(
@@ -1096,29 +1118,47 @@ end
 -- need to re-use the handle! (eg. a retry in `getPeer`)
 -- @param handle the `handle` as returned by `getPeer`.
 -- @param ignore if truthy, indicate to ignore collected statistics
-function objBalancer:release(handle, ignore)
-  if handle.address then
-    handle.address:release(handle, ignore)
-  end
-  dns_handle.release(handle)
-end
+--function objBalancer:release(handle, ignore)
+--  return handle:release(ignore)
+--end
 
 
 local function default_gc_handler(handle)
   if handle.address then
-    handle.address:release(handle, true)
+    handle.address:release(handle, true) -- release connection resources
   end
+  -- this is a GC handler, so we're not releasing the handle itself!
+  -- It would mean ressurecting it, hence we let it go and don't reuse.
 end
 
+local function default_release_handler(handle, ignore)
+  if handle.address then
+    handle.address:release(handle, ignore) -- release connection resources
+  end
+  dns_handle.release(handle)  -- release handle itself for reuse
+end
 
 --- Gets a handle to be returned by `getPeer`.
--- The default __gc method (if nothing is provided). It will be calling
--- `address:release(handle, true)`.
--- @param gc_handler (optional) a custome GC method for when the handle is
+-- A handle will have two functions attached to it:
+--
+-- 1. _the release handler_. This can be called from user code as `handle:release(...)`.
+-- The default handler will be `handle:release(ignore)` and will call
+-- `handle.address:release(handle, ignore)`, and then release the handle itself, so it
+-- can be reused.
+--
+-- 2. _the GC handler_, which is a fallback in case the handle wasn't released
+-- by user code. It will be called as `gc_handler(handle)` and the default
+-- implementation will call `handle.address:release(handle, true)`.
+--
+-- @param gc_handler (optional) a custom GC method for when the handle is
 -- not explicitly released.
+-- @param release_handler (optional) a custom release method to release the
+-- resources when the request cycle is complete.
 -- @return handle
-function objBalancer:getHandle(gc_handler)
-  return dns_handle.get(gc_handler or default_gc_handler)
+function objBalancer:getHandle(gc_handler, release_handler)
+  local h = dns_handle.get(gc_handler or default_gc_handler)
+  h.release = release_handler or default_release_handler
+  return h
 end
 
 
