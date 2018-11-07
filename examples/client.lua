@@ -1,5 +1,5 @@
 local pretty = require("pl.pretty").write
-local client = require("dns.client")
+local client = require("resty.dns.client")
 client.init()
 
 local function go(host, typ)
