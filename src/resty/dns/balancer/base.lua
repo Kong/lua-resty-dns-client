@@ -136,7 +136,7 @@ local SRV_0_WEIGHT = 1      -- SRV record with weight 0 should be hit minimally,
 
 local dns_client = require "resty.dns.client"
 local dns_utils = require "resty.dns.utils"
-local dns_handle = require "resty.dns.handle"
+local dns_handle = require "resty.dns.balancer.handle"
 local resty_timer = require "resty.timer"
 local time = ngx.now
 local table_sort = table.sort
@@ -241,7 +241,7 @@ function objAddr:delete()
 
   self.host.balancer:callback("removed", self.ip,
                               self.port, self.host.hostname)
-  self.host.balancer:onRemoveAddress(self)
+  self.host.balancer:removeAddress(self)
   self.host = nil
 end
 
@@ -306,8 +306,7 @@ function objBalancer:newAddress(addr)
   ngx_log(ngx_DEBUG, addr.host.log_prefix, "new address for host '", addr.host.hostname,
           "' created: ", addr.ip, ":", addr.port, " (weight ", addr.weight,")")
 
-  addr.host.balancer:callback("added", addr.ip, addr.port, addr.host.hostname)
-  addr.host.balancer:onAddAddress(addr)
+  addr.host.balancer:addAddress(addr)
   return addr
 end
 
@@ -829,10 +828,15 @@ end
 --
 -- When implementing a new balancer algorithm, you might want to override this method.
 function objBalancer:onAddAddress(address)
+end
+
+function objBalancer:addAddress(address)
+  self:callback("added", address.ip, address.port, address.host.hostname)
   local list = self.addresses
   assert(list[address] == nil, "Can't add address twice")
 
   list[#list + 1] = address
+  self:onAddAddress(address)
 end
 
 
@@ -840,6 +844,9 @@ end
 --
 -- When implementing a new balancer algorithm, you might want to override this method.
 function objBalancer:onRemoveAddress(address)
+end
+
+function objBalancer:removeAddress(address)
   local list = self.addresses
 
   -- go remove it
@@ -847,6 +854,7 @@ function objBalancer:onRemoveAddress(address)
     if addr == address then
       -- found it
       table_remove(list, i)
+      self:onRemoveAddress(address)
       return
     end
   end

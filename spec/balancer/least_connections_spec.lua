@@ -69,9 +69,9 @@ describe("[least-connections]", function()
   local snapshot
 
   setup(function()
-    _G.package.loaded["dns.client"] = nil -- make sure module is reloaded
+    _G.package.loaded["resty.dns.client"] = nil -- make sure module is reloaded
     _G._TEST = true  -- expose internals for test purposes
-    lcb = require "resty.dns.least_connections"
+    lcb = require "resty.dns.balancer.least_connections"
     client = require "resty.dns.client"
   end)
 

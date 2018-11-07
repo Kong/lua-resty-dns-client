@@ -110,9 +110,9 @@ describe("[ringbalancer]", function()
   local snapshot
 
   setup(function()
-    _G.package.loaded["dns.client"] = nil -- make sure module is reloaded
+    _G.package.loaded["resty.dns.client"] = nil -- make sure module is reloaded
     _G._TEST = true  -- expose internals for test purposes
-    balancer = require "resty.dns.balancer"
+    balancer = require "resty.dns.balancer.ring"
     client = require "resty.dns.client"
   end)
 
