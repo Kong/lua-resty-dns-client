@@ -237,7 +237,7 @@ function objAddr:delete()
   ngx_log(ngx_DEBUG, self.log_prefix, "deleting address: ", self.ip, ":", self.port,
           " (host ", (self.host or empty).hostname, ")")
 
-  self.host.balancer:callback("removed", self.ip,
+  self.host.balancer:callback("removed", self, self.ip,
                               self.port, self.host.hostname)
   self.host.balancer:removeAddress(self)
   self.host = nil
@@ -829,9 +829,10 @@ function objBalancer:onAddAddress(address)
 end
 
 function objBalancer:addAddress(address)
-  self:callback("added", address.ip, address.port, address.host.hostname)
   local list = self.addresses
   assert(list[address] == nil, "Can't add address twice")
+
+  self:callback("added", self, address.ip, address.port, address.host.hostname)
 
   list[#list + 1] = address
   self:onAddAddress(address)
@@ -994,29 +995,35 @@ end
 -- This allows to temporarily suspend peers when they are offline/unhealthy,
 -- it will not modify the address held by the record. The parameters passed in should
 -- be previous results from `getPeer`.
--- Call this either as `setPeerStatus(available, handle)` or as `setPeerStatus(available, ip, port, <hostname>)`.
--- Using the `handle` is preferred since it is guaranteed to match an address. By ip/port/name
+-- Call this either as `setPeerStatus(available, address)`, `setPeerStatus(available, handle)``, or as `setPeerStatus(available, ip, port, <hostname>)`.
+-- Using the `address` or `handle` is preferred since it is guaranteed to match. By ip/port/name
 -- might fail if there are too many DNS levels.
 -- @param available `true` for enabled/healthy, `false` for disabled/unhealthy
--- @param ip_or_handle ip address of the peer, or the `handle` returned by `getPeer`
+-- @param ip_address_handle ip address of the peer, the `address` object, or the `handle`.
 -- @param port the port of the peer (in address object, not as recorded with the Host!)
 -- @param hostname (optional, defaults to the value of `ip`) the hostname
 -- @return `true` on success, or `nil+err` if not found
 -- @within User properties
-function objBalancer:setPeerStatus(available, ip_or_handle, port, hostname)
+function objBalancer:setPeerStatus(available, ip_address_handle, port, hostname)
 
-  if type(ip_or_handle) == "table" then
-    -- it's a handle from `setPeer`.
-    ip_or_handle.address:setState(available)
+  if type(ip_address_handle) == "table" then
+    -- it's not an IP
+    if ip_address_handle.address then
+      -- it's a handle from `setPeer`.
+      ip_address_handle.address:setState(available)
+    else
+      -- it's and address
+      ip_address_handle:setState(available)
+    end
     return true
   end
 
   -- no handle, so go and search for it
-  hostname = hostname or ip_or_handle
+  hostname = hostname or ip_address_handle
   local name_srv = {}
   for _, addr, host in self:addressIter() do
     if host.hostname == hostname and addr.port == port then
-      if addr.ip == ip_or_handle then
+      if addr.ip == ip_address_handle then
         -- found it
         addr:setState(available)
         return true
@@ -1034,7 +1041,7 @@ function objBalancer:setPeerStatus(available, ip_or_handle, port, hostname)
       end
     end
   end
-  local msg = ("no peer found by name '%s' and address %s:%s"):format(hostname, ip_or_handle, tostring(port))
+  local msg = ("no peer found by name '%s' and address %s:%s"):format(hostname, ip_address_handle, tostring(port))
   if name_srv[1] then
     -- no match, but we did find a named one, so making the message more explicit
     msg = msg .. ", possibly the IP originated from these nested dns names: " ..
@@ -1093,7 +1100,7 @@ end
 -- every address added to/removed from the balancer.
 -- Signature of the callback is:
 --
---   `function(balancer, action, ip, port, hostname)`
+--   `function(balancer, action, address, ip, port, hostname)`
 --
 -- where `ip` might also
 -- be a hostname if the DNS resolution returns another name (usually in

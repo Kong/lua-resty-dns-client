@@ -440,6 +440,17 @@ describe("[ringbalancer]", function()
         assert.is_true(ok)
         assert.is_nil(err)
       end)
+      it("valid address accepted", function()
+        local b = check_balancer(balancer.new { dns = client })
+        dnsA({
+          { name = "kong.inc", address = "4.3.2.1" },
+        })
+        b:addHost("kong.inc", 80, 10)
+        local _, _, _, handle = b:getPeer()
+        local ok, err = b:setPeerStatus(false, handle.address)
+        assert.is_true(ok)
+        assert.is_nil(err)
+      end)
       it("valid handle accepted", function()
         local b = check_balancer(balancer.new { dns = client })
         dnsA({
@@ -503,6 +514,35 @@ describe("[ringbalancer]", function()
 
         _, _, _, handle = b:getPeer()
         ok, err = b:setPeerStatus(false, handle)
+        assert.is_true(ok)
+        assert.is_nil(err)
+
+        local ip, port = b:getPeer()
+        assert.is_nil(ip)
+        assert.matches("No peers are available", port)
+
+      end)
+      it("SRV target with A record targets can be changed with an address", function()
+        local b = check_balancer(balancer.new { dns = client })
+        dnsA({
+          { name = "mashape1.com", address = "12.34.56.1" },
+        })
+        dnsA({
+          { name = "mashape2.com", address = "12.34.56.2" },
+        })
+        dnsSRV({
+          { name = "mashape.com", target = "mashape1.com", port = 8001, weight = 5 },
+          { name = "mashape.com", target = "mashape2.com", port = 8002, weight = 5 },
+        })
+        b:addHost("mashape.com", 80, 10)
+
+        local _, _, _, handle = b:getPeer()
+        local ok, err = b:setPeerStatus(false, handle.address)
+        assert.is_true(ok)
+        assert.is_nil(err)
+
+        _, _, _, handle = b:getPeer()
+        ok, err = b:setPeerStatus(false, handle.address)
         assert.is_true(ok)
         assert.is_nil(err)
 
@@ -855,7 +895,7 @@ describe("[ringbalancer]", function()
         hosts = {},  -- no hosts, so balancer is empty
         dns = client,
         wheelSize = 10,
-        callback = function(balancer, action, ip, port, hostname)
+        callback = function(balancer, action, address, ip, port, hostname)
           assert.equal(b, balancer)
           if action == "added" then
             count_add = count_add + 1
@@ -884,7 +924,7 @@ describe("[ringbalancer]", function()
         hosts = {},  -- no hosts, so balancer is empty
         dns = client,
         wheelSize = 10,
-        callback = function(balancer, action, ip, port, hostname)
+        callback = function(balancer, action, address, ip, port, hostname)
           assert.equal(b, balancer)
           if action == "added" then
             count_add = count_add + 1
@@ -917,7 +957,7 @@ describe("[ringbalancer]", function()
         hosts = {},  -- no hosts, so balancer is empty
         dns = client,
         wheelSize = 10,
-        callback = function(balancer, action, ip, port, hostname)
+        callback = function(balancer, action, address, ip, port, hostname)
           assert.equal(b, balancer)
           if action == "added" then
             count_add = count_add + 1
