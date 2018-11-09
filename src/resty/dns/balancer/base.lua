@@ -1115,21 +1115,6 @@ function objBalancer:setCallback(callback)
 end
 
 
---- Releases any resources held by `handle`.
--- When a request/connection is completed, call this function to release
--- any resources. When implementing a new algorithm do not override this
--- function, but instead override `objAddr:release`.
---
--- NOTE: `objAddr:release` releases the connection resources, this method releases
--- the connection resources AND the handle itself! So don't call this if you
--- need to re-use the handle! (eg. a retry in `getPeer`)
--- @param handle the `handle` as returned by `getPeer`.
--- @param ignore if truthy, indicate to ignore collected statistics
---function objBalancer:release(handle, ignore)
---  return handle:release(ignore)
---end
-
-
 local function default_gc_handler(handle)
   if handle.address then
     handle.address:release(handle, true) -- release connection resources

@@ -1,0 +1,248 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<head>
+    <title>DNS client for OpenResty</title>
+    <link rel="stylesheet" href="../ldoc.css" type="text/css" />
+</head>
+<body>
+
+<div id="container">
+
+<div id="product">
+	<div id="product_logo"></div>
+	<div id="product_name"><big><b></b></big></div>
+	<div id="product_description"></div>
+</div> <!-- id="product" -->
+
+
+<div id="main">
+
+
+<!-- Menu -->
+
+<div id="navigation">
+<br/>
+<h1>lua-resty-dns-client</h1>
+
+<ul>
+  <li><a href="../index.html">Index</a></li>
+</ul>
+
+<h2>Contents</h2>
+<ul>
+<li><a href="#Functions">Functions</a></li>
+</ul>
+
+
+<h2>Modules</h2>
+<ul class="nowrap">
+  <li><a href="../modules/resty.dns.balancer.base.html">resty.dns.balancer.base</a></li>
+  <li><a href="../modules/resty.dns.balancer.handle.html">resty.dns.balancer.handle</a></li>
+  <li><a href="../modules/resty.dns.balancer.least_connections.html">resty.dns.balancer.least_connections</a></li>
+  <li><strong>resty.dns.balancer.ring</strong></li>
+  <li><a href="../modules/resty.dns.client.html">resty.dns.client</a></li>
+  <li><a href="../modules/resty.dns.utils.html">resty.dns.utils</a></li>
+</ul>
+<h2>Topics</h2>
+<ul class="">
+  <li><a href="../topics/readme.md.html">readme</a></li>
+</ul>
+
+</div>
+
+<div id="content">
+
+<h1>Module <code>resty.dns.balancer.ring</code></h1>
+<p>Ring-balancer.</p>
+<p> This balancer implements a consistent-hashing algorithm as well as a
+ weighted-round-robin.</p>
+
+<p> This loadbalancer is designed for consistent hashing approaches and
+ to retain consistency on a maximum level while dealing with dynamic
+ changes like adding/removing hosts/targets (ketama principle).</p>
+
+<p> Due to its deterministic way of operating it is also capable of running
+ identical balancers (identical consistent rings) on multiple servers/workers
+ (though it does not implement inter-server/worker communication).</p>
+
+<p> Only dns is non-deterministic as it might occur when a peer is requested,
+ and hence should be avoided (by directly inserting ip addresses).
+ Adding/deleting hosts, etc (as long as done in the same order) is always
+ deterministic.</p>
+
+<p> Whenever dns resolution fails for a hostname, the host will relinguish all
+ the indices it owns, and they will be reassigned to other targets.
+ Periodically the query for the hostname will be retried, and if it succeeds
+ it will get (different) indices reassigned to it.</p>
+
+<p> When using <code>setPeerStatus</code> to mark a peer as unavailable, the slots it owns will
+ not be reassigned. So after a recovery, hashing will be restored.</p>
+
+<p> <strong>NOTE:</strong> This documentation only described the altered user methods/properties
+ from a see the <code>user properties</code> from the <code>balancer_base</code> for a complete overview.</p>
+    <h3>Info:</h3>
+    <ul>
+        <li><strong>Copyright</strong>: 2016-2018 Kong Inc. All rights reserved.</li>
+        <li><strong>License</strong>: Apache 2.0</li>
+        <li><strong>Author</strong>: Thijs Schreijer</li>
+    </ul>
+
+
+<h2><a href="#Functions">Functions</a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#hashCrc32">hashCrc32 (str)</a></td>
+	<td class="summary">Creates a CRC32 hash value from a string.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#hashMd5">hashMd5 (str)</a></td>
+	<td class="summary">Creates a MD5 hash value from a string.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#new">new (opts)</a></td>
+	<td class="summary">Creates a new balancer.</td>
+	</tr>
+</table>
+
+<br/>
+<br/>
+
+
+    <h2 class="section-header "><a name="Functions"></a>Functions</h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "hashCrc32"></a>
+    <strong>hashCrc32 (str)</strong>
+    </dt>
+    <dd>
+    Creates a CRC32 hash value from a string.
+ The string will be hashed using CRC32. The returned hash value can be
+ used as input for the <code>getpeer</code> function. This is simply a shortcut to
+ <code>ngx.crc32_short</code>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">str</span>
+         (string) value to create the hash from
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        32-bit numeric hash
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "hashMd5"></a>
+    <strong>hashMd5 (str)</strong>
+    </dt>
+    <dd>
+    Creates a MD5 hash value from a string.
+ The string will be hashed using MD5, and then shortened to 4 bytes.
+ The returned hash value can be used as input for the <code>getpeer</code> function.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">str</span>
+         (string) value to create the hash from
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        32-bit numeric hash
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "new"></a>
+    <strong>new (opts)</strong>
+    </dt>
+    <dd>
+    <p>Creates a new balancer.  The balancer is based on a wheel with a number of
+ positions (the index on the wheel). The
+ indices will be randomly distributed over the targets. The number of indices
+ assigned will be relative to the weight.</p>
+
+<p> The options table has the following fields;</p>
+
+<ul>
+<li><code>hosts</code> (optional) containing hostnames, ports and weights. If omitted,
+ports and weights default respectively to 80 and 10. The list will be sorted
+before being added, so the order of entry is deterministic.</li>
+<li><code>wheelSize</code> (optional) for total number of positions in the balancer (the
+indices), if omitted
+the size of <code>order</code> is used, or 1000 if <code>order</code> is not provided. It is important
+to have enough indices to keep the ring properly randomly distributed. If there
+are to few indices for the number of targets then the load distribution might
+become to coarse. Consider the maximum number of targets expected, as new
+hosts can be dynamically added, and dns renewals might yield larger record
+sets. The <code>wheelSize</code> cannot be altered, only a new wheel can be created, but
+then all consistency would be lost. On a similar note; making it too big,
+will have a performance impact when the wheel is modified as too many indices
+will have to be moved between targets. A value of 50 to 200 indices per entry
+seems about right.</li>
+<li><code>order</code> (optional) if given, a list of random numbers, size <code>wheelSize</code>, used to
+randomize the wheel. Duplicates are not allowed in the list.</li>
+<li><code>requery</code> (optional) interval of requerying the dns server for previously
+failed queries. Defaults to 1 if omitted (in seconds)</li>
+<li><code>ttl0</code> (optional) Maximum lifetime for records inserted with <code>ttl=0</code>, to verify
+the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
+<li><code>callback</code> (optional) a function called when an address is added. See
+<code>setCallback</code> for details.</li>
+</ul>
+
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">opts</span>
+         table with options
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        new balancer object or nil+error
+    </ol>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <pre class="example"><span class="comment">-- hosts example
+</span><span class="keyword">local</span> hosts = {
+  <span class="string">"konghq.com"</span>,                                      <span class="comment">-- name only, as string
+</span>  { name = <span class="string">"github.com"</span> },                           <span class="comment">-- name only, as table
+</span>  { name = <span class="string">"getkong.org"</span>, port = <span class="number">80</span>, weight = <span class="number">25</span> },  <span class="comment">-- fully specified, as table
+</span>}</pre>
+    </ul>
+
+</dd>
+</dl>
+
+
+</div> <!-- id="content" -->
+</div> <!-- id="main" -->
+<div id="about">
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
+<i style="float:right;">Last updated 2018-11-09 13:08:02 </i>
+</div> <!-- id="about" -->
+</div> <!-- id="container" -->
+</body>
+</html>

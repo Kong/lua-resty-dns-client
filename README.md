@@ -41,6 +41,18 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
+### 3.0.0 (7-Nov-2018) Refactor & least-connections balancer
+
+- Refactor: split the balancer in a base class (handling DNS resolution) and
+  the ring-balancer, implementing the algorithm.
+- Added: new least-connections balancer
+- Fix: since addresses could occasionally hold names instead of IP addresses,
+  it could happen that a call to `setPeerStatus` was unsuccessful, because the
+  IP address would not match the name in the `address` object. Now a
+  `handle` is returned by `getPeer`.
+- BREAKING: `getPeer` signature (and return values) changed, making this a
+  breaking change.
+
 ### 2.2.0 (28-Aug-2018) Fixes and a new option
 
 - Added: a new option `validTtl` that, if set, will forcefully override the

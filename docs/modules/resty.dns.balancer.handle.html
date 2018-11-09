@@ -1,0 +1,214 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<head>
+    <title>DNS client for OpenResty</title>
+    <link rel="stylesheet" href="../ldoc.css" type="text/css" />
+</head>
+<body>
+
+<div id="container">
+
+<div id="product">
+	<div id="product_logo"></div>
+	<div id="product_name"><big><b></b></big></div>
+	<div id="product_description"></div>
+</div> <!-- id="product" -->
+
+
+<div id="main">
+
+
+<!-- Menu -->
+
+<div id="navigation">
+<br/>
+<h1>lua-resty-dns-client</h1>
+
+<ul>
+  <li><a href="../index.html">Index</a></li>
+</ul>
+
+<h2>Contents</h2>
+<ul>
+<li><a href="#Functions">Functions</a></li>
+</ul>
+
+
+<h2>Modules</h2>
+<ul class="nowrap">
+  <li><a href="../modules/resty.dns.balancer.base.html">resty.dns.balancer.base</a></li>
+  <li><strong>resty.dns.balancer.handle</strong></li>
+  <li><a href="../modules/resty.dns.balancer.least_connections.html">resty.dns.balancer.least_connections</a></li>
+  <li><a href="../modules/resty.dns.balancer.ring.html">resty.dns.balancer.ring</a></li>
+  <li><a href="../modules/resty.dns.client.html">resty.dns.client</a></li>
+  <li><a href="../modules/resty.dns.utils.html">resty.dns.utils</a></li>
+</ul>
+<h2>Topics</h2>
+<ul class="">
+  <li><a href="../topics/readme.md.html">readme</a></li>
+</ul>
+
+</div>
+
+<div id="content">
+
+<h1>Module <code>resty.dns.balancer.handle</code></h1>
+<p>Handle module.</p>
+<p> Implements handles to be used by the <code>objBalancer:getPeer</code> method. These
+ implement a __gc method for tracking statistics and not leaking resources
+ in case a connection gets aborted prematurely.</p>
+
+<p> This module is only relevant when implementing your own balancer
+ algorithms.</p>
+    <h3>Info:</h3>
+    <ul>
+        <li><strong>Copyright</strong>: 2016-2018 Kong Inc. All rights reserved.</li>
+        <li><strong>License</strong>: Apache 2.0</li>
+        <li><strong>Author</strong>: Thijs Schreijer</li>
+    </ul>
+
+
+<h2><a href="#Functions">Functions</a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#get">get (__gc)</a></td>
+	<td class="summary">Gets a handle from the cache.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#release">release (handle)</a></td>
+	<td class="summary">Returns a handle to the cache.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#setCacheSize">setCacheSize (size)</a></td>
+	<td class="summary">Sets a new cache size.</td>
+	</tr>
+</table>
+
+<br/>
+<br/>
+
+
+    <h2 class="section-header "><a name="Functions"></a>Functions</h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "get"></a>
+    <strong>get (__gc)</strong>
+    </dt>
+    <dd>
+    Gets a handle from the cache.
+ The handle comes from the cache or it is newly created. A handle is just a
+ table. It will have two special fields:</p>
+
+<ul>
+<li><code>__udata</code>: (read-only) a userdata used to track the lifetime of the handle</li>
+<li><code>__gc</code>: (read/write) this method will be called on GC.</li>
+</ul>
+
+
+<p> <strong>NOTE</strong>: the <code>__gc</code> will only be called when the handle is garbage collected,
+ not when it is returned by calling <a href="../modules/resty.dns.balancer.handle.html#release">release</a>.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">__gc</span>
+         (optional, function) the method called when the handle is GC'ed.
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        handle
+    </ol>
+
+
+
+    <h3>Usage:</h3>
+    <ul>
+        <pre class="example"><span class="keyword">local</span> handle = _M
+
+<span class="keyword">local</span> my_gc_handler = <span class="keyword">function</span>(self)
+  <span class="global">print</span>(self.name .. <span class="string">" was deleted"</span>)
+<span class="keyword">end</span>
+
+<span class="keyword">local</span> h1 = handle.get(my_gc_handler)
+h1.name = <span class="string">"Obama"</span>
+<span class="keyword">local</span> h2 = handle.get(my_gc_handler)
+h2.name = <span class="string">"Trump"</span>
+
+handle.release(h1)   <span class="comment">-- explicitly release it
+</span>h1 = <span class="keyword">nil</span>
+h2 = <span class="keyword">nil</span>             <span class="comment">-- not released, will be GC'ed
+</span><span class="global">collectgarbage</span>()
+<span class="global">collectgarbage</span>()     <span class="comment">--&gt; "Trump was deleted"</span></pre>
+    </ul>
+
+</dd>
+    <dt>
+    <a name = "release"></a>
+    <strong>release (handle)</strong>
+    </dt>
+    <dd>
+    Returns a handle to the cache.
+ The handle will be cleared, returned to the cache, and its <code>__gc</code> handle
+ will NOT be called.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">handle</span>
+         the handle to return to the cache
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        nothing
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "setCacheSize"></a>
+    <strong>setCacheSize (size)</strong>
+    </dt>
+    <dd>
+    Sets a new cache size.  The default size is 1000.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">size</span>
+         the new size.
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        nothing, or throws an error on bad input
+    </ol>
+
+
+
+
+</dd>
+</dl>
+
+
+</div> <!-- id="content" -->
+</div> <!-- id="main" -->
+<div id="about">
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
+<i style="float:right;">Last updated 2018-11-09 13:08:02 </i>
+</div> <!-- id="about" -->
+</div> <!-- id="container" -->
+</body>
+</html>

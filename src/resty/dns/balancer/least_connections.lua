@@ -1,9 +1,9 @@
 --------------------------------------------------------------------------
 -- Least-connections balancer.
 --
--- This balancer implements a least-connections algorithm.
---
---
+-- This balancer implements a least-connections algorithm. The balancer will
+-- honour the weights. See the base-balancer for details on how the weights
+-- are set.
 --
 -- __NOTE:__ This documentation only described the altered user methods/properties
 -- from the base-balancer. See the `user properties` from the `balancer_base` for a
