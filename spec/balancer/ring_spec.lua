@@ -991,6 +991,50 @@ describe("[ringbalancer]", function()
   end)
 
   describe("wheel manipulation", function()
+    it("wheel updates are atomic", function()
+      -- testcase for issue #49, see:
+      -- https://github.com/Kong/lua-resty-dns-client/issues/49
+      local order_of_events = {}
+      local b
+      b = check_balancer(balancer.new {
+        hosts = {},  -- no hosts, so balancer is empty
+        dns = client,
+        wheelSize = 10,
+        callback = function(balancer, action, ip, port, hostname)
+          table.insert(order_of_events, "callback")
+          -- this callback is called when updating. So yield here and
+          -- verify that the second thread does not interfere with
+          -- the first update, yielded here.
+          ngx.sleep(0.1)
+        end
+      })
+      dnsA({
+        { name = "mashape1.com", address = "12.34.56.78" },
+      })
+      dnsA({
+        { name = "mashape2.com", address = "123.45.67.89" },
+      })
+      local t1 = ngx.thread.spawn(function()
+        table.insert(order_of_events, "thread1 start")
+        b:addHost("mashape1.com")
+        table.insert(order_of_events, "thread1 end")
+      end)
+      local t2 = ngx.thread.spawn(function()
+        table.insert(order_of_events, "thread2 start")
+        b:addHost("mashape2.com")
+        table.insert(order_of_events, "thread2 end")
+      end)
+      ngx.thread.wait(t1)
+      ngx.thread.wait(t2)
+      assert.same({
+        [1] = 'thread1 start',
+        [2] = 'callback',
+        [3] = 'thread1 end',
+        [4] = 'thread2 start',
+        [5] = 'callback',
+        [6] = 'thread2 end',
+      }, order_of_events)
+    end)
     it("equal weights and 'fitting' indices", function()
       dnsA({
         { name = "mashape.com", address = "1.2.3.4" },
