@@ -6,7 +6,7 @@
 --
 -- _NOTE_: parsing the files is done using blocking i/o file operations.
 --
--- @copyright 2016-2018 Kong Inc.
+-- @copyright 2016-2019 Kong Inc.
 -- @author Thijs Schreijer
 -- @license Apache 2.0
 

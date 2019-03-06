@@ -41,7 +41,7 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### x.x.x (xx-Mar-2019) Bugfixes
+### 3.0.1 (5-Mar-2019) Bugfix
 
 - Fix: "balancer is nil" error, see issue #49.
 

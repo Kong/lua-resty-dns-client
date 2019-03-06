@@ -30,7 +30,7 @@
 -- from a see the `user properties` from the `balancer_base` for a complete overview.
 --
 -- @author Thijs Schreijer
--- @copyright 2016-2018 Kong Inc. All rights reserved.
+-- @copyright 2016-2019 Kong Inc. All rights reserved.
 -- @license Apache 2.0
 
 
