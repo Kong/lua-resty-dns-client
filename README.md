@@ -24,7 +24,7 @@ Features
 Copyright and license
 =====================
 
-Copyright: (c) 2016-2018 Kong, Inc.
+Copyright: (c) 2016-2019 Kong, Inc.
 
 Author: Thijs Schreijer
 
@@ -40,6 +40,10 @@ History
 =======
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
+
+### x.x.x (xx-Mar-2019) Bugfixes
+
+- Fix: "balancer is nil" error, see issue #49.
 
 ### 3.0.0 (7-Nov-2018) Refactor & least-connections balancer
 
