@@ -353,34 +353,26 @@ sorts = setmetatable(sorts,{
     end,
   })
 
--- Queries the DNS for this hostname. Updates the underlying address objects.
--- This method always succeeds, but it might leave the balancer in a 0-weight
--- state if none of the hosts resolves.
--- @return `true`, always succeeds
-function objHost:queryDns(cacheOnly)
+local atomic_tracker = setmetatable({},{ __mode = "k" })
+local function assert_atomicity(f, self, ...)
+  -- if the following assertion failed, then the function probably yielded and
+  -- allowed other threads to enter simultaneously.
+  -- This was added to prevent issues like
+  -- https://github.com/Kong/lua-resty-dns-client/issues/49
+  -- to reappear in the future, providing a clear understanding of what is wrong
+  atomic_tracker[self.balancer] = assert(not atomic_tracker[self.balancer],
+    "Failed to run atomically, multiple threads updating balancer simultaneously")
 
-  ngx_log(ngx_DEBUG, self.log_prefix, "querying dns for ", self.hostname)
+  local ok, err = f(self, ...)
+  atomic_tracker[self.balancer] = nil
 
-  -- first thing we do is the dns query, this is the only place we possibly
-  -- yield (cosockets in the dns lib). So once that is done, we're 'atomic'
-  -- again, and we shouldn't have any nasty race conditions
-  local dns = self.balancer.dns
-  local newQuery, err, try_list = dns.resolve(self.hostname, nil, cacheOnly)
+  return ok, err
+end
 
+
+local function update_dns_result(self, newQuery, dns)
   local oldQuery = self.lastQuery or {}
   local oldSorted = self.lastSorted or {}
-
-  if err then
-    ngx_log(ngx_WARN, self.log_prefix, "querying dns for ", self.hostname,
-            " failed: ", err , ". Tried ", tostring(try_list))
-
-    -- query failed, create a fake recorded, flagged as failed.
-    -- the empty record will cause all existing addresses to be removed
-    newQuery = {
-      __errorQueryFlag = true  --flag to mark the record as a failed lookup
-    }
-    self.balancer:startRequery()
-  end
 
   -- we're using the dns' own cache to check for changes.
   -- if our previous result is the same table as the current result, then nothing changed
@@ -410,6 +402,7 @@ function objHost:queryDns(cacheOnly)
               self.hostname, ", still using ttl=0")
       return true
     end
+
     ngx_log(ngx_DEBUG, self.log_prefix, "ttl=0 detected for ",
             self.hostname)
     newQuery = {
@@ -520,6 +513,39 @@ function objHost:queryDns(cacheOnly)
   ngx_log(ngx_DEBUG, self.log_prefix, "querying dns and updating for ", self.hostname, " completed")
   return true
 end
+
+
+-- Queries the DNS for this hostname. Updates the underlying address objects.
+-- This method always succeeds, but it might leave the balancer in a 0-weight
+-- state if none of the hosts resolves.
+-- @return `true`, always succeeds
+function objHost:queryDns(cacheOnly)
+
+  ngx_log(ngx_DEBUG, self.log_prefix, "querying dns for ", self.hostname)
+
+  -- first thing we do is the dns query, this is the only place we possibly
+  -- yield (cosockets in the dns lib). So once that is done, we're 'atomic'
+  -- again, and we shouldn't have any nasty race conditions
+  local dns = self.balancer.dns
+  local newQuery, err, try_list = dns.resolve(self.hostname, nil, cacheOnly)
+
+  if err then
+    ngx_log(ngx_WARN, self.log_prefix, "querying dns for ", self.hostname,
+            " failed: ", err , ". Tried ", tostring(try_list))
+
+    -- query failed, create a fake recorded, flagged as failed.
+    -- the empty record will cause all existing addresses to be removed
+    newQuery = {
+      __errorQueryFlag = true  --flag to mark the record as a failed lookup
+    }
+    self.balancer:startRequery()
+  end
+
+  assert_atomicity(update_dns_result, self, newQuery, dns)
+
+  return true
+end
+
 
 -- Changes the host overall weight. It will also update the parent balancer object.
 -- This will be called by the `address` object whenever it changes its weight.
