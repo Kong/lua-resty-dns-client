@@ -525,7 +525,10 @@ function objHost:queryDns(cacheOnly)
 
   -- first thing we do is the dns query, this is the only place we possibly
   -- yield (cosockets in the dns lib). So once that is done, we're 'atomic'
-  -- again, and we shouldn't have any nasty race conditions
+  -- again, and we shouldn't have any nasty race conditions.
+  -- Note: the other place we may yield would be the callbacks, who's content
+  -- we do not control, hence they are executed delayed, to ascertain
+  -- atomicity.
   local dns = self.balancer.dns
   local newQuery, err, try_list = dns.resolve(self.hostname, nil, cacheOnly)
 
@@ -1131,12 +1134,26 @@ end
 -- where `ip` might also
 -- be a hostname if the DNS resolution returns another name (usually in
 -- SRV records). The `action` parameter will be either `"added"` or `"removed"`.
+--
+-- NOTE: the callback will be executed async (on a timer) so maybe executed
+-- only after the methods (`addHost` and `removeHost` for example) have returned.
 -- @param callback a function called when an address is added/removed
 -- @return `true`, or throws an error on bad input
 -- @within User properties
 function objBalancer:setCallback(callback)
   assert(type(callback) == "function", "expected a callback function")
   self.callback = callback
+
+  self.callback = function(balancer, action, address, ip, port, hostname)
+    local ok, err = ngx.timer.at(0, function(premature)
+      callback(balancer, action, address, ip, port, hostname)
+    end)
+
+    if not ok then
+      ngx.log(ngx.ERR, self.log_prefix, "failed to create the timer: ", err)
+    end
+  end
+
   return true
 end
 
@@ -1220,10 +1237,11 @@ _M.new = function(opts)
     requeryTimer = nil,  -- requery timer is not running, see `startRequery`
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
-    callback = opts.callback or function() end, -- callback for address mutations
   }
   self = setmetatable(self, mt_objBalancer)
   self.super = objBalancer
+
+  self:setCallback(opts.callback or function() end) -- callback for address mutations
 
   ngx_log(ngx_DEBUG, self.log_prefix, "balancer_base created")
   return self

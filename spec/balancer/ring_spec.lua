@@ -910,9 +910,11 @@ describe("[ringbalancer]", function()
         end
       })
       b:addHost("12.34.56.78", 123, 100)
+      ngx.sleep(0.1)
       assert.equal(1, count_add)
       assert.equal(0, count_remove)
       b:removeHost("12.34.56.78", 123)
+      ngx.sleep(0.1)
       assert.equal(1, count_add)
       assert.equal(1, count_remove)
     end)
@@ -943,9 +945,11 @@ describe("[ringbalancer]", function()
         { name = "mashape.com", address = "12.34.56.78" },
       })
       b:addHost("mashape.com", 123, 100)
+      ngx.sleep(0.1)
       assert.equal(2, count_add)
       assert.equal(0, count_remove)
       b:removeHost("mashape.com", 123)
+      ngx.sleep(0.1)
       assert.equal(2, count_add)
       assert.equal(2, count_remove)
     end)
@@ -982,9 +986,11 @@ describe("[ringbalancer]", function()
         { name = "mashape.com", target = "mashape2.com", port = 8002, weight = 5 },
       })
       b:addHost("mashape.com", 123, 100)
+      ngx.sleep(0.1)
       assert.equal(2, count_add)
       assert.equal(0, count_remove)
       b:removeHost("mashape.com", 123)
+      ngx.sleep(0.1)
       assert.equal(2, count_add)
       assert.equal(2, count_remove)
     end)
@@ -1026,13 +1032,14 @@ describe("[ringbalancer]", function()
       end)
       ngx.thread.wait(t1)
       ngx.thread.wait(t2)
+      ngx.sleep(0.1)
       assert.same({
         [1] = 'thread1 start',
-        [2] = 'callback',
-        [3] = 'thread1 end',
-        [4] = 'thread2 start',
+        [2] = 'thread1 end',
+        [3] = 'thread2 start',
+        [4] = 'thread2 end',
         [5] = 'callback',
-        [6] = 'thread2 end',
+        [6] = 'callback',
       }, order_of_events)
     end)
     it("equal weights and 'fitting' indices", function()
