@@ -861,7 +861,7 @@ function objBalancer:addAddress(address)
   local list = self.addresses
   assert(list[address] == nil, "Can't add address twice")
 
-  self:callback("added", self, address.ip, address.port, address.host.hostname)
+  self:callback("added", address, address.ip, address.port, address.host.hostname)
 
   list[#list + 1] = address
   self:onAddAddress(address)
