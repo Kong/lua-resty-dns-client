@@ -41,6 +41,11 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
+### 3.0.2 (8-Mar-2019) Bugfix
+
+- Fix: callback for adding an address did not pass the address object, but
+  instead passed the balancer object twice.
+
 ### 3.0.1 (5-Mar-2019) Bugfix
 
 - Fix: "balancer is nil" error, see issue #49.
