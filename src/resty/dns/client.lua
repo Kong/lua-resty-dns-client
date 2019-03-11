@@ -423,6 +423,12 @@ local poolMaxRetry
 --   "site.domain.org",
 -- }
 --
+-- -- Disables synchronization between queries, resulting in each lookup for the
+-- -- same name being executed in it's own query to the nameservers. The default
+-- -- (`false`) will synchronize multiple queries for the same name to a single
+-- -- query to the nameserver.
+-- noSynchronisation = false
+--
 -- assert(client.init({
 --          hosts = hosts,
 --          resolvConf = resolvConf,
@@ -434,6 +440,7 @@ local poolMaxRetry
 --          staleTtl = staleTtl,
 --          validTtl = validTtl,
 --          enable_ipv6 = enable_ipv6,
+--          noSynchronisation = noSynchronisation,
 --        })
 -- )
 _M.init = function(options)
