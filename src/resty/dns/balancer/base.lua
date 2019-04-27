@@ -145,6 +145,7 @@ local string_format = string.format
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
 local ngx_DEBUG = ngx.DEBUG
+local ngx_NOTICE = ngx.NOTICE
 local ngx_WARN = ngx.WARN
 local balancer_id_counter = 0
 
@@ -250,12 +251,29 @@ function objAddr:change(newWeight)
           self.weight, " -> ", newWeight)
 
   self.host:addWeight(newWeight - self.weight)
+  if not self.available then
+    self.host:addUnavailableWeight(newWeight - self.weight)
+  end
+
   self.weight = newWeight
 end
 
 -- Set the availability of the address.
 function objAddr:setState(available)
-  self.available = not not available -- force to boolean
+  available = not not available -- force to boolean
+  local old_state = self.available
+
+  if old_state == available then
+    return  -- no state change
+  end
+
+  -- state changed
+  self.available = available
+  if available then
+    self.host:addUnavailableWeight(-self.weight)
+  else
+    self.host:addUnavailableWeight(self.weight)
+  end
 end
 
 -- Release any connection resources or record statistics.
@@ -557,6 +575,13 @@ function objHost:addWeight(delta)
   self.balancer:addWeight(delta)
 end
 
+-- Changes the host overall unavailable weight. It will also update the parent balancer object.
+-- This will be called by the `address` object whenever it changes its unavailable weight.
+function objHost:addUnavailableWeight(delta)
+  self.unavailableWeight = self.unavailableWeight + delta
+  self.balancer:addUnavailableWeight(delta)
+end
+
 -- Updates the host nodeWeight.
 -- @return `true` if something changed that might impact the balancer algorithm
 function objHost:change(newWeight)
@@ -706,11 +731,12 @@ function objBalancer:newHost(host)
   host = setmetatable(host, mt_objHost)
   host.super = objHost
   host.log_prefix = host.balancer.log_prefix
-  host.weight = 0           -- overall weight of all addresses within this hostname
-  host.lastQuery = nil      -- last successful dns query performed
-  host.lastSorted = nil     -- last successful dns query, sorted for comparison
-  host.addresses = {}       -- list of addresses (address objects) this host resolves to
-  host.expire = nil         -- time when the dns query this host is based upon expires
+  host.weight = 0            -- overall weight of all addresses within this hostname
+  host.unavailableWeight = 0 -- overall weight of unavailable addresses within this hostname
+  host.lastQuery = nil       -- last successful dns query performed
+  host.lastSorted = nil      -- last successful dns query, sorted for comparison
+  host.addresses = {}        -- list of addresses (address objects) this host resolves to
+  host.expire = nil          -- time when the dns query this host is based upon expires
 
 
   -- insert into our parent balancer before recalculating (in queryDns)
@@ -920,10 +946,37 @@ function objBalancer:removeHost(hostname, port)
   return self
 end
 
+
+-- Updates the balancer health status
+function objBalancer:updateStatus()
+  local old_status = self.healthy
+
+  if self.weight == 0 then
+    self.healthy = false
+  else
+    self.healthy = ((self.weight - self.unavailableWeight) / self.weight * 100 > self.healthThreshold)
+  end
+
+  if self.healthy == old_status then
+    return -- no status change
+  end
+
+  ngx_log(self.healthy and ngx_NOTICE or ngx_WARN, self.log_prefix,
+          "switching health status from '", old_status, "' to '", self.healthy, "'")
+end
+
 -- Updates the total weight.
 -- @param delta the in/decrease of the overall weight (negative for decrease)
 function objBalancer:addWeight(delta)
   self.weight = self.weight + delta
+  self:updateStatus()
+end
+
+-- Updates the total unavailable weight.
+-- @param delta the in/decrease of the overall unavailable weight (negative for decrease)
+function objBalancer:addUnavailableWeight(delta)
+  self.unavailableWeight = self.unavailableWeight + delta
+  self:updateStatus()
 end
 
 
@@ -967,7 +1020,7 @@ function objBalancer:getPeer(cacheOnly, handle, hashValue)
       -- we have a new hashValue, use it anyway
       handle.hashValue = hashValue
     else
-      hashValue = handle.hashValue  -- reuse exiting (if any) hashvalue
+      hashValue = handle.hashValue  -- reuse existing (if any) hashvalue
     end
     handle.retryCount = handle.retryCount + 1
     handle.address:release(handle, true)  -- release any resources
@@ -981,8 +1034,8 @@ function objBalancer:getPeer(cacheOnly, handle, hashValue)
 
   local address
   while true do
-    if self.weight == 0 then
-      -- the balancer weight is 0, so we have no targets at all.
+    if self.weight == self.unavailableWeight then
+      -- we have no available targets at all.
       -- This check must be inside the loop, since caling getPeer could
       -- cause a DNS update.
       self:release(handle, true)  -- no address is set, just release handle itself
@@ -1196,6 +1249,22 @@ function objBalancer:getHandle(gc_handler, release_handler)
   return h
 end
 
+--- Gets the health of the balancer.
+-- The health is based on ratio of available and unavailable "weight" in the
+-- balancer. When the available % gets below the set `healthThreshold` value, the
+-- balancer is marked as unhealthy.
+-- Note that the overall weight depends on DNS resolution, and hence can
+-- change over time.
+-- @return healthy (boolean), total_weight (number), unavailable_weight (number)
+-- @usage
+-- local healthy, weight, unavailable = balancer:isHealthy()
+-- print("Total balancer weight is: ", weight)
+-- print("Available part is (%)   : ", (weight-unavailable)/weight * 100)
+-- print("Unavailable part is (%) : ", unavailable/weight * 100)
+-- print("Healthy?                : ", healthy)
+function objBalancer:isHealthy()
+  return self.healthy, self.weight, self.unavailableWeight
+end
 
 --- Creates a new base balancer.
 --
@@ -1215,6 +1284,9 @@ end
 -- - `log_prefix` (optional) a name used in the prefix for log messages. Defaults to
 -- `"balancer"` which results in log prefix `"[balancer 1]"` (the number is a sequential
 -- id number)
+-- - `healthThreshold` (optional) minimum percentage of the balancer weight that must
+-- be healthy/available for the whole balancer to be considered healthy. Defaults
+-- to 0% if omitted.
 -- @param opts table with options
 -- @return new balancer object or nil+error
 -- @within User properties
@@ -1225,6 +1297,10 @@ _M.new = function(opts)
   assert((opts.ttl0 or 1) > 0, "expected 'ttl0' parameter to be > 0")
   assert(type(opts.callback) == "function" or type(opts.callback) == "nil",
     "expected 'callback' to be a function or nil, but got: " .. type(opts.callback))
+  assert(type(opts.healthThreshold) == "number" or type(opts.healthThreshold) == "nil",
+    "expected 'healthThreshold' to be a number or nil, but got: " .. type(opts.healthThreshold))
+  assert((opts.healthThreshold or 1) >= 0 and (opts.healthThreshold or 1) <= 100,
+    "expected 'healthThreshold' to be in the range 0-100, but got: " .. tostring(opts.healthThreshold))
 
   balancer_id_counter = balancer_id_counter + 1
   local self = {
@@ -1233,10 +1309,13 @@ _M.new = function(opts)
     hosts = {},    -- a list a host objects
     addresses = {}, -- a list of addresses, including reverse lookup
     weight = 0,    -- total weight of all hosts
+    unavailableWeight = 0,  -- the unavailable weight (range: 0 - weight)
     dns = opts.dns,  -- the configured dns client to use for resolving
     requeryTimer = nil,  -- requery timer is not running, see `startRequery`
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
+    healthy = false, -- initial healthstatus of the balancer
+    healthThreshold = opts.healthThreshold or 0, -- % healthy weight for overall balancer health
   }
   self = setmetatable(self, mt_objBalancer)
   self.super = objBalancer

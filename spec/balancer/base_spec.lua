@@ -509,4 +509,349 @@ describe("[balancer_base]", function()
 
   end)
 
+
+
+  describe("health:", function()
+
+    local b
+
+    before_each(function()
+      b = balancer_base.new({
+        dns = client,
+        healthThreshold = 50,
+      })
+      b.getPeer = function(self)
+        -- we do not really need to get a peer, just touch all addresses to
+        -- potentially force DNS renewals
+        for _, addr in ipairs(self.addresses) do
+          addr:getPeer()
+        end
+      end
+    end)
+
+    after_each(function()
+      b = nil
+      collectgarbage()
+      collectgarbage()
+    end)
+
+    it("empty balancer is unhealthy", function()
+      assert.is_false((b:isHealthy()))
+    end)
+
+    it("adding first address marks healthy", function()
+      assert.is_false((b:isHealthy()))
+      b:addHost("127.0.0.1", 8000, 100)
+      assert.is_true((b:isHealthy()))
+    end)
+
+    it("removing last address marks unhealthy", function()
+      assert.is_false((b:isHealthy()))
+      b:addHost("127.0.0.1", 8000, 100)
+      assert.is_true((b:isHealthy()))
+      b:removeHost("127.0.0.1", 8000)
+      assert.is_false((b:isHealthy()))
+    end)
+
+    it("dropping below the health threshold marks unhealthy", function()
+      assert.is_false((b:isHealthy()))
+      b:addHost("127.0.0.1", 8000, 100)
+      b:addHost("127.0.0.2", 8000, 100)
+      b:addHost("127.0.0.3", 8000, 100)
+      assert.is_true((b:isHealthy()))
+      b:setPeerStatus(false, "127.0.0.2", 8000)
+      assert.is_true((b:isHealthy()))
+      b:setPeerStatus(false, "127.0.0.3", 8000)
+      assert.is_false((b:isHealthy()))
+    end)
+
+    it("rising above the health threshold marks unhealthy", function()
+      assert.is_false((b:isHealthy()))
+      b:addHost("127.0.0.1", 8000, 100)
+      b:addHost("127.0.0.2", 8000, 100)
+      b:addHost("127.0.0.3", 8000, 100)
+      b:setPeerStatus(false, "127.0.0.2", 8000)
+      b:setPeerStatus(false, "127.0.0.3", 8000)
+      assert.is_false((b:isHealthy()))
+      b:setPeerStatus(true, "127.0.0.2", 8000)
+      assert.is_true((b:isHealthy()))
+    end)
+
+  end)
+
+
+
+  describe("weights:", function()
+
+    local b
+
+    before_each(function()
+      b = balancer_base.new({
+        dns = client,
+      })
+      b.getPeer = function(self)
+        -- we do not really need to get a peer, just touch all addresses to
+        -- potentially force DNS renewals
+        for _, addr in ipairs(self.addresses) do
+          addr:getPeer()
+        end
+      end
+      b:addHost("127.0.0.1", 8000, 100)  -- add 1 initial host
+    end)
+
+    after_each(function()
+      b = nil
+      collectgarbage()
+      collectgarbage()
+    end)
+
+    describe("(A)", function()
+
+      it("adding a host",function()
+        dnsA({
+          { name = "arecord.tst", address = "1.2.3.4" },
+          { name = "arecord.tst", address = "5.6.7.8" },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("arecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 25, weight)
+        assert.are.equal(0, unavailable)
+      end)
+
+      it("removing a host",function()
+        dnsA({
+          { name = "arecord.tst", address = "1.2.3.4" },
+          { name = "arecord.tst", address = "5.6.7.8" },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("arecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 25, weight)
+        assert.are.equal(0, unavailable)
+
+        b:removeHost("arecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+      end)
+
+      it("switching address availability",function()
+        dnsA({
+          { name = "arecord.tst", address = "1.2.3.4" },
+          { name = "arecord.tst", address = "5.6.7.8" },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("arecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 25, weight)
+        assert.are.equal(0, unavailable)
+
+        -- switch to unavailable
+        assert(b:setPeerStatus(false, "1.2.3.4", 8001, "arecord.tst"))
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 25, weight)
+        assert.are.equal(1 * 25, unavailable)
+
+        -- switch to available
+        assert(b:setPeerStatus(true, "1.2.3.4", 8001, "arecord.tst"))
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 25, weight)
+        assert.are.equal(0, unavailable)
+      end)
+
+      it("changing weight of an available address",function()
+        dnsA({
+          { name = "arecord.tst", address = "1.2.3.4" },
+          { name = "arecord.tst", address = "5.6.7.8" },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("arecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 25, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("arecord.tst", 8001, 50) -- adding again changes weight
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 50, weight)
+        assert.are.equal(0, unavailable)
+      end)
+
+      it("changing weight of an unavailable address",function()
+        dnsA({
+          { name = "arecord.tst", address = "1.2.3.4" },
+          { name = "arecord.tst", address = "5.6.7.8" },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("arecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 25, weight)
+        assert.are.equal(0, unavailable)
+
+        -- switch to unavailable
+        assert(b:setPeerStatus(false, "1.2.3.4", 8001, "arecord.tst"))
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 25, weight)
+        assert.are.equal(1 * 25, unavailable)
+
+        b:addHost("arecord.tst", 8001, 50) -- adding again changes weight
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 50, weight)
+        assert.are.equal(1 * 50, unavailable)
+      end)
+
+    end)
+
+    describe("(SRV)", function()
+
+      it("adding a host",function()
+        dnsSRV({
+          { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 10 },
+          { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("srvrecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 10, weight)
+        assert.are.equal(0, unavailable)
+      end)
+
+      it("removing a host",function()
+        dnsSRV({
+          { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 10 },
+          { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("srvrecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 10, weight)
+        assert.are.equal(0, unavailable)
+
+        b:removeHost("srvrecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+      end)
+
+      it("switching address availability",function()
+        dnsSRV({
+          { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 10 },
+          { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("srvrecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 10, weight)
+        assert.are.equal(0, unavailable)
+
+        -- switch to unavailable
+        assert(b:setPeerStatus(false, "1.1.1.1", 9000, "srvrecord.tst"))
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 10, weight)
+        assert.are.equal(1 * 10, unavailable)
+
+        -- switch to available
+        assert(b:setPeerStatus(true, "1.1.1.1", 9000, "srvrecord.tst"))
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 10, weight)
+        assert.are.equal(0, unavailable)
+      end)
+
+      it("changing weight of an available address (dns update)",function()
+        local record = dnsSRV({
+          { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 10 },
+          { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("srvrecord.tst", 8001, 10)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 10, weight)
+        assert.are.equal(0, unavailable)
+
+        dnsExpire(record)
+        record = dnsSRV({
+          { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 20 },
+          { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 20 },
+        })
+        b:getPeer()  -- touch all adresses to force dns renewal
+
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 20, weight)
+        assert.are.equal(0, unavailable)
+      end)
+
+      it("changing weight of an unavailable address (dns update)",function()
+        local record = dnsSRV({
+          { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 10 },
+          { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
+        })
+
+        local _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100, weight)
+        assert.are.equal(0, unavailable)
+
+        b:addHost("srvrecord.tst", 8001, 25)
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 10, weight)
+        assert.are.equal(0, unavailable)
+
+        -- switch to unavailable
+        assert(b:setPeerStatus(false, "2.2.2.2", 9001, "srvrecord.tst"))
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 10, weight)
+        assert.are.equal(1 * 10, unavailable)
+
+        -- update weight, through dns renewal
+        dnsExpire(record)
+        record = dnsSRV({
+          { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 20 },
+          { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 20 },
+        })
+        b:getPeer()  -- touch all adresses to force dns renewal
+
+        _, weight, unavailable = b:isHealthy()
+        assert.are.equal(100 + 2 * 20, weight)
+        assert.are.equal(1 * 20, unavailable)
+      end)
+
+    end)
+
+  end)
+
 end)
