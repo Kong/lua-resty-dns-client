@@ -112,7 +112,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
       -- we have a new hashValue, use it anyway
       handle.hashValue = hashValue
     else
-      hashValue = handle.hashValue  -- reuse exiting (if any) hashvalue
+      hashValue = handle.hashValue  -- reuse existing (if any) hashvalue
     end
     handle.retryCount = handle.retryCount + 1
 
@@ -131,8 +131,8 @@ function lc:getPeer(cacheOnly, handle, hashValue)
 
   local address, ip, port, host, reinsert
   while true do
-    if self.weight == 0 then
-      -- the balancer weight is 0, so we have no targets at all.
+    if self.weight == self.unavailableWeight then
+      -- we have no available targets at all.
       -- This check must be inside the loop, since caling getPeer could
       -- cause a DNS update.
       ip, port, host, address = nil, self.errors.ERR_NO_PEERS_AVAILABLE, nil, nil

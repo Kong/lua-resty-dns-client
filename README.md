@@ -41,8 +41,11 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### #.0.x (x-xx-2019)
+### x.x.x (x-xxx-2019)
 
+- Added: keep track of unavailable weight. Added the `isHealthy` method to
+  return health, overall weight and unavailable weight. Health is determined
+  based on the new property `healthThreshold`.
 - Fix: when an asyncquery failed to create the timer, it would silently ignore
   the error. Error is now being logged.
 

@@ -278,7 +278,7 @@ end
 
 function ring_balancer:getPeer(cacheOnly, handle, hashValue)
   local pointer
-  if self.weight == 0 then
+  if self.weight == self.unavailableWeight then
     return nil, balancer_base.errors.ERR_NO_PEERS_AVAILABLE
   end
 
@@ -325,7 +325,7 @@ function ring_balancer:getPeer(cacheOnly, handle, hashValue)
     elseif port == balancer_base.errors.ERR_DNS_UPDATED then
       -- we just need to retry the same index, no change for 'pointer', just
       -- in case of dns updates, we need to check our weight again.
-      if self.weight == 0 then
+      if self.weight == self.unavailableWeight then
         return nil, balancer_base.errors.ERR_NO_PEERS_AVAILABLE
       end
 
