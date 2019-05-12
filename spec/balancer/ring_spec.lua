@@ -901,12 +901,16 @@ describe("[ringbalancer]", function()
             count_add = count_add + 1
           elseif action == "removed" then
             count_remove = count_remove + 1
+          elseif action == "health" then
+            -- nothing to do
           else
             error("unknown action received: "..tostring(action))
           end
-          assert.equals("12.34.56.78", ip)
-          assert.equals(123, port)
-          assert.equals("12.34.56.78", hostname)
+          if action ~= "health" then
+            assert.equals("12.34.56.78", ip)
+            assert.equals(123, port)
+            assert.equals("12.34.56.78", hostname)
+          end
         end
       })
       b:addHost("12.34.56.78", 123, 100)
@@ -932,12 +936,16 @@ describe("[ringbalancer]", function()
             count_add = count_add + 1
           elseif action == "removed" then
             count_remove = count_remove + 1
+          elseif action == "health" then
+            -- nothing to do
           else
             error("unknown action received: "..tostring(action))
           end
-          assert.equals("12.34.56.78", ip)
-          assert.equals(123, port)
-          assert.equals("mashape.com", hostname)
+          if action ~= "health" then
+            assert.equals("12.34.56.78", ip)
+            assert.equals(123, port)
+            assert.equals("mashape.com", hostname)
+          end
         end
       })
       dnsA({
@@ -967,12 +975,16 @@ describe("[ringbalancer]", function()
             count_add = count_add + 1
           elseif action == "removed" then
             count_remove = count_remove + 1
+          elseif action == "health" then
+            -- nothing to do
           else
             error("unknown action received: "..tostring(action))
           end
-          assert(ip == "mashape1.com" or ip == "mashape2.com")
-          assert(port == 8001 or port == 8002)
-          assert.equals("mashape.com", hostname)
+          if action ~= "health" then
+            assert(ip == "mashape1.com" or ip == "mashape2.com")
+            assert(port == 8001 or port == 8002)
+            assert.equals("mashape.com", hostname)
+          end
         end
       })
       dnsA({
@@ -1040,6 +1052,7 @@ describe("[ringbalancer]", function()
         [4] = 'thread2 end',
         [5] = 'callback',
         [6] = 'callback',
+        [7] = 'callback',
       }, order_of_events)
     end)
     it("equal weights and 'fitting' indices", function()
