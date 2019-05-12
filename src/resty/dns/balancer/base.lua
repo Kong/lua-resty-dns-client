@@ -961,8 +961,7 @@ function objBalancer:updateStatus()
     return -- no status change
   end
 
-  ngx_log(self.healthy and ngx_NOTICE or ngx_WARN, self.log_prefix,
-          "switching health status from '", old_status, "' to '", self.healthy, "'")
+  self:callback("health", self.healthy)
 end
 
 -- Updates the total weight.
@@ -1094,7 +1093,7 @@ function objBalancer:setPeerStatus(available, ip_address_handle, port, hostname)
       -- it's a handle from `setPeer`.
       ip_address_handle.address:setState(available)
     else
-      -- it's and address
+      -- it's an address
       ip_address_handle:setState(available)
     end
     return true
@@ -1179,14 +1178,19 @@ function objBalancer:startRequery()
 end
 
 --- Sets an event callback for user code. The callback is invoked for
--- every address added to/removed from the balancer.
--- Signature of the callback is:
+-- every address added to/removed from the balancer, and on health changes.
 --
---   `function(balancer, action, address, ip, port, hostname)`
+-- Signature of the callback is for address adding/removing:
+--
+--   `function(balancer, "added"/"removed", address, ip, port, hostname)`
 --
 -- where `ip` might also
 -- be a hostname if the DNS resolution returns another name (usually in
--- SRV records). The `action` parameter will be either `"added"` or `"removed"`.
+-- SRV records).
+--
+-- For health updates the signature is:
+--
+--   `function(balancer, "health", isHealthy)`
 --
 -- NOTE: the callback will be executed async (on a timer) so maybe executed
 -- only after the methods (`addHost` and `removeHost` for example) have returned.

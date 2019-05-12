@@ -159,13 +159,21 @@ describe("[balancer_base]", function()
 
     local list
     local handler = function(balancer, eventname, address, ip, port, hostname)
-      if eventname ~= "removed" then
+      assert(({
+        added = true,
+        removed = true,
+        health = true,
+      })[eventname], "Unknown eventname: " .. tostring(eventname))
+
+      if eventname == "added" then
         -- the 'host' property has been cleared by the time the event executes
         assert(balancer == address.host.balancer)
         assert.is.equal(address.host.hostname, hostname)
       end
-      assert.is.equal(address.ip, ip)
-      assert.is.equal(address.port, port)
+      if eventname == "added" or eventname == "removed" then
+        assert.is.equal(address.ip, ip)
+        assert.is.equal(address.port, port)
+      end
       list[#list + 1] = {
         balancer, eventname, address, ip, port, hostname,
       }
@@ -185,13 +193,17 @@ describe("[balancer_base]", function()
       b:addHost("localhost", 80)
       ngx.sleep(0.1)
 
-      assert.equal(1, #list)
+      assert.equal(2, #list)
       assert.equal(b, list[1][1])
-      assert.equal("added", list[1][2])
-      assert.is.table(list[1][3])
-      assert.equal("127.0.0.1", list[1][4])
-      assert.equal(80, list[1][5])
-      assert.equal("localhost", list[1][6])
+      assert.equal("health", list[1][2])
+      assert.equal(true, list[1][3])
+
+      assert.equal(b, list[2][1])
+      assert.equal("added", list[2][2])
+      assert.is.table(list[2][3])
+      assert.equal("127.0.0.1", list[2][4])
+      assert.equal(80, list[2][5])
+      assert.equal("localhost", list[2][6])
     end)
 
 
@@ -204,24 +216,32 @@ describe("[balancer_base]", function()
       b:addHost("localhost", 80)
       ngx.sleep(0.1)
 
-      assert.equal(1, #list)
+      assert.equal(2, #list)
       assert.equal(b, list[1][1])
-      assert.equal("added", list[1][2])
-      assert.is.table(list[1][3])
-      assert.equal("127.0.0.1", list[1][4])
-      assert.equal(80, list[1][5])
-      assert.equal("localhost", list[1][6])
+      assert.equal("health", list[1][2])
+      assert.equal(true, list[1][3])
+
+      assert.equal(b, list[2][1])
+      assert.equal("added", list[2][2])
+      assert.is.table(list[2][3])
+      assert.equal("127.0.0.1", list[2][4])
+      assert.equal(80, list[2][5])
+      assert.equal("localhost", list[2][6])
 
       b:removeHost("localhost", 80)
       ngx.sleep(0.1)
 
-      assert.equal(2, #list)
-      assert.equal(b, list[2][1])
-      assert.equal("removed", list[2][2])
-      assert.equal(list[1][3], list[2][3])  -- same address object as added
-      assert.equal("127.0.0.1", list[2][4])
-      assert.equal(80, list[2][5])
-      assert.equal("localhost", list[2][6])
+      assert.equal(4, #list)
+      assert.equal(b, list[3][1])
+      assert.equal("health", list[3][2])
+      assert.equal(false, list[3][3])
+
+      assert.equal(b, list[4][1])
+      assert.equal("removed", list[4][2])
+      assert.equal(list[2][3], list[4][3])  -- same address object as added
+      assert.equal("127.0.0.1", list[4][4])
+      assert.equal(80, list[4][5])
+      assert.equal("localhost", list[4][6])
     end)
 
   end)
