@@ -835,7 +835,7 @@ describe("[ringbalancer]", function()
             count_add = count_add + 1
           elseif action == "removed" then
             count_remove = count_remove + 1
-          elseif action == "health" then
+          elseif action == "health" then  --luacheck: ignore
             -- nothing to do
           else
             error("unknown action received: "..tostring(action))
@@ -870,7 +870,7 @@ describe("[ringbalancer]", function()
             count_add = count_add + 1
           elseif action == "removed" then
             count_remove = count_remove + 1
-          elseif action == "health" then
+          elseif action == "health" then  --luacheck: ignore
             -- nothing to do
           else
             error("unknown action received: "..tostring(action))
@@ -909,7 +909,7 @@ describe("[ringbalancer]", function()
             count_add = count_add + 1
           elseif action == "removed" then
             count_remove = count_remove + 1
-          elseif action == "health" then
+          elseif action == "health" then  --luacheck: ignore
             -- nothing to do
           else
             error("unknown action received: "..tostring(action))

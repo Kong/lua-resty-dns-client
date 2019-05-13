@@ -145,7 +145,6 @@ local string_format = string.format
 local ngx_log = ngx.log
 local ngx_ERR = ngx.ERR
 local ngx_DEBUG = ngx.DEBUG
-local ngx_NOTICE = ngx.NOTICE
 local ngx_WARN = ngx.WARN
 local balancer_id_counter = 0
 

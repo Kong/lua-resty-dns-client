@@ -22,15 +22,6 @@ local ngx_DEBUG = ngx.DEBUG
 local empty = setmetatable({},
   {__newindex = function() error("The 'empty' table is read-only") end})
 
-local new_tab
-do
-  local ok
-  ok, new_tab = pcall(require, "table.new")
-  if not ok then
-      new_tab = function() return {} end
-  end
-end
-
 local _M = {}
 local lc = {}
 local lcAddr = {}
@@ -108,12 +99,6 @@ end
 function lc:getPeer(cacheOnly, handle, hashValue)
   if handle then
     -- existing handle, so it's a retry
-    if hashValue then
-      -- we have a new hashValue, use it anyway
-      handle.hashValue = hashValue
-    else
-      hashValue = handle.hashValue  -- reuse existing (if any) hashvalue
-    end
     handle.retryCount = handle.retryCount + 1
 
     -- keep track of failed addresses
@@ -126,7 +111,6 @@ function lc:getPeer(cacheOnly, handle, hashValue)
     -- no handle, so this is a first try
     handle = self:getHandle() -- no specific GC method required
     handle.retryCount = 0
-    handle.hashValue = hashValue
   end
 
   local address, ip, port, host, reinsert
@@ -135,7 +119,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
       -- Balancer unhealthy, nothing we can do.
       -- This check must be inside the loop, since calling getPeer could
       -- cause a DNS update.
-      ip, port, host, address = nil, self.errors.ERR_BALANCER_UNHEALTHY, nil, nil
+      ip, port, host = nil, self.errors.ERR_BALANCER_UNHEALTHY, nil
       break
     end
 
@@ -176,7 +160,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
 
     if address == nil then
       -- No peers are available
-      ip, port, host, address = nil, self.errors.ERR_NO_PEERS_AVAILABLE, nil, nil
+      ip, port, host = nil, self.errors.ERR_NO_PEERS_AVAILABLE, nil
       break
     end
 

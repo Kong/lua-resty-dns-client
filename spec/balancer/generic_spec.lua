@@ -322,7 +322,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           assert.are.equal(0, unavailable)
 
           dnsExpire(record)
-          record = dnsSRV({
+          dnsSRV({
             { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 20 },
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 20 },
           })
@@ -356,7 +356,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
           -- update weight, through dns renewal
           dnsExpire(record)
-          record = dnsSRV({
+          dnsSRV({
             { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 20 },
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 20 },
           })

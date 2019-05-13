@@ -107,7 +107,7 @@ describe("[balancer_base]", function()
 
     it("not-releasing a handle does call GC, with ignore", function()
       b:addHost("konghq.com", 8000, 100)
-      local _, _, _, handle = b:getPeer()
+      local _, _, _, handle = b:getPeer()  --luacheck: ignore
       handle = nil
       collectgarbage()
       collectgarbage()
@@ -121,7 +121,7 @@ describe("[balancer_base]", function()
       local _, _, _, handle = b:getPeer()
       local handle_id = tostring(handle)
       handle:release(false)
-      handle = nil
+      handle = nil  --luacheck: ignore
       collectgarbage()
       collectgarbage()
       _, _, _, handle = b:getPeer()
@@ -132,7 +132,7 @@ describe("[balancer_base]", function()
       b:addHost("konghq.com", 8000, 100)
       local _, _, _, handle = b:getPeer()
       local handle_id = tostring(handle)
-      handle = nil
+      handle = nil  --luacheck: ignore
       collectgarbage()
       collectgarbage()
       _, _, _, handle = b:getPeer()
@@ -142,7 +142,7 @@ describe("[balancer_base]", function()
         -- seems that occasionally the new table gets allocated at the exact
         -- same location, causing false positives. So let's drop the new table
         -- again, and check that the GC was called twice!
-        handle = nil
+        handle = nil  --luacheck: ignore
         collectgarbage()
         collectgarbage()
         assert.equal(2, gc_count)
