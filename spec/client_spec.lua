@@ -931,36 +931,17 @@ describe("[DNS client]", function()
     it("SRV-record, round-robin on lowest prio",function()
       assert(client.init())
       local host = "srvtest.thijsschreijer.nl"
-      local answers = assert(client.resolve(host))
-      local answers2
-      local low_prio = 1
-      local prio2
-      -- there is one non-ip entry, forwarding to www.thijsschreijer.nl, go find it
-      for i, rec in ipairs(answers) do
-        if rec.target:find("thijsschreijer") then
-          answers2 = assert(client.resolve(rec.target))
-          prio2 = i
-        else
-          -- record index of the ip address with the lowest priority
-          if rec.priority <= answers[low_prio].priority then
-            low_prio = i
-          end
-        end
-      end
-      assert(answers[prio2].priority == answers[low_prio].priority)
+
       local results = {}
       for _ = 1,20 do
-        local ip, port = client.toip(host)
-        results[ip.."+"..port] = (results[ip.."+"..port] or 0) + 1
+        local _, port = client.toip(host)
+        results[port] = (results[port] or 0) + 1
       end
-      -- 20 passes, each should get 10
-      assert(results[answers[low_prio].target.."+"..answers[low_prio].port] == 10)
-      assert(results[answers2[1].address.."+"..answers[prio2].port] == 10)
 
-      -- remove them, and check the results to be empty, as the higher priority field one should not have gotten any calls
-      results[answers[low_prio].target.."+"..answers[low_prio].port] = nil
-      results[answers2[1].address.."+"..answers[prio2].port] = nil
-      assert.is_nil(next(results))
+      -- 20 passes, each should get 10
+      assert.equal(0, results[8001] or 0) --priority 20, no hits
+      assert.equal(10, results[8000] or 0) --priority 10, 50% of hits
+      assert.equal(10, results[8002] or 0) --priority 10, 50% of hits
     end)
     it("SRV-record with 1 entry, round-robin",function()
       assert(client.init())
