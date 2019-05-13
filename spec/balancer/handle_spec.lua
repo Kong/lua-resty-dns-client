@@ -16,7 +16,7 @@ describe("[handle]", function()
     local s = spy.new(function() end)
     local h = handle.get(s)
     handle.release(h)
-    h = nil
+    h = nil  --luacheck: ignore
     collectgarbage()
     collectgarbage()
     assert.spy(s).was_not.called()
@@ -25,7 +25,7 @@ describe("[handle]", function()
 
   it("not returning triggers __gc", function()
     local s = spy.new(function() end)
-    local h = handle.get(s)
+    local h = handle.get(s)  --luacheck: ignore
     h = nil
     collectgarbage()
     collectgarbage()
@@ -34,7 +34,7 @@ describe("[handle]", function()
 
 
   it("not returning doesn't fail without __gc", function()
-    local h = handle.get()  -- no __gc provided
+    local h = handle.get()    --luacheck: ignore
     h = nil
     collectgarbage()
     collectgarbage()
@@ -82,12 +82,10 @@ describe("[handle]", function()
     local s = spy.new(function() end)
     local h1 = handle.get(s)
     local h2 = handle.get(s)
-    local id1 = tostring(h1)
-    local id2 = tostring(h2)
     handle.release(h1)  -- returned to cache
     handle.release(h2)  -- dropped
-    h1 = nil
-    h2 = nil
+    h1 = nil  --luacheck: ignore
+    h2 = nil  --luacheck: ignore
     collectgarbage()
     collectgarbage()
     assert.spy(s).was_not.called()

@@ -8,7 +8,7 @@ local helpers = require "spec.test_helpers"
 local dnsSRV = function(...) return helpers.dnsSRV(client, ...) end
 local dnsA = function(...) return helpers.dnsA(client, ...) end
 --local dnsAAAA = function(...) return helpers.dnsAAAA(client, ...) end
-local dnsExpire = helpers.dnsExpire
+--local dnsExpire = helpers.dnsExpire
 local t_insert = table.insert
 
 
@@ -137,7 +137,7 @@ describe("[least-connections]", function()
       local counts = {}
       local handles = {}
       for i = 1,70 do
-        local ip, port, host, handle = b:getPeer()
+        local ip, _, _, handle = b:getPeer()
         counts[ip] = (counts[ip] or 0) + 1
         t_insert(handles, handle)  -- don't let them get GC'ed
       end
@@ -162,22 +162,22 @@ describe("[least-connections]", function()
       }))
 
       local handles = {}
-      local ip, port, host, handle
+      local ip, _, handle
 
       -- first try
-      ip, port, host, handle= b:getPeer()
+      ip, _, _, handle= b:getPeer()
       t_insert(handles, handle)  -- don't let them get GC'ed
       validate_lcb(b)
       assert.equal("50.50.50.50", ip)
 
       -- second try
-      ip, port, host, handle= b:getPeer()
+      ip, _, _, handle= b:getPeer()
       t_insert(handles, handle)  -- don't let them get GC'ed
       validate_lcb(b)
       assert.equal("50.50.50.50", ip)
 
       -- third try
-      ip, port, host, handle= b:getPeer()
+      ip, _, _, handle= b:getPeer()
       t_insert(handles, handle)  -- don't let them get GC'ed
       validate_lcb(b)
       assert.equal("20.20.20.20", ip)
@@ -199,7 +199,7 @@ describe("[least-connections]", function()
       local counts = {}
       local handles = {}
       for i = 1,70 do
-        local ip, port, host, handle = b:getPeer()
+        local ip, _, _, handle = b:getPeer()
         counts[ip] = (counts[ip] or 0) + 1
         t_insert(handles, handle)  -- don't let them get GC'ed
       end
@@ -228,7 +228,7 @@ describe("[least-connections]", function()
       local counts = {}
       local handles = {}
       for i = 1,70 do
-        local ip, port, host, handle = b:getPeer()
+        local ip, _, _, handle = b:getPeer()
         counts[ip] = (counts[ip] or 0) + 1
         t_insert(handles, handle)  -- don't let them get GC'ed
       end
@@ -243,7 +243,7 @@ describe("[least-connections]", function()
       -- let's do another 70, after resetting
       b:setPeerStatus(true, "20.20.20.20", 80, "konghq.com")
       for i = 1,70 do
-        local ip, port, host, handle = b:getPeer()
+        local ip, _, _, handle = b:getPeer()
         counts[ip] = (counts[ip] or 0) + 1
         t_insert(handles, handle)  -- don't let them get GC'ed
       end
@@ -274,21 +274,21 @@ describe("[least-connections]", function()
       }))
 
       local tried = {}
-      local ip, port, host, handle
+      local ip, _, handle
       -- first try
-      ip, port, host, handle = b:getPeer()
+      ip, _, _, handle = b:getPeer()
       tried[ip] = (tried[ip] or 0) + 1
       validate_lcb(b)
 
 
       -- 1st retry
-      ip, port, host, handle = b:getPeer(nil, handle)
+      ip, _, _, handle = b:getPeer(nil, handle)
       assert.is_nil(tried[ip])
       tried[ip] = (tried[ip] or 0) + 1
       validate_lcb(b)
 
       -- 2nd retry
-      ip, port, host, handle = b:getPeer(nil, handle)
+      ip, _, _, _ = b:getPeer(nil, handle)
       assert.is_nil(tried[ip])
       tried[ip] = (tried[ip] or 0) + 1
       validate_lcb(b)
@@ -313,10 +313,10 @@ describe("[least-connections]", function()
       }))
 
       local tried = {}
-      local ip, port, host, handle
+      local ip, _, handle
 
       for i = 1,6 do
-        ip, port, host, handle = b:getPeer(nil, handle)
+        ip, _, _, handle = b:getPeer(nil, handle)
         tried[ip] = (tried[ip] or 0) + 1
         validate_lcb(b)
       end
@@ -342,8 +342,8 @@ describe("[least-connections]", function()
       local counts = {}
       local handle -- define outside loop, so it gets reused and released
       for i = 1,70 do
-        local ip, port, host
-        ip, port, host, handle = b:getPeer(nil, handle)
+        local ip, _
+        ip, _, _, handle = b:getPeer(nil, handle)
         counts[ip] = (counts[ip] or 0) + 1
       end
 
@@ -370,7 +370,7 @@ describe("[least-connections]", function()
         hosts = { "konghq.com" },
       }))
 
-      local ip, port, host, handle = b:getPeer()
+      local ip, _, _, handle = b:getPeer()
       assert.equal("20.20.20.20", ip)
       assert.equal(1, b.addresses[1].connectionCount)
 
@@ -388,7 +388,7 @@ describe("[least-connections]", function()
         hosts = { "konghq.com" },
       }))
 
-      local ip, port, host, handle = b:getPeer()
+      local ip, _, _, handle = b:getPeer()
       assert.equal("20.20.20.20", ip)
       assert.equal(1, b.addresses[1].connectionCount)
 
@@ -415,12 +415,12 @@ describe("[least-connections]", function()
         hosts = { "konghq.com" },
       }))
 
-      local ip, port, host, handle = b:getPeer()
+      local ip, _, _, handle = b:getPeer()
       assert.equal("20.20.20.20", ip)
       assert.equal(1, b.addresses[1].connectionCount)
 
       local addr = handle.address
-      handle = nil
+      handle = nil  --luacheck: ignore
       collectgarbage()
       collectgarbage()
 
@@ -437,7 +437,7 @@ describe("[least-connections]", function()
         hosts = { "konghq.com" },
       }))
 
-      local ip, port, host, handle = b:getPeer()
+      local ip, _, _, handle = b:getPeer()
       assert.equal("20.20.20.20", ip)
       assert.equal(1, b.addresses[1].connectionCount)
 
@@ -446,7 +446,7 @@ describe("[least-connections]", function()
       assert.equal(0, #b.addresses)
 
       local addr = handle.address
-      handle = nil
+      handle = nil  --luacheck: ignore
       collectgarbage()
       collectgarbage()
 
