@@ -2,6 +2,7 @@
 
 local _M = {}
 
+
 if ngx then
   _M.gettime = ngx.now
   _M.sleep = ngx.sleep
@@ -12,10 +13,31 @@ else
 end
 local gettime = _M.gettime
 
+
+-- iterator over different balancer types
+-- @return algorithm_name, balancer_module
+function _M.balancer_types()
+  local b_types = {
+    -- algorithm             name
+    { "consistent-hashing", "ring" },
+    { "round-robin",        "ring" },
+    { "least-connections",  "least_connections" },
+  }
+  local i = 0
+  return function()
+           i = i + 1
+           if b_types[i] then
+             return b_types[i][1], require("resty.dns.balancer." .. b_types[i][2])
+           end
+         end
+end
+
+
 -- expires a record now
 function _M.dnsExpire(record)
   record.expire = gettime() - 1
 end
+
 
 -- creates an SRV record in the cache
 function _M.dnsSRV(client, records, staleTtl)
@@ -50,6 +72,7 @@ function _M.dnsSRV(client, records, staleTtl)
   return records
 end
 
+
 -- creates an A record in the cache
 function _M.dnsA(client, records, staleTtl)
   local dnscache = client.getcache()
@@ -80,6 +103,7 @@ function _M.dnsA(client, records, staleTtl)
   return records
 end
 
+
 -- creates an AAAA record in the cache
 function _M.dnsAAAA(client, records, staleTtl)
   local dnscache = client.getcache()
@@ -109,5 +133,6 @@ function _M.dnsAAAA(client, records, staleTtl)
   dnscache:set(records[1].name, records[1].type)
   return records
 end
+
 
 return _M

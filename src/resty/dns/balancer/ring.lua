@@ -277,9 +277,8 @@ end
 
 
 function ring_balancer:getPeer(cacheOnly, handle, hashValue)
-  local pointer
-  if self.weight == self.unavailableWeight then
-    return nil, balancer_base.errors.ERR_NO_PEERS_AVAILABLE
+  if not self.healthy then
+    return nil, balancer_base.errors.ERR_BALANCER_UNHEALTHY
   end
 
   if handle then
@@ -300,6 +299,7 @@ function ring_balancer:getPeer(cacheOnly, handle, hashValue)
   end
 
   -- calculate starting point
+  local pointer
   if hashValue then
     hashValue = hashValue + handle.retryCount
     pointer = 1 + (hashValue % self.wheelSize)
@@ -324,9 +324,9 @@ function ring_balancer:getPeer(cacheOnly, handle, hashValue)
 
     elseif port == balancer_base.errors.ERR_DNS_UPDATED then
       -- we just need to retry the same index, no change for 'pointer', just
-      -- in case of dns updates, we need to check our weight again.
-      if self.weight == self.unavailableWeight then
-        return nil, balancer_base.errors.ERR_NO_PEERS_AVAILABLE
+      -- in case of dns updates, we need to check our health again.
+      if not self.healthy then
+        return nil, balancer_base.errors.ERR_BALANCER_UNHEALTHY
       end
 
     elseif port == balancer_base.errors.ERR_ADDRESS_UNAVAILABLE then

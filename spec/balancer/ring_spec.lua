@@ -519,7 +519,7 @@ describe("[ringbalancer]", function()
 
         local ip, port = b:getPeer()
         assert.is_nil(ip)
-        assert.matches("No peers are available", port)
+        assert.matches("Balancer is unhealthy", port)
 
       end)
       it("SRV target with A record targets can be changed with an address", function()
@@ -548,7 +548,7 @@ describe("[ringbalancer]", function()
 
         local ip, port = b:getPeer()
         assert.is_nil(ip)
-        assert.matches("No peers are available", port)
+        assert.matches("Balancer is unhealthy", port)
 
       end)
       it("SRV target with port=0 returns the default port", function()
@@ -670,31 +670,6 @@ describe("[ringbalancer]", function()
       assert.equal(nil, res["mashape.com:123"]) -- host got no hits, key never gets initialized
       assert.equal(30, res["5.6.7.8:321"])
       assert.equal(30, res["getkong.org:321"])
-    end)
-    it("gets an IP address and port number; round-robin fails when all unhealthy", function()
-      dnsA({
-        { name = "mashape.com", address = "1.2.3.4" },
-      })
-      dnsA({
-        { name = "getkong.org", address = "5.6.7.8" },
-      })
-      local b = check_balancer(balancer.new {
-        hosts = {
-          {name = "mashape.com", port = 123, weight = 100},
-          {name = "getkong.org", port = 321, weight = 50},
-        },
-        dns = client,
-        wheelSize = 15,
-      })
-      -- mark all nodes down
-      assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
-      assert(b:setPeerStatus(false, "5.6.7.8", 321, "getkong.org"))
-      -- getPeer fails with `nil` and `err` when there are no more available peers
-      for _ = 1, 15*2 do
-        local ok, err = b:getPeer()
-        assert.falsy(ok)
-        assert.same("No peers are available", err)
-      end
     end)
     it("gets an IP address and port number; consistent hashing", function()
       dnsA({
@@ -820,31 +795,6 @@ describe("[ringbalancer]", function()
       assert.equal(30, res["5.6.7.8:321"])
       assert.equal(30, res["getkong.org:321"])
     end)
-    it("gets an IP address and port number; consistent hashing fails when all unhealthy", function()
-      dnsA({
-        { name = "mashape.com", address = "1.2.3.4" },
-      })
-      dnsA({
-        { name = "getkong.org", address = "5.6.7.8" },
-      })
-      local b = check_balancer(balancer.new {
-        hosts = {
-          {name = "mashape.com", port = 123, weight = 100},
-          {name = "getkong.org", port = 321, weight = 50},
-        },
-        dns = client,
-        wheelSize = 15,
-      })
-      -- mark all nodes down
-      assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
-      assert(b:setPeerStatus(false, "5.6.7.8", 321, "getkong.org"))
-      -- getPeer fails with `nil` and `err` when there are no more available peers
-      for n = 1, 15*2 do
-        local ok, err = b:getPeer(false, nil, n)
-        assert.falsy(ok)
-        assert.same("No peers are available", err)
-      end
-    end)
     it("does not hit the resolver when 'cache_only' is set", function()
       local record = dnsA({
         { name = "mashape.com", address = "1.2.3.4" },
@@ -867,22 +817,6 @@ describe("[ringbalancer]", function()
       assert.equal("1.2.3.4", ip)  -- initial un-updated ip address
       assert.equal(80, port)
       assert.equal("mashape.com", host)
-    end)
-    it("fails if the balancer is 'empty'", function()
-      local b = check_balancer(balancer.new {
-        hosts = {},  -- no hosts, so balancer is empty
-        dns = client,
-        wheelSize = 10,
-      })
-      local ip, port, host = b:getPeer()
-      assert.is_nil(ip)
-      assert.equals("No peers are available", port)
-      assert.is_nil(host)
-
-      ip, port, host = b:getPeer(false, nil, 6) -- just pick a hash
-      assert.is_nil(ip)
-      assert.equals("No peers are available", port)
-      assert.is_nil(host)
     end)
   end)
 
@@ -1741,7 +1675,7 @@ describe("[ringbalancer]", function()
       for _ = 1, b.wheelSize do
         local ip, port = b:getPeer()
         assert.is_nil(ip)
-        assert.equal(port, "No peers are available")
+        assert.equal(port, "Balancer is unhealthy")
       end
     end)
     it("renewed DNS A record; unhealthy entries remain unhealthy after renewal", function()

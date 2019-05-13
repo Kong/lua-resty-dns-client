@@ -156,6 +156,7 @@ local errors = setmetatable({
   ERR_DNS_UPDATED = "Cannot get peer, a DNS update changed the balancer structure, please retry",
   ERR_ADDRESS_UNAVAILABLE = "Address is marked as unavailable",
   ERR_NO_PEERS_AVAILABLE = "No peers are available",
+  ERR_BALANCER_UNHEALTHY = "Balancer is unhealthy",
 }, {
   __index = function(self, key)
     error("invalid key: " .. tostring(key))
@@ -1033,12 +1034,12 @@ function objBalancer:getPeer(cacheOnly, handle, hashValue)
 
   local address
   while true do
-    if self.weight == self.unavailableWeight then
-      -- we have no available targets at all.
+    if self.unhealthy then
+      -- we are unhealthy.
       -- This check must be inside the loop, since caling getPeer could
       -- cause a DNS update.
       self:release(handle, true)  -- no address is set, just release handle itself
-      return nil, errors.ERR_NO_PEERS_AVAILABLE
+      return nil, errors.ERR_BALANCER_UNHEALTHY
     end
 
 
@@ -1076,7 +1077,12 @@ end
 -- This allows to temporarily suspend peers when they are offline/unhealthy,
 -- it will not modify the address held by the record. The parameters passed in should
 -- be previous results from `getPeer`.
--- Call this either as `setPeerStatus(available, address)`, `setPeerStatus(available, handle)``, or as `setPeerStatus(available, ip, port, <hostname>)`.
+-- Call this either as:
+--
+-- - `setPeerStatus(available, address)`,
+-- - `setPeerStatus(available, handle)`, or as
+-- - `setPeerStatus(available, ip, port, hostname)`
+--
 -- Using the `address` or `handle` is preferred since it is guaranteed to match. By ip/port/name
 -- might fail if there are too many DNS levels.
 -- @param available `true` for enabled/healthy, `false` for disabled/unhealthy
