@@ -131,11 +131,11 @@ function lc:getPeer(cacheOnly, handle, hashValue)
 
   local address, ip, port, host, reinsert
   while true do
-    if self.weight == self.unavailableWeight then
-      -- we have no available targets at all.
-      -- This check must be inside the loop, since caling getPeer could
+    if not self.healthy then
+      -- Balancer unhealthy, nothing we can do.
+      -- This check must be inside the loop, since calling getPeer could
       -- cause a DNS update.
-      ip, port, host, address = nil, self.errors.ERR_NO_PEERS_AVAILABLE, nil, nil
+      ip, port, host, address = nil, self.errors.ERR_BALANCER_UNHEALTHY, nil, nil
       break
     end
 

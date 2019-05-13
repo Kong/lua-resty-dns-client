@@ -257,39 +257,6 @@ describe("[least-connections]", function()
     end)
 
 
-    it("fails when all adresses are unavailable", function()
-      dnsSRV({
-        { name = "konghq.com", target = "20.20.20.20", port = 80, weight = 20 },
-        { name = "konghq.com", target = "50.50.50.50", port = 80, weight = 50 },
-      })
-      local b = validate_lcb(lcb.new({
-        dns = client,
-        hosts = { "konghq.com" },
-      }))
-
-      -- mark them as unavailable
-      b:setPeerStatus(false, "20.20.20.20", 80, "konghq.com")
-      b:setPeerStatus(false, "50.50.50.50", 80, "konghq.com")
-
-      local ip, port, host, handle = b:getPeer()
-      assert.is_nil(ip)
-      assert.equal(b.errors.ERR_NO_PEERS_AVAILABLE, port)
-      assert.is_nil(host)
-      assert.is_nil(handle)
-    end)
-
-    it("fails when there are no addresses", function()
-      local b = validate_lcb(lcb.new({
-        dns = client,
-      }))
-
-      local ip, port, host, handle = b:getPeer()
-      assert.is_nil(ip)
-      assert.equal(b.errors.ERR_NO_PEERS_AVAILABLE, port)
-      assert.is_nil(host)
-      assert.is_nil(handle)
-    end)
-
   end)
 
 
