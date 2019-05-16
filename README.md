@@ -41,6 +41,11 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
+### #.0.x (x-xx-2019)
+
+- Fix: when an asyncquery failed to create the timer, it would silently ignore
+  the error. Error is now being logged.
+
 ### 3.0.2 (8-Mar-2019) Bugfix
 
 - Fix: callback for adding an address did not pass the address object, but

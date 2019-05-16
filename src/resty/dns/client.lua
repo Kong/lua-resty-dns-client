@@ -28,6 +28,7 @@ local resolver = require("resty.dns.resolver")
 local deepcopy = require("pl.tablex").deepcopy
 local time = ngx.now
 local log = ngx.log
+local ERR = ngx.ERR
 local WARN = ngx.WARN
 local DEBUG = ngx.DEBUG
 local PREFIX = "[dns-client] "
@@ -755,6 +756,7 @@ local function asyncQuery(qname, r_opts, try_list)
   local ok, err = timer_at(0, executeQuery, item)
   if not ok then
     queue[key] = nil
+    log(ERR, PREFIX, "Failed to create a timer: ", err)
     return nil, "asyncQuery failed to create timer: "..err
   end
   --[[
