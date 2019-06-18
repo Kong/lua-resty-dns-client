@@ -291,6 +291,17 @@ function objAddr:release(handle, ignore)
 end
 
 
+-- Returns the status of the address, bubbles up to `objBalancer:getStatus`
+function objAddr:getStatus()
+  return {
+    ip = self.ip,
+    port = self.port,
+    weight = self.weight,
+    healthy = self.available,
+  }
+end
+
+
 --- Creates a new address object. There is no need to call this from user code.
 -- When implementing a new balancer algorithm, you might want to override this method.
 -- The `addr` table should contain:
@@ -705,6 +716,30 @@ function objHost:addressStillValid(cacheOnly, address)
 
   return true
 end
+
+
+-- Returns the status of the host, bubbles up to `objBalancer:getStatus`
+function objHost:getStatus()
+  local addresses = {}
+  local status = {
+    host = self.hostname,
+    port = self.port,
+    nodeWeight = self.nodeWeight,
+    weight = {
+      total = self.weight,
+      unavailable = self.unavailableWeight,
+      available = self.weight - self.unavailableWeight,
+    },
+    addresses = addresses,
+  }
+
+  for i = 1,#self.addresses do
+    addresses[i] = self.addresses[i]:getStatus()
+  end
+
+  return status
+end
+
 
 --- Creates a new host object. There is no need to call this from user code.
 -- When implementing a new balancer algorithm, you might want to override this method.
@@ -1258,21 +1293,27 @@ function objBalancer:getHandle(gc_handler, release_handler)
   return h
 end
 
---- Gets the health of the balancer.
--- The health is based on ratio of available and unavailable "weight" in the
--- balancer. When the available % gets below the set `healthThreshold` value, the
--- balancer is marked as unhealthy.
--- Note that the overall weight depends on DNS resolution, and hence can
--- change over time.
--- @return healthy (boolean), total_weight (number), unavailable_weight (number)
--- @usage
--- local healthy, weight, unavailable = balancer:isHealthy()
--- print("Total balancer weight is: ", weight)
--- print("Available part is (%)   : ", (weight-unavailable)/weight * 100)
--- print("Unavailable part is (%) : ", unavailable/weight * 100)
--- print("Healthy?                : ", healthy)
-function objBalancer:isHealthy()
-  return self.healthy, self.weight, self.unavailableWeight
+--- Gets the status of the balancer.
+-- This reports the full structure of the balancer state, including hosts,
+-- addresses, weights, and availability.
+-- @return table with balancer stateus
+function objBalancer:getStatus()
+  local hosts = {}
+  local status = {
+    healthy = self.healthy,
+    weight = {
+      total = self.weight,
+      unavailable = self.unavailableWeight,
+      available = self.weight - self.unavailableWeight,
+    },
+    hosts = hosts,
+  }
+
+  for i = 1, #self.hosts do
+    hosts[i] = self.hosts[i]:getStatus()
+  end
+
+  return status
 end
 
 --- Creates a new base balancer.

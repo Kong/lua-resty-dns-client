@@ -46,8 +46,8 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 - BREAKING: the balancer callback is called with a new event; "health" whenever
   the health status of the balancer changes.
 
-- Added: keep track of unavailable weight. Added the `isHealthy` method to
-  return health, overall weight and unavailable weight. Health is determined
+- Added: keep track of unavailable weight. Added the `getStatus` method to
+  return health, of the entire balancer structure. Health itself is determined
   based on the new property `healthThreshold`.
 - Added: prevention of cascading failures when balancer is unhealthy. Use the
   `healthThreshold` value to set when the balancer is considered unhealthy.

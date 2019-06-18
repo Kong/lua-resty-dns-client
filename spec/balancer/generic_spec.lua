@@ -27,6 +27,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         },
       })
       snapshot = assert:snapshot()
+      assert:set_parameter("TableFormatLevel", 10)
     end)
 
 
@@ -53,45 +54,45 @@ for algorithm, balancer_module in helpers.balancer_types() do
       end)
 
       it("empty balancer is unhealthy", function()
-        assert.is_false((b:isHealthy()))
+        assert.is_false((b:getStatus().healthy))
       end)
 
       it("adding first address marks healthy", function()
-        assert.is_false((b:isHealthy()))
+        assert.is_false(b:getStatus().healthy)
         b:addHost("127.0.0.1", 8000, 100)
-        assert.is_true((b:isHealthy()))
+        assert.is_true(b:getStatus().healthy)
       end)
 
       it("removing last address marks unhealthy", function()
-        assert.is_false((b:isHealthy()))
+        assert.is_false(b:getStatus().healthy)
         b:addHost("127.0.0.1", 8000, 100)
-        assert.is_true((b:isHealthy()))
+        assert.is_true(b:getStatus().healthy)
         b:removeHost("127.0.0.1", 8000)
-        assert.is_false((b:isHealthy()))
+        assert.is_false(b:getStatus().healthy)
       end)
 
       it("dropping below the health threshold marks unhealthy", function()
-        assert.is_false((b:isHealthy()))
+        assert.is_false(b:getStatus().healthy)
         b:addHost("127.0.0.1", 8000, 100)
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
-        assert.is_true((b:isHealthy()))
+        assert.is_true(b:getStatus().healthy)
         b:setPeerStatus(false, "127.0.0.2", 8000)
-        assert.is_true((b:isHealthy()))
+        assert.is_true(b:getStatus().healthy)
         b:setPeerStatus(false, "127.0.0.3", 8000)
-        assert.is_false((b:isHealthy()))
+        assert.is_false(b:getStatus().healthy)
       end)
 
       it("rising above the health threshold marks healthy", function()
-        assert.is_false((b:isHealthy()))
+        assert.is_false(b:getStatus().healthy)
         b:addHost("127.0.0.1", 8000, 100)
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
         b:setPeerStatus(false, "127.0.0.2", 8000)
         b:setPeerStatus(false, "127.0.0.3", 8000)
-        assert.is_false((b:isHealthy()))
+        assert.is_false(b:getStatus().healthy)
         b:setPeerStatus(true, "127.0.0.2", 8000)
-        assert.is_true((b:isHealthy()))
+        assert.is_true(b:getStatus().healthy)
       end)
 
     end)
@@ -130,14 +131,88 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "arecord.tst", address = "5.6.7.8" },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 100,
+              available = 100,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           b:addHost("arecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 25, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 150,
+              available = 150,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 50,
+                  available = 50,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 25
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 25
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
         it("removing a host",function()
@@ -146,19 +221,119 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "arecord.tst", address = "5.6.7.8" },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 100,
+              available = 100,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           b:addHost("arecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 25, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 150,
+              available = 150,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 50,
+                  available = 50,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 25
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 25
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           b:removeHost("arecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 100,
+              available = 100,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
+
         end)
 
         it("switching address availability",function()
@@ -167,26 +342,199 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "arecord.tst", address = "5.6.7.8" },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 100,
+              available = 100,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           b:addHost("arecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 25, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 150,
+              available = 150,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 50,
+                  available = 50,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 25
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 25
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           -- switch to unavailable
           assert(b:setPeerStatus(false, "1.2.3.4", 8001, "arecord.tst"))
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 25, weight)
-          assert.are.equal(1 * 25, unavailable)
+          b:addHost("arecord.tst", 8001, 25)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 150,
+              available = 125,
+              unavailable = 25
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 50,
+                  available = 25,
+                  unavailable = 25
+                },
+                addresses = {
+                  {
+                    healthy = false,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 25
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 25
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           -- switch to available
           assert(b:setPeerStatus(true, "1.2.3.4", 8001, "arecord.tst"))
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 25, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 150,
+              available = 150,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 50,
+                  available = 50,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 25
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 25
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
         it("changing weight of an available address",function()
@@ -195,19 +543,113 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "arecord.tst", address = "5.6.7.8" },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
-
           b:addHost("arecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 25, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 150,
+              available = 150,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 50,
+                  available = 50,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 25
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 25
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           b:addHost("arecord.tst", 8001, 50) -- adding again changes weight
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 50, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 200,
+              available = 200,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 50,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 50
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 50
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
         it("changing weight of an unavailable address",function()
@@ -216,25 +658,168 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "arecord.tst", address = "5.6.7.8" },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
-
           b:addHost("arecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 25, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 150,
+              available = 150,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 50,
+                  available = 50,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 25
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 25
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           -- switch to unavailable
           assert(b:setPeerStatus(false, "1.2.3.4", 8001, "arecord.tst"))
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 25, weight)
-          assert.are.equal(1 * 25, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 150,
+              available = 125,
+              unavailable = 25
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 50,
+                  available = 25,
+                  unavailable = 25
+                },
+                addresses = {
+                  {
+                    healthy = false,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 25
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 25
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           b:addHost("arecord.tst", 8001, 50) -- adding again changes weight
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 50, weight)
-          assert.are.equal(1 * 50, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 200,
+              available = 150,
+              unavailable = 50
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "arecord.tst",
+                port = 8001,
+                nodeWeight = 50,
+                weight = {
+                  total = 100,
+                  available = 50,
+                  unavailable = 50
+                },
+                addresses = {
+                  {
+                    healthy = false,
+                    ip = "1.2.3.4",
+                    port = 8001,
+                    weight = 50
+                  },
+                  {
+                    healthy = true,
+                    ip = "5.6.7.8",
+                    port = 8001,
+                    weight = 50
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
       end)
@@ -247,14 +832,59 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
-
           b:addHost("srvrecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 10, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 120,
+              available = 120,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 20,
+                  available = 20,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
         it("removing a host",function()
@@ -263,19 +893,89 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
-
           b:addHost("srvrecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 10, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 120,
+              available = 120,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 20,
+                  available = 20,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           b:removeHost("srvrecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 100,
+              available = 100,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
         it("switching address availability",function()
@@ -284,26 +984,169 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
-
           b:addHost("srvrecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 10, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 120,
+              available = 120,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 20,
+                  available = 20,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           -- switch to unavailable
           assert(b:setPeerStatus(false, "1.1.1.1", 9000, "srvrecord.tst"))
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 10, weight)
-          assert.are.equal(1 * 10, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 120,
+              available = 110,
+              unavailable = 10
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 20,
+                  available = 10,
+                  unavailable = 10
+                },
+                addresses = {
+                  {
+                    healthy = false,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           -- switch to available
           assert(b:setPeerStatus(true, "1.1.1.1", 9000, "srvrecord.tst"))
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 10, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 120,
+              available = 120,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 20,
+                  available = 20,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
         it("changing weight of an available address (dns update)",function()
@@ -312,14 +1155,59 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
-
           b:addHost("srvrecord.tst", 8001, 10)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 10, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 120,
+              available = 120,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 10,
+                weight = {
+                  total = 20,
+                  available = 20,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           dnsExpire(record)
           dnsSRV({
@@ -327,10 +1215,60 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 20 },
           })
           b:getPeer()  -- touch all adresses to force dns renewal
+          b:addHost("srvrecord.tst", 8001, 99) -- add again to update nodeWeight
 
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 20, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 140,
+              available = 140,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 99,
+                weight = {
+                  total = 40,
+                  available = 40,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 20
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 20
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
         it("changing weight of an unavailable address (dns update)",function()
@@ -339,20 +1277,114 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
           })
 
-          local _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100, weight)
-          assert.are.equal(0, unavailable)
-
           b:addHost("srvrecord.tst", 8001, 25)
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 10, weight)
-          assert.are.equal(0, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 120,
+              available = 120,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 20,
+                  available = 20,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           -- switch to unavailable
           assert(b:setPeerStatus(false, "2.2.2.2", 9001, "srvrecord.tst"))
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 10, weight)
-          assert.are.equal(1 * 10, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 120,
+              available = 110,
+              unavailable = 10
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 25,
+                weight = {
+                  total = 20,
+                  available = 10,
+                  unavailable = 10
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = false,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
 
           -- update weight, through dns renewal
           dnsExpire(record)
@@ -361,10 +1393,60 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 20 },
           })
           b:getPeer()  -- touch all adresses to force dns renewal
+          b:addHost("srvrecord.tst", 8001, 99) -- add again to update nodeWeight
 
-          _, weight, unavailable = b:isHealthy()
-          assert.are.equal(100 + 2 * 20, weight)
-          assert.are.equal(1 * 20, unavailable)
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 140,
+              available = 120,
+              unavailable = 20
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 8001,
+                nodeWeight = 99,
+                weight = {
+                  total = 40,
+                  available = 20,
+                  unavailable = 20
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 20
+                  },
+                  {
+                    healthy = false,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 20
+                  },
+                },
+              },
+            },
+          }, b:getStatus())
         end)
 
       end)
