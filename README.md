@@ -51,6 +51,8 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
   based on the new property `healthThreshold`.
 - Added: prevention of cascading failures when balancer is unhealthy. Use the
   `healthThreshold` value to set when the balancer is considered unhealthy.
+- Added: method `setHostStatus`, to set the availability/health state of all
+  addresses belonging to a host at once.
 - Fix: when an asyncquery failed to create the timer, it would silently ignore
   the error. Error is now being logged.
 
