@@ -1172,6 +1172,29 @@ function objBalancer:setPeerStatus(available, ip_address_handle, port, hostname)
   return nil, msg
 end
 
+--- Sets the status of a host.
+-- This will switch all underlying `address` objects to the specified state.
+-- @param available `true` for enabled/healthy, `false` for disabled/unhealthy
+-- @param hostname name by which it was added to the balancer.
+-- @param port the port of the host by which it was added to the balancer (optional, defaults to 80 if omitted).
+-- @return `true` on success, or `nil+err` if not found
+function objBalancer:setHostStatus(available, hostname, port)
+  assert(type(hostname) == "string", "expected a hostname (string), got "..tostring(hostname))
+  port = port or DEFAULT_PORT
+  for _, host in ipairs(self.hosts) do
+    if host.hostname == hostname and host.port == port then
+      -- got a match, update all it's adresses
+      for _, address in ipairs(host.addresses) do
+        address:setState(available)
+      end
+      return true
+    end
+  end
+
+  return nil, ("No host found by: '%s:%s'"):format(hostname, port)
+end
+
+
 -- Timer invoked to check for failed queries
 function objBalancer:requeryTimerCallback()
 
