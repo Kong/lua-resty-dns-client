@@ -22,12 +22,12 @@
 -- Periodically the query for the hostname will be retried, and if it succeeds
 -- it will get (different) indices reassigned to it.
 --
--- When using `setPeerStatus` to mark a peer as unavailable, the slots it owns will
--- not be reassigned. So after a recovery, hashing will be restored.
+-- When using `setAddressStatus` to mark a peer as unavailable, the slots it owns
+-- will not be reassigned. So after a recovery, hashing will be restored.
 --
 --
--- __NOTE:__ This documentation only described the altered user methods/properties
--- from a see the `user properties` from the `balancer_base` for a complete overview.
+-- __NOTE:__ This documentation only described the altered user methods/properties,
+-- see the `user properties` from the `balancer_base` for a complete overview.
 --
 -- @author Thijs Schreijer
 -- @copyright 2016-2019 Kong Inc. All rights reserved.

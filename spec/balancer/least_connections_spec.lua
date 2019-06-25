@@ -195,7 +195,7 @@ describe("[least-connections]", function()
       }))
 
       -- mark one as unavailable
-      b:setPeerStatus(false, "50.50.50.50", 80, "konghq.com")
+      b:setAddressStatus(false, "50.50.50.50", 80, "konghq.com")
       local counts = {}
       local handles = {}
       for i = 1,70 do
@@ -224,7 +224,7 @@ describe("[least-connections]", function()
       }))
 
       -- mark one as unavailable
-      b:setPeerStatus(false, "20.20.20.20", 80, "konghq.com")
+      b:setAddressStatus(false, "20.20.20.20", 80, "konghq.com")
       local counts = {}
       local handles = {}
       for i = 1,70 do
@@ -241,7 +241,7 @@ describe("[least-connections]", function()
         }, counts)
 
       -- let's do another 70, after resetting
-      b:setPeerStatus(true, "20.20.20.20", 80, "konghq.com")
+      b:setAddressStatus(true, "20.20.20.20", 80, "konghq.com")
       for i = 1,70 do
         local ip, _, _, handle = b:getPeer()
         counts[ip] = (counts[ip] or 0) + 1

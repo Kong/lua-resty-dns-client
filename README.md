@@ -41,11 +41,12 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### x.x.x (x-xxx-2019)
+### 4.0.0 (x-xxx-2019) unreleased!
 
 - BREAKING: the balancer callback is called with a new event; "health" whenever
   the health status of the balancer changes.
-
+- BREAKING: renamed `setPeerStatus` to `setAddressStatus` to be in line with the
+  new `setHostStatus`, and prevent confusion.
 - Added: keep track of unavailable weight. Added the `getStatus` method to
   return health, of the entire balancer structure. Health itself is determined
   based on the new property `healthThreshold`.

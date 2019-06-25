@@ -1019,7 +1019,7 @@ end
 -- be renewed and as a consequence the balancer algorithm might be updated.
 -- @param cacheOnly If truthy, no dns lookups will be done, only cache.
 -- @param handle the `handle` returned by a previous call to `getPeer`. This will
--- retain some state over retries. See also `setPeerStatus`.
+-- retain some state over retries. See also `setAddressStatus`.
 -- @param hashValue (optional) number for consistent hashing, if supported by
 -- the algorithm. The hashValue must be an (evenly distributed) `integer >= 0`.
 -- @return `ip + port + hostname` + `handle`, or `nil+error`
@@ -1113,9 +1113,9 @@ end
 -- be previous results from `getPeer`.
 -- Call this either as:
 --
--- - `setPeerStatus(available, address)`,
--- - `setPeerStatus(available, handle)`, or as
--- - `setPeerStatus(available, ip, port, hostname)`
+-- - `setAddressStatus(available, address)`,
+-- - `setAddressStatus(available, handle)`, or as
+-- - `setAddressStatus(available, ip, port, hostname)`
 --
 -- Using the `address` or `handle` is preferred since it is guaranteed to match. By ip/port/name
 -- might fail if there are too many DNS levels.
@@ -1125,7 +1125,7 @@ end
 -- @param hostname (optional, defaults to the value of `ip`) the hostname
 -- @return `true` on success, or `nil+err` if not found
 -- @within User properties
-function objBalancer:setPeerStatus(available, ip_address_handle, port, hostname)
+function objBalancer:setAddressStatus(available, ip_address_handle, port, hostname)
 
   if type(ip_address_handle) == "table" then
     -- it's not an IP

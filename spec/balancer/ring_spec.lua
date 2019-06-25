@@ -433,10 +433,10 @@ describe("[ringbalancer]", function()
         })
         b:addHost("1.2.3.4", 80, 10)
         b:addHost("kong.inc", 80, 10)
-        local ok, err = b:setPeerStatus(false, "1.2.3.4", 80, "1.2.3.4")
+        local ok, err = b:setAddressStatus(false, "1.2.3.4", 80, "1.2.3.4")
         assert.is_true(ok)
         assert.is_nil(err)
-        ok, err = b:setPeerStatus(false, "4.3.2.1", 80, "kong.inc")
+        ok, err = b:setAddressStatus(false, "4.3.2.1", 80, "kong.inc")
         assert.is_true(ok)
         assert.is_nil(err)
       end)
@@ -447,7 +447,7 @@ describe("[ringbalancer]", function()
         })
         b:addHost("kong.inc", 80, 10)
         local _, _, _, handle = b:getPeer()
-        local ok, err = b:setPeerStatus(false, handle.address)
+        local ok, err = b:setAddressStatus(false, handle.address)
         assert.is_true(ok)
         assert.is_nil(err)
       end)
@@ -458,7 +458,7 @@ describe("[ringbalancer]", function()
         })
         b:addHost("kong.inc", 80, 10)
         local _, _, _, handle = b:getPeer()
-        local ok, err = b:setPeerStatus(false, handle)
+        local ok, err = b:setAddressStatus(false, handle)
         assert.is_true(ok)
         assert.is_nil(err)
       end)
@@ -469,10 +469,10 @@ describe("[ringbalancer]", function()
         })
         b:addHost("1.2.3.4", 80, 10)
         b:addHost("kong.inc", 80, 10)
-        local ok, err = b:setPeerStatus(false, "1.1.1.1", 80)
+        local ok, err = b:setAddressStatus(false, "1.1.1.1", 80)
         assert.is_nil(ok)
         assert.equals("no peer found by name '1.1.1.1' and address 1.1.1.1:80", err)
-        ok, err = b:setPeerStatus(false, "1.1.1.1", 80, "kong.inc")
+        ok, err = b:setAddressStatus(false, "1.1.1.1", 80, "kong.inc")
         assert.is_nil(ok)
         assert.equals("no peer found by name 'kong.inc' and address 1.1.1.1:80", err)
       end)
@@ -489,7 +489,7 @@ describe("[ringbalancer]", function()
           { name = "mashape.com", target = "mashape2.com", port = 8002, weight = 5 },
         })
         b:addHost("mashape.com", 80, 10)
-        local ok, err = b:setPeerStatus(false, "mashape1.com", 80, "mashape.com")
+        local ok, err = b:setAddressStatus(false, "mashape1.com", 80, "mashape.com")
         assert.is_nil(ok)
         assert.equals("no peer found by name 'mashape.com' and address mashape1.com:80", err)
       end)
@@ -508,12 +508,12 @@ describe("[ringbalancer]", function()
         b:addHost("mashape.com", 80, 10)
 
         local _, _, _, handle = b:getPeer()
-        local ok, err = b:setPeerStatus(false, handle)
+        local ok, err = b:setAddressStatus(false, handle)
         assert.is_true(ok)
         assert.is_nil(err)
 
         _, _, _, handle = b:getPeer()
-        ok, err = b:setPeerStatus(false, handle)
+        ok, err = b:setAddressStatus(false, handle)
         assert.is_true(ok)
         assert.is_nil(err)
 
@@ -537,12 +537,12 @@ describe("[ringbalancer]", function()
         b:addHost("mashape.com", 80, 10)
 
         local _, _, _, handle = b:getPeer()
-        local ok, err = b:setPeerStatus(false, handle.address)
+        local ok, err = b:setAddressStatus(false, handle.address)
         assert.is_true(ok)
         assert.is_nil(err)
 
         _, _, _, handle = b:getPeer()
-        ok, err = b:setPeerStatus(false, handle.address)
+        ok, err = b:setAddressStatus(false, handle.address)
         assert.is_true(ok)
         assert.is_nil(err)
 
@@ -658,7 +658,7 @@ describe("[ringbalancer]", function()
         wheelSize = 15,
       })
       -- mark node down
-      assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
+      assert(b:setAddressStatus(false, "1.2.3.4", 123, "mashape.com"))
       -- run down the wheel twice
       local res = {}
       for _ = 1, 15*2 do
@@ -782,7 +782,7 @@ describe("[ringbalancer]", function()
         wheelSize = 15,
       })
       -- mark node down
-      assert(b:setPeerStatus(false, "1.2.3.4", 123, "mashape.com"))
+      assert(b:setAddressStatus(false, "1.2.3.4", 123, "mashape.com"))
       -- run down the wheel twice
       local res = {}
       for n = 1, 15*2 do
@@ -1696,7 +1696,7 @@ describe("[ringbalancer]", function()
       })
 
       -- mark node down
-      assert(b:setPeerStatus(false, "1.2.3.4", 80, "mashape.com"))
+      assert(b:setAddressStatus(false, "1.2.3.4", 80, "mashape.com"))
 
       -- run the wheel
       local res = {}
