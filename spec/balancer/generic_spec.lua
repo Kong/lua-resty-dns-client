@@ -77,9 +77,9 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
         assert.is_true(b:getStatus().healthy)
-        b:setPeerStatus(false, "127.0.0.2", 8000)
+        b:setAddressStatus(false, "127.0.0.2", 8000)
         assert.is_true(b:getStatus().healthy)
-        b:setPeerStatus(false, "127.0.0.3", 8000)
+        b:setAddressStatus(false, "127.0.0.3", 8000)
         assert.is_false(b:getStatus().healthy)
       end)
 
@@ -88,10 +88,10 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.1", 8000, 100)
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
-        b:setPeerStatus(false, "127.0.0.2", 8000)
-        b:setPeerStatus(false, "127.0.0.3", 8000)
+        b:setAddressStatus(false, "127.0.0.2", 8000)
+        b:setAddressStatus(false, "127.0.0.3", 8000)
         assert.is_false(b:getStatus().healthy)
-        b:setPeerStatus(true, "127.0.0.2", 8000)
+        b:setAddressStatus(true, "127.0.0.2", 8000)
         assert.is_true(b:getStatus().healthy)
       end)
 
@@ -426,7 +426,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }, b:getStatus())
 
           -- switch to unavailable
-          assert(b:setPeerStatus(false, "1.2.3.4", 8001, "arecord.tst"))
+          assert(b:setAddressStatus(false, "1.2.3.4", 8001, "arecord.tst"))
           b:addHost("arecord.tst", 8001, 25)
           assert.same({
             healthy = true,
@@ -482,7 +482,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }, b:getStatus())
 
           -- switch to available
-          assert(b:setPeerStatus(true, "1.2.3.4", 8001, "arecord.tst"))
+          assert(b:setAddressStatus(true, "1.2.3.4", 8001, "arecord.tst"))
           assert.same({
             healthy = true,
             weight = {
@@ -713,7 +713,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }, b:getStatus())
 
           -- switch to unavailable
-          assert(b:setPeerStatus(false, "1.2.3.4", 8001, "arecord.tst"))
+          assert(b:setAddressStatus(false, "1.2.3.4", 8001, "arecord.tst"))
           assert.same({
             healthy = true,
             weight = {
@@ -1039,7 +1039,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }, b:getStatus())
 
           -- switch to unavailable
-          assert(b:setPeerStatus(false, "1.1.1.1", 9000, "srvrecord.tst"))
+          assert(b:setAddressStatus(false, "1.1.1.1", 9000, "srvrecord.tst"))
           assert.same({
             healthy = true,
             weight = {
@@ -1094,7 +1094,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }, b:getStatus())
 
           -- switch to available
-          assert(b:setPeerStatus(true, "1.1.1.1", 9000, "srvrecord.tst"))
+          assert(b:setAddressStatus(true, "1.1.1.1", 9000, "srvrecord.tst"))
           assert.same({
             healthy = true,
             weight = {
@@ -1332,7 +1332,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }, b:getStatus())
 
           -- switch to unavailable
-          assert(b:setPeerStatus(false, "2.2.2.2", 9001, "srvrecord.tst"))
+          assert(b:setAddressStatus(false, "2.2.2.2", 9001, "srvrecord.tst"))
           assert.same({
             healthy = true,
             weight = {
@@ -1511,9 +1511,9 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.1", 8000, 100)
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
-        b:setPeerStatus(false, "127.0.0.1", 8000)
-        b:setPeerStatus(false, "127.0.0.2", 8000)
-        b:setPeerStatus(false, "127.0.0.3", 8000)
+        b:setAddressStatus(false, "127.0.0.1", 8000)
+        b:setAddressStatus(false, "127.0.0.2", 8000)
+        b:setAddressStatus(false, "127.0.0.3", 8000)
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
@@ -1529,8 +1529,8 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.3", 8000, 100)
         assert.not_nil(b:getPeer())
 
-        b:setPeerStatus(false, "127.0.0.1", 8000)
-        b:setPeerStatus(false, "127.0.0.2", 8000)
+        b:setAddressStatus(false, "127.0.0.1", 8000)
+        b:setAddressStatus(false, "127.0.0.2", 8000)
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
@@ -1546,8 +1546,8 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.3", 8000, 100)
         assert.not_nil(b:getPeer())
 
-        b:setPeerStatus(false, "127.0.0.1", 8000)
-        b:setPeerStatus(false, "127.0.0.2", 8000)
+        b:setAddressStatus(false, "127.0.0.1", 8000)
+        b:setAddressStatus(false, "127.0.0.2", 8000)
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
@@ -1555,7 +1555,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }
         )
 
-        b:setPeerStatus(true, "127.0.0.2", 8000)
+        b:setAddressStatus(true, "127.0.0.2", 8000)
         assert.not_nil(b:getPeer())
       end)
 
