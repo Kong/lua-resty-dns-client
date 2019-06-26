@@ -1178,6 +1178,7 @@ end
 -- @param hostname name by which it was added to the balancer.
 -- @param port the port of the host by which it was added to the balancer (optional, defaults to 80 if omitted).
 -- @return `true` on success, or `nil+err` if not found
+-- @within User properties
 function objBalancer:setHostStatus(available, hostname, port)
   assert(type(hostname) == "string", "expected a hostname (string), got "..tostring(hostname))
   port = port or DEFAULT_PORT

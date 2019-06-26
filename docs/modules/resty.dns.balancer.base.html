@@ -221,6 +221,10 @@ they are not explicitly released the (default) GC handler will call
 	<td class="summary">Gets a handle to be returned by <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a>.</td>
 	</tr>
 	<tr>
+	<td class="name" nowrap><a href="#objBalancer:getStatus">objBalancer:getStatus ()</a></td>
+	<td class="summary">Gets the status of the balancer.</td>
+	</tr>
+	<tr>
 	<td class="name" nowrap><a href="#objBalancer:newAddress">objBalancer:newAddress (addr)</a></td>
 	<td class="summary">Creates a new address object.</td>
 	</tr>
@@ -256,12 +260,16 @@ they are not explicitly released the (default) GC handler will call
 	<td class="summary">Removes a host from the balancer.</td>
 	</tr>
 	<tr>
+	<td class="name" nowrap><a href="#objBalancer:setAddressStatus">objBalancer:setAddressStatus (available, ip_address_handle, port, hostname)</a></td>
+	<td class="summary">Sets the current status of an address.</td>
+	</tr>
+	<tr>
 	<td class="name" nowrap><a href="#objBalancer:setCallback">objBalancer:setCallback (callback)</a></td>
 	<td class="summary">Sets an event callback for user code.</td>
 	</tr>
 	<tr>
-	<td class="name" nowrap><a href="#objBalancer:setPeerStatus">objBalancer:setPeerStatus (available, ip_address_handle, port, hostname)</a></td>
-	<td class="summary">Sets the current status of an address.</td>
+	<td class="name" nowrap><a href="#objBalancer:setHostStatus">objBalancer:setHostStatus (available, hostname, port)</a></td>
+	<td class="summary">Sets the status of a host.</td>
 	</tr>
 </table>
 
@@ -393,6 +401,27 @@ implementation will call <code>handle.address:release(handle, true)</code>.</p><
     <ol>
 
         handle
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "objBalancer:getStatus"></a>
+    <strong>objBalancer:getStatus ()</strong>
+    </dt>
+    <dd>
+    Gets the status of the balancer.
+ This reports the full structure of the balancer state, including hosts,
+ addresses, weights, and availability.
+
+
+
+    <h3>Returns:</h3>
+    <ol>
+
+        table with balancer stateus
     </ol>
 
 
@@ -544,6 +573,9 @@ the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
 <li><code>log_prefix</code> (optional) a name used in the prefix for log messages. Defaults to
 <code>&quot;balancer&quot;</code> which results in log prefix <code>&quot;[balancer 1]&quot;</code> (the number is a sequential
 id number)</li>
+<li><code>healthThreshold</code> (optional) minimum percentage of the balancer weight that must
+be healthy/available for the whole balancer to be considered healthy. Defaults
+to 0% if omitted.</li>
 </ul>
 
 
@@ -623,7 +655,7 @@ id number)</li>
         </li>
         <li><span class="parameter">handle</span>
          the <a href="../modules/resty.dns.balancer.handle.html">handle</a> returned by a previous call to <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a>. This will
- retain some state over retries. See also <a href="../modules/resty.dns.balancer.base.html#objBalancer:setPeerStatus">setPeerStatus</a>.
+ retain some state over retries. See also <a href="../modules/resty.dns.balancer.base.html#objBalancer:setAddressStatus">setAddressStatus</a>.
         </li>
         <li><span class="parameter">hashValue</span>
          (optional) number for consistent hashing, if supported by
@@ -690,52 +722,24 @@ id number)</li>
 
 </dd>
     <dt>
-    <a name = "objBalancer:setCallback"></a>
-    <strong>objBalancer:setCallback (callback)</strong>
-    </dt>
-    <dd>
-    Sets an event callback for user code.  The callback is invoked for
- every address added to/removed from the balancer.
- Signature of the callback is:</p>
-
-<p>   <code>function(balancer, action, address, ip, port, hostname)</code></p>
-
-<p> where <code>ip</code> might also
- be a hostname if the DNS resolution returns another name (usually in
- SRV records). The <code>action</code> parameter will be either <code>&quot;added&quot;</code> or <code>&quot;removed&quot;</code>.</p>
-
-<p> NOTE: the callback will be executed async (on a timer) so maybe executed
- only after the methods (<a href="../modules/resty.dns.balancer.base.html#objBalancer:addHost">addHost</a> and <a href="../modules/resty.dns.balancer.base.html#objBalancer:removeHost">removeHost</a> for example) have returned.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">callback</span>
-         a function called when an address is added/removed
-        </li>
-    </ul>
-
-    <h3>Returns:</h3>
-    <ol>
-
-        <code>true</code>, or throws an error on bad input
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "objBalancer:setPeerStatus"></a>
-    <strong>objBalancer:setPeerStatus (available, ip_address_handle, port, hostname)</strong>
+    <a name = "objBalancer:setAddressStatus"></a>
+    <strong>objBalancer:setAddressStatus (available, ip_address_handle, port, hostname)</strong>
     </dt>
     <dd>
     Sets the current status of an address.
  This allows to temporarily suspend peers when they are offline/unhealthy,
  it will not modify the address held by the record. The parameters passed in should
  be previous results from <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a>.
- Call this either as <code>setPeerStatus(available, address)</code>, <code>setPeerStatus(available, handle)</code><code>, or as </code>setPeerStatus(available, ip, port, <hostname>)<code>.
- Using the </code>address<code> or </code>handle` is preferred since it is guaranteed to match. By ip/port/name
+ Call this either as:</p>
+
+<ul>
+<li><code>setAddressStatus(available, address)</code>,</li>
+<li><code>setAddressStatus(available, handle)</code>, or as</li>
+<li><code>setAddressStatus(available, ip, port, hostname)</code></li>
+</ul>
+
+
+<p> Using the <code>address</code> or <a href="../modules/resty.dns.balancer.handle.html">handle</a> is preferred since it is guaranteed to match. By ip/port/name
  might fail if there are too many DNS levels.
 
 
@@ -765,6 +769,79 @@ id number)</li>
 
 
 </dd>
+    <dt>
+    <a name = "objBalancer:setCallback"></a>
+    <strong>objBalancer:setCallback (callback)</strong>
+    </dt>
+    <dd>
+    Sets an event callback for user code.  The callback is invoked for
+ every address added to/removed from the balancer, and on health changes.</p>
+
+<p> Signature of the callback is for address adding/removing:</p>
+
+<p>   <code>function(balancer, &quot;added&quot;/&quot;removed&quot;, address, ip, port, hostname)</code></p>
+
+<p> where <code>ip</code> might also
+ be a hostname if the DNS resolution returns another name (usually in
+ SRV records).</p>
+
+<p> For health updates the signature is:</p>
+
+<p>   <code>function(balancer, &quot;health&quot;, isHealthy)</code></p>
+
+<p> NOTE: the callback will be executed async (on a timer) so maybe executed
+ only after the methods (<a href="../modules/resty.dns.balancer.base.html#objBalancer:addHost">addHost</a> and <a href="../modules/resty.dns.balancer.base.html#objBalancer:removeHost">removeHost</a> for example) have returned.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">callback</span>
+         a function called when an address is added/removed
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        <code>true</code>, or throws an error on bad input
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "objBalancer:setHostStatus"></a>
+    <strong>objBalancer:setHostStatus (available, hostname, port)</strong>
+    </dt>
+    <dd>
+    Sets the status of a host.
+ This will switch all underlying <code>address</code> objects to the specified state.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">available</span>
+         <code>true</code> for enabled/healthy, <code>false</code> for disabled/unhealthy
+        </li>
+        <li><span class="parameter">hostname</span>
+         name by which it was added to the balancer.
+        </li>
+        <li><span class="parameter">port</span>
+         the port of the host by which it was added to the balancer (optional, defaults to 80 if omitted).
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        <code>true</code> on success, or <code>nil+err</code> if not found
+    </ol>
+
+
+
+
+</dd>
 </dl>
 
 
@@ -772,7 +849,7 @@ id number)</li>
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2019-03-11 10:47:37 </i>
+<i style="float:right;">Last updated 2019-06-26 11:39:54 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

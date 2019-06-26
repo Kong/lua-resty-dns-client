@@ -41,7 +41,7 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### 4.0.0 (x-xxx-2019) unreleased!
+### 4.0.0 (26-Jun-2019)
 
 - BREAKING: the balancer callback is called with a new event; "health" whenever
   the health status of the balancer changes.
