@@ -298,10 +298,44 @@ function ring_balancer:getPeer(cacheOnly, handle, hashValue)
     handle.hashValue = hashValue
   end
 
+  -- it's a retry, get next target from addresses, avoid to get the same target as the last one
+  if handle.retryCount > 0 then
+    local list = self.addresses
+    local pos = 1 + (handle.retryCount % #list)
+    while true do
+      local address = list[pos]
+      local ip, port, hostname = address:getPeer(cacheOnly)
+      if ip then
+        -- success, update handle
+        handle.address = address
+        return ip, port, hostname, handle
+
+      elseif port == balancer_base.errors.ERR_DNS_UPDATED then
+        -- we just need to retry the same index, no change for 'pointer', just
+        -- in case of dns updates, we need to check our health again.
+        if not self.healthy then
+          return nil, balancer_base.errors.ERR_BALANCER_UNHEALTHY
+        end
+
+      elseif port == balancer_base.errors.ERR_ADDRESS_UNAVAILABLE then
+        -- fall through to the next wheel index
+        pos = pos + 1
+        if pos > #list then
+          -- we went around, but still nothing...
+          return nil, balancer_base.errors.ERR_NO_PEERS_AVAILABLE
+        end
+
+      else
+        -- an unknown error occured
+        return nil, port
+      end
+    end
+  end;
+
   -- calculate starting point
   local pointer
   if hashValue then
-    hashValue = hashValue + handle.retryCount
+    -- hashValue = hashValue + handle.retryCount
     pointer = 1 + (hashValue % self.wheelSize)
   else
     -- no hash, so get the next one, round-robin like
