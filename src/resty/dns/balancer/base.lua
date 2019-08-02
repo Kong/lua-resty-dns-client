@@ -6,11 +6,9 @@
 --
 --   `balancer <1 --- many> hosts <1 --- many> addresses`
 --
--- Updating the dns records is passive, meaning that when `getPeer` accesses a
--- target, only then the check is done whether the record is stale, and if so
--- it is updated. The one exception is the failed dns queries (because they
--- have no indices assigned, and hence will never be hit by `getPeer`), which will
--- be actively refreshed using a timer.
+-- Updating the DNS records is active, meaning that a background task is running
+-- to periodically update DNS records when they expire. This only applies to the
+-- hostnames added to the balancer, not to any nested DNS records.
 --
 -- __Weights__
 --
@@ -565,12 +563,12 @@ function objHost:queryDns(cacheOnly)
     ngx_log(ngx_WARN, self.log_prefix, "querying dns for ", self.hostname,
             " failed: ", err , ". Tried ", tostring(try_list))
 
-    -- query failed, create a fake recorded, flagged as failed.
+    -- query failed, create a fake record
     -- the empty record will cause all existing addresses to be removed
     newQuery = {
-      __errorQueryFlag = true  --flag to mark the record as a failed lookup
+      expire = time() + self.balancer.requeryInterval,
+      touched = time()
     }
-    self.balancer:startRequery()
   end
 
   assert_atomicity(update_dns_result, self, newQuery, dns)
@@ -1196,50 +1194,26 @@ function objBalancer:setHostStatus(available, hostname, port)
 end
 
 
--- Timer invoked to check for failed queries
-function objBalancer:requeryTimerCallback()
+-- Timer invoked to update DNS records
+function objBalancer:resolveTimerCallback()
+  --check all hosts for expired records,
+  --erroreed ones included
+  --we update, so changes on the list while traversing can happen, keep track of that
 
   ngx_log(ngx_DEBUG, self.log_prefix, "executing requery timer")
 
   local all_ok = true
   for _, host in ipairs(self.hosts) do
     -- only retry the errorred ones
-    if host.lastQuery.__errorQueryFlag then
+    if (host.lastQuery.expire or 0) < time() then
       all_ok = false -- note: only if NO requery at all is done, we are 'all_ok'
-      -- if even a single dns query is performed, we yield on the dns socket
-      -- operation and our universe might have changed. Could lead to nasty
-      -- race-conditions otherwise.
       host:queryDns(false) -- timer-context; cacheOnly always false
     end
   end
 
-  if all_ok then
-    -- shutdown recurring timer
-    ngx_log(ngx_DEBUG, self.log_prefix, "requery success, stopping timer")
-    self.requeryTimer:cancel()
-    self.requeryTimer = nil
-  else
-    -- not done yet
-    ngx_log(ngx_DEBUG, self.log_prefix, "requery failure")
-  end
+  ngx_log(ngx_DEBUG, self.log_prefix, "requery completed")
 end
 
--- Starts the requery timer.
-function objBalancer:startRequery()
-  if self.requeryTimer then return end  -- already running, nothing to do here
-
-  local err
-  self.requeryTimer, err = resty_timer({
-      recurring = true,
-      interval = self.requeryInterval,
-      detached = false,
-      expire = self.requeryTimerCallback,
-    }, self)
-
-  if not self.requeryTimer then
-    ngx_log(ngx_ERR, self.log_prefix, "failed to create the timer: ", err)
-  end
-end
 
 --- Sets an event callback for user code. The callback is invoked for
 -- every address added to/removed from the balancer, and on health changes.
@@ -1385,7 +1359,7 @@ _M.new = function(opts)
     weight = 0,    -- total weight of all hosts
     unavailableWeight = 0,  -- the unavailable weight (range: 0 - weight)
     dns = opts.dns,  -- the configured dns client to use for resolving
-    requeryTimer = nil,  -- requery timer is not running, see `startRequery`
+    resolveTimer = nil,
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
     healthy = false, -- initial healthstatus of the balancer
@@ -1395,6 +1369,20 @@ _M.new = function(opts)
   self.super = objBalancer
 
   self:setCallback(opts.callback or function() end) -- callback for address mutations
+
+  do
+    local err
+    self.resolveTimer, err = resty_timer({
+        recurring = true,
+        interval = 1,  -- check for expired records every 1 second
+        detached = false,
+        expire = self.resolveTimerCallback,
+      }, self)
+
+    if not self.resolveTimer then
+      ngx_log(ngx_ERR, self.log_prefix, "failed to create the timer: ", err)
+    end
+  end
 
   ngx_log(ngx_DEBUG, self.log_prefix, "balancer_base created")
   return self
