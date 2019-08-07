@@ -14,7 +14,6 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
     setup(function()
       _G.package.loaded["resty.dns.client"] = nil -- make sure module is reloaded
-      _G._TEST = true  -- expose internals for test purposes
       client = require "resty.dns.client"
     end)
 
@@ -1557,6 +1556,44 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
         b:setAddressStatus(true, "127.0.0.2", 8000)
         assert.not_nil(b:getPeer())
+      end)
+
+
+      it("recovers when dns entries are replaced by healthy ones", function()
+        local record = dnsA({
+          { name = "getkong.org", address = "1.2.3.4" },
+        })
+        b:addHost("getkong.org", 8000, 50)
+        assert.not_nil(b:getPeer())
+
+        -- mark it as unhealthy
+        assert(b:setAddressStatus(false, "1.2.3.4", 8000, "getkong.org"))
+        assert.same({
+            nil, "Balancer is unhealthy", nil, nil,
+          }, {
+            b:getPeer()
+          }
+        )
+
+        -- expire DNS and add a new backend IP
+        -- balancer should now recover since a new healthy backend is available
+        record.expire = 0
+        dnsA({
+          { name = "getkong.org", address = "5.6.7.8" },
+        })
+
+        local timeout = ngx.now() + 5   -- we'll try for 5 seconds
+        while true do
+          assert(ngx.now() < timeout, "timeout")
+
+          local ip = b:getPeer()
+          if ip == "5.6.7.8" then
+            break  -- expected result, success!
+          end
+
+          ngx.sleep(0.1)  -- wait a bit before retrying
+        end
+
       end)
 
     end)

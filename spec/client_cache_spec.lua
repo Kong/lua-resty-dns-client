@@ -20,7 +20,6 @@ describe("[DNS client cache]", function()
   local client, resolver, query_func
 
   before_each(function()
-    _G._TEST = true
     client = require("resty.dns.client")
     resolver = require("resty.dns.resolver")
 
@@ -54,7 +53,6 @@ describe("[DNS client cache]", function()
     client = nil
     resolver = nil
     query_func = nil
-    _G._TEST = nil
   end)
 
 

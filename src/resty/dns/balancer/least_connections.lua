@@ -214,7 +214,7 @@ function _M.new(opts)
     opts.log_prefix = "least-connections"
   end
 
-  local self = balancer_base.new(opts)
+  local self = assert(balancer_base.new(opts))
 
   -- inject overridden methods
   for name, method in pairs(lc) do

@@ -1507,7 +1507,7 @@ _M.connect = connect
 _M.setpeername = setpeername
 
 -- export the locals in case we're testing
-if _TEST then    -- luacheck: ignore
+if package.loaded.busted then
   _M.getcache = function() return dnscache end
   _M._search_iter = search_iter -- export as different name!
 end
