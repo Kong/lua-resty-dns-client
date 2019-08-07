@@ -17,7 +17,6 @@ describe("[balancer_base]", function()
 
   setup(function()
     _G.package.loaded["resty.dns.client"] = nil -- make sure module is reloaded
-    _G._TEST = true  -- expose internals for test purposes
     balancer_base = require "resty.dns.balancer.base"
     client = require "resty.dns.client"
   end)

@@ -141,7 +141,6 @@ local table_concat = table.concat
 local math_floor = math.floor
 local string_format = string.format
 local ngx_log = ngx.log
-local ngx_ERR = ngx.ERR
 local ngx_DEBUG = ngx.DEBUG
 local ngx_WARN = ngx.WARN
 local balancer_id_counter = 0
@@ -1197,16 +1196,14 @@ end
 -- Timer invoked to update DNS records
 function objBalancer:resolveTimerCallback()
   --check all hosts for expired records,
-  --erroreed ones included
+  --including those with errors
   --we update, so changes on the list while traversing can happen, keep track of that
 
   ngx_log(ngx_DEBUG, self.log_prefix, "executing requery timer")
 
-  local all_ok = true
   for _, host in ipairs(self.hosts) do
     -- only retry the errorred ones
     if (host.lastQuery.expire or 0) < time() then
-      all_ok = false -- note: only if NO requery at all is done, we are 'all_ok'
       host:queryDns(false) -- timer-context; cacheOnly always false
     end
   end
@@ -1380,7 +1377,7 @@ _M.new = function(opts)
       }, self)
 
     if not self.resolveTimer then
-      ngx_log(ngx_ERR, self.log_prefix, "failed to create the timer: ", err)
+      return nil, "failed to create timer for background DNS resolution: " .. err
     end
   end
 

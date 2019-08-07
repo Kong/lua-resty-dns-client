@@ -14,7 +14,6 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
     setup(function()
       _G.package.loaded["resty.dns.client"] = nil -- make sure module is reloaded
-      _G._TEST = true  -- expose internals for test purposes
       client = require "resty.dns.client"
     end)
 

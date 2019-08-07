@@ -43,7 +43,7 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
 ### 4.1.0 (unreleased)
 
-- Fix: unhelthy balancers would not recover because they would not refresh the
+- Fix: unhealthy balancers would not recover because they would not refresh the
   DNS records used. See [PR 73](https://github.com/Kong/lua-resty-dns-client/pull/73).
 - Added: automatic background resolving of hostnames, expiry will be checked
   every second, and if needed DNS (and balancer) will be updated. See [PR 73](https://github.com/Kong/lua-resty-dns-client/pull/73).

@@ -429,7 +429,7 @@ function _M.new(opts)
     opts.log_prefix = "ringbalancer"
   end
 
-  local self = balancer_base.new(opts)
+  local self = assert(balancer_base.new(opts))
 
   if (not opts.wheelSize) and opts.order then
     opts.wheelSize = #opts.order
