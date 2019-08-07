@@ -41,7 +41,7 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### 4.1.0 (unreleased)
+### 4.1.0 (7-Aug-2019)
 
 - Fix: unhealthy balancers would not recover because they would not refresh the
   DNS records used. See [PR 73](https://github.com/Kong/lua-resty-dns-client/pull/73).
