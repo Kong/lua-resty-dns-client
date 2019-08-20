@@ -1465,10 +1465,10 @@ end
 -- @param opts the options table
 -- @return `success`, or `nil + error`
 local function connect(sock, host, port, sock_opts)
-  local targetIp, targetPort = toip(host, port)
+  local targetIp, targetPort, tryList = toip(host, port)
 
   if not targetIp then
-    return nil, targetPort
+    return nil, tostring(targetPort) .. ". Tried: " .. tostring(tryList)
   else
     -- need to do the extra check here: https://github.com/openresty/lua-nginx-module/issues/860
     if not sock_opts then
@@ -1488,13 +1488,13 @@ end
 -- @param port port to connect to (will be overridden if `toip` returns a port)
 -- @return `success`, or `nil + error`
 local function setpeername(sock, host, port)
-  local targetIp, targetPort
+  local targetIp, targetPort, tryList
   if host:sub(1,5) == "unix:" then
     targetIp = host  -- unix domain socket, nothing to resolve
   else
-    targetIp, targetPort = toip(host, port)
+    targetIp, targetPort, tryList = toip(host, port)
     if not targetIp then
-      return nil, targetPort
+      return nil, tostring(targetPort) .. ". Tried: " .. tostring(tryList)
     end
   end
   return sock:connect(targetIp, targetPort)
