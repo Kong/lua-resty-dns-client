@@ -44,6 +44,7 @@ Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 ### 4.1.x (xxxx) unreleased
 
 - Fix: added logging of try-list to the TCP/UDP wrappers, see [PR 75](https://github.com/Kong/lua-resty-dns-client/pull/75).
+- Fix: reduce logging noise of the requery timer
 
 ### 4.1.0 (7-Aug-2019)
 
