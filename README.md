@@ -36,6 +36,8 @@ Testing
 Tests are executed using `busted`, but because they run inside the `resty` cli tool, you must
 use the `rbusted` script.
 
+For troubleshooting purposes: see the `/extra` folder for how to parse logs
+
 History
 =======
 
