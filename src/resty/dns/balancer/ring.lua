@@ -244,8 +244,8 @@ function ring_balancer:redistributeIndices()
 end
 
 
-function ring_balancer:addHost(hostname, port, weight)
-  self.super.addHost(self, hostname, port, weight)
+function ring_balancer:addHost(hostname, port, weight, metadata)
+  self.super.addHost(self, hostname, port, weight, metadata)
 
   if #self.unassignedWheelIndices == 0 then
     self.unassignedWheelIndices = {}  -- replace table because of initial memory footprint
@@ -483,7 +483,7 @@ function _M.new(opts)
   table_sort(hosts, function(a,b) return (a.name..":"..(a.port or "") < b.name..":"..(b.port or "")) end)
   -- Insert the hosts
   for _, host in ipairs(hosts) do
-    local ok, err = self:addHost(host.name, host.port, host.weight)
+    local ok, err = self:addHost(host.name, host.port, host.weight, host.metadata)
     if not ok then
       return ok, "Failed creating a balancer: "..tostring(err)
     end

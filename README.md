@@ -43,10 +43,12 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### 4.1.x (xxxx) unreleased
+### 4.2.0 (23-Sep-2019)
 
 - Fix: added logging of try-list to the TCP/UDP wrappers, see [PR 75](https://github.com/Kong/lua-resty-dns-client/pull/75).
 - Fix: reduce logging noise of the requery timer
+- Added: hosts support metadata, a table with arbitrary content that will be
+  passed to callbacks.
 
 ### 4.1.0 (7-Aug-2019)
 

@@ -235,8 +235,8 @@ function objAddr:delete()
   ngx_log(ngx_DEBUG, self.log_prefix, "deleting address: ", self.ip, ":", self.port,
           " (host ", (self.host or empty).hostname, ")")
 
-  self.host.balancer:callback("removed", self, self.ip,
-                              self.port, self.host.hostname)
+  self.host.balancer:callback("removed", self, self.ip, self.port,
+                              self.host.hostname, self.host.metadata)
   self.host.balancer:removeAddress(self)
   self.host = nil
 end
@@ -849,10 +849,11 @@ end
 -- SRV record.
 -- @param nodeWeight the weight to use for the addresses. If the hostname
 -- resolves to an SRV record, this will be ignored, and the weight will be
+-- @param metadata (optional) the host additional data
 -- taken from the SRV record.
 -- @return balancer object, or throw an error on bad input
 -- @within User properties
-function objBalancer:addHost(hostname, port, nodeWeight)
+function objBalancer:addHost(hostname, port, nodeWeight, metadata)
   assert(type(hostname) == "string", "expected a hostname (string), got "..tostring(hostname))
   port = port or DEFAULT_PORT
   nodeWeight = nodeWeight or DEFAULT_WEIGHT
@@ -860,6 +861,10 @@ function objBalancer:addHost(hostname, port, nodeWeight)
          math_floor(nodeWeight) == nodeWeight and
          nodeWeight >= 1,
          "Expected 'weight' to be an integer >= 1; got "..tostring(nodeWeight))
+  if metadata ~= nil then
+    assert(type(metadata) == "table",
+           "Expected 'metadata' to be a table; got " .. type(metadata))
+  end
 
   local host
   for _, host_entry in ipairs(self.hosts) do
@@ -876,7 +881,8 @@ function objBalancer:addHost(hostname, port, nodeWeight)
       hostname = hostname,
       port = port,
       nodeWeight = nodeWeight,
-      balancer = self
+      balancer = self,
+      metadata = metadata,
     }
   else
     -- this one already exists, update if different
@@ -919,7 +925,8 @@ function objBalancer:addAddress(address)
   local list = self.addresses
   assert(list[address] == nil, "Can't add address twice")
 
-  self:callback("added", address, address.ip, address.port, address.host.hostname)
+  self:callback("added", address, address.ip, address.port, address.host.hostname,
+                address.host.metadata)
 
   list[#list + 1] = address
   self:onAddAddress(address)
@@ -1233,9 +1240,9 @@ function objBalancer:setCallback(callback)
   assert(type(callback) == "function", "expected a callback function")
   self.callback = callback
 
-  self.callback = function(balancer, action, address, ip, port, hostname)
+  self.callback = function(balancer, action, address, ip, port, hostname, metadata)
     local ok, err = ngx.timer.at(0, function(premature)
-      callback(balancer, action, address, ip, port, hostname)
+      callback(balancer, action, address, ip, port, hostname, metadata)
     end)
 
     if not ok then

@@ -230,7 +230,7 @@ function _M.new(opts)
       host = { name = host }
     end
 
-    local ok, err = self:addHost(host.name, host.port, host.weight)
+    local ok, err = self:addHost(host.name, host.port, host.weight, host.metadata)
     if not ok then
       return ok, "Failed creating a balancer: "..tostring(err)
     end
