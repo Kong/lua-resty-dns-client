@@ -60,13 +60,11 @@
 <p> The base class for balancers. It implements DNS resolution and fanning
  out hostnames to addresses. It builds and maintains a tree structure:</p>
 
-<p>   <code>balancer &lt;1 &mdash; many&gt; hosts &lt;1 &mdash; many&gt; addresses</code></p>
+<p>   <code>balancer &lt;1 --- many&gt; hosts &lt;1 --- many&gt; addresses</code></p>
 
-<p> Updating the dns records is passive, meaning that when <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> accesses a
- target, only then the check is done whether the record is stale, and if so
- it is updated. The one exception is the failed dns queries (because they
- have no indices assigned, and hence will never be hit by <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a>), which will
- be actively refreshed using a timer.</p>
+<p> Updating the DNS records is active, meaning that a background task is running
+ to periodically update DNS records when they expire. This only applies to the
+ hostnames added to the balancer, not to any nested DNS records.</p>
 
 <p> <strong>Weights</strong></p>
 
@@ -97,20 +95,21 @@
  names, any CNAME records will be dereferenced immediately, any other records
  will not.</p>
 
-<p> <em>Example 1: add an IP address &ldquo;127.0.0.1&rdquo;</em></p>
+<p> <em>Example 1: add an IP address "127.0.0.1"</em></p>
 
-<p> The host object will resolve the name, and since it&rsquo;s and IP address it
+<p> The host object will resolve the name, and since it's and IP address it
  returns a single A record with 1 entry, that same IP address.</p>
+
 
 <pre>
 host object <span class="number">1</span>   : hostname=<span class="string">"127.0.0.1"</span>  <span class="comment">--&gt; since this is the name added
 </span>address object <span class="number">1</span>: ip=<span class="string">"127.0.0.1"</span>        <span class="comment">--&gt; single IP address</span>
 </pre>
 
-
 <p> <em>Example 2: complex DNS lookup chain</em></p>
 
 <p> assuming the following lookup chain for a <code>host</code> added by name <code>&quot;myhost&quot;</code>:</p>
+
 
 <pre>
 myhost    <span class="comment">--&gt; CNAME yourhost
@@ -121,18 +120,17 @@ myhost    <span class="comment">--&gt; CNAME yourhost
 </span>host2.com <span class="comment">--&gt; A with 1 entry: 192.168.1.11</span>
 </pre>
 
-
 <p> Adding a host by name <code>myhost</code> will first create a <code>host</code> by name <code>myhost</code>. It will then
  resolve the name <code>myhost</code>, the CNAME chain will be dereferenced immediately, so the
  result will be an SRV record with 2 named entries. The names will be used for the
  addresses:</p>
+
 
 <pre>
 host object <span class="number">1</span>   : hostname=<span class="string">"myhost"</span>
 address object <span class="number">1</span>: ip=<span class="string">"host1.com"</span>  <span class="comment">--&gt; NOT an ip, but a name!
 </span>address object <span class="number">2</span>: ip=<span class="string">"host2.com"</span>  <span class="comment">--&gt; NOT an ip, but a name!</span>
 </pre>
-
 
 <p> When the balancer hits these addresses (when calling <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a>), it will
  dereference them (so they will be resolved at balancer-runtime, not at
@@ -145,30 +143,29 @@ address object <span class="number">1</span>: ip=<span class="string">"host1.com
  garbage collection. There are two uses:</p>
 
 <ol>
-<li>tracking progress (eg. keeping a retry count)</li>
-<li>tracking resources (eg. with least connections a handle &lsquo;owns&rsquo; 1
-connection, to be released when the connection is finished)</li>
+    <li>tracking progress (eg. keeping a retry count)</li>
+    <li>tracking resources (eg. with least connections a handle 'owns' 1
+    connection, to be released when the connection is finished)</li>
 </ol>
-
 
 <p> The basic flow and related responsibilities:</p>
 
 <ul>
-<li>user code calls <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> to get an ip/port/hostname according to the load
-balancing algorithm.</li>
-<li><a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> both takes a handle (on a retry), and returns it (on success).</li>
-<li>handles are managed by the base balancer, and <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> can call
-<a href="../modules/resty.dns.balancer.base.html#objBalancer:getHandle">objBalancer:getHandle</a> to get one.</li>
-<li>on a retry <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> should call <code>objAddress:release(handle, ignore)</code> to release
-the previous (failed) try, and it should clear the <code>handle.address</code> field.</li>
-<li>on success <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> should set <code>handle.address</code> with the address object that
-returned the ip, port, and hostname, and return the handle with those.</li>
-<li>at the end of the connection life cycle the user code should call
-<a href="../modules/resty.dns.balancer.handle.html#release">handle:release</a> to release the resources, and/or collect necessary
-statistics.</li>
-<li>as a safety check the handles will have a GC method attached. So in case
-they are not explicitly released the (default) GC handler will call
-<code>handle.address:release(handle, true)</code> to make sure no resources leak.</li>
+    <li>user code calls <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> to get an ip/port/hostname according to the load
+    balancing algorithm.</li>
+    <li><a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> both takes a handle (on a retry), and returns it (on success).</li>
+    <li>handles are managed by the base balancer, and <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> can call
+    <a href="../modules/resty.dns.balancer.base.html#objBalancer:getHandle">objBalancer:getHandle</a> to get one.</li>
+    <li>on a retry <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> should call <code>objAddress:release(handle, ignore)</code> to release
+    the previous (failed) try, and it should clear the <code>handle.address</code> field.</li>
+    <li>on success <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a> should set <code>handle.address</code> with the address object that
+    returned the ip, port, and hostname, and return the handle with those.</li>
+    <li>at the end of the connection life cycle the user code should call
+    <a href="../modules/resty.dns.balancer.handle.html#release">handle:release</a> to release the resources, and/or collect necessary
+    statistics.</li>
+    <li>as a safety check the handles will have a GC method attached. So in case
+    they are not explicitly released the (default) GC handler will call
+    <code>handle.address:release(handle, true)</code> to make sure no resources leak.</li>
 </ul>
 
 
@@ -319,7 +316,7 @@ they are not explicitly released the (default) GC handler will call
     <strong>objBalancer:afterHostUpdate (host)</strong>
     </dt>
     <dd>
-    This method is called after changes have been made to the addresses.</p>
+    This method is called after changes have been made to the addresses. </p>
 
 <p> When implementing a new balancer algorithm, you might want to override this method.</p>
 
@@ -345,7 +342,7 @@ they are not explicitly released the (default) GC handler will call
     <strong>objBalancer:beforeHostDelete (host)</strong>
     </dt>
     <dd>
-    This method is called after a host is being removed from the balancer.</p>
+    This method is called after a host is being removed from the balancer. </p>
 
 <p>  When implementing a new balancer algorithm, you might want to override this method.</p>
 
@@ -370,18 +367,20 @@ they are not explicitly released the (default) GC handler will call
     <strong>objBalancer:getHandle (gc_handler, release_handler)</strong>
     </dt>
     <dd>
-    <p>Gets a handle to be returned by <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a>.
+
+<p>Gets a handle to be returned by <a href="../modules/resty.dns.balancer.base.html#objBalancer:getPeer">getPeer</a>.
  A handle will have two functions attached to it:</p>
 
 <ol>
-<li><p><em>the release handler</em>. This can be called from user code as <code>handle:release(&hellip;)</code>.
-The default handler will be <code>handle:release(ignore)</code> and will call
-<code>handle.address:release(handle, ignore)</code>, and then release the handle itself, so it
-can be reused.</p></li>
-<li><p><em>the GC handler</em>, which is a fallback in case the handle wasn&rsquo;t released
-by user code. It will be called as <code>gc_handler(handle)</code> and the default
-implementation will call <code>handle.address:release(handle, true)</code>.</p></li>
+    <li><p><em>the release handler</em>. This can be called from user code as <code>handle:release(...)</code>.
+    The default handler will be <code>handle:release(ignore)</code> and will call
+    <code>handle.address:release(handle, ignore)</code>, and then release the handle itself, so it
+    can be reused.</p></li>
+    <li><p><em>the GC handler</em>, which is a fallback in case the handle wasn't released
+    by user code. It will be called as <code>gc_handler(handle)</code> and the default
+    implementation will call <code>handle.address:release(handle, true)</code>.</p></li>
 </ol>
+
 
 
 
@@ -433,15 +432,16 @@ implementation will call <code>handle.address:release(handle, true)</code>.</p><
     <strong>objBalancer:newAddress (addr)</strong>
     </dt>
     <dd>
-    <p>Creates a new address object.  There is no need to call this from user code.
+
+<p>Creates a new address object.  There is no need to call this from user code.
  When implementing a new balancer algorithm, you might want to override this method.
  The <code>addr</code> table should contain:</p>
 
 <ul>
-<li><code>ip</code>: the upstream ip address or target name</li>
-<li><code>port</code>: the upstream port number</li>
-<li><code>weight</code>: the relative weight for the balancer algorithm</li>
-<li><code>host</code>: the host object the new address belongs to</li>
+    <li><code>ip</code>: the upstream ip address or target name</li>
+    <li><code>port</code>: the upstream port number</li>
+    <li><code>weight</code>: the relative weight for the balancer algorithm</li>
+    <li><code>host</code>: the host object the new address belongs to</li>
 </ul>
 
 
@@ -468,18 +468,19 @@ implementation will call <code>handle.address:release(handle, true)</code>.</p><
     <strong>objBalancer:newHost (host)</strong>
     </dt>
     <dd>
-    <p>Creates a new host object.  There is no need to call this from user code.
+
+<p>Creates a new host object.  There is no need to call this from user code.
  When implementing a new balancer algorithm, you might want to override this method.
  The <code>host</code> table should have fields:</p>
 
 <ul>
-<li><code>hostname</code>: the upstream hostname (as used in dns queries)</li>
-<li><code>port</code>: the upstream port number for A and AAAA dns records. For SRV records
-the reported port by the DNS server will be used.</li>
-<li><code>nodeWeight</code>: the relative weight for the balancer algorithm to assign to each A
-or AAAA dns record. For SRV records the reported weight by the DNS server
-will be used.</li>
-<li><code>balancer</code>: the balancer object the host belongs to</li>
+    <li><code>hostname</code>: the upstream hostname (as used in dns queries)</li>
+    <li><code>port</code>: the upstream port number for A and AAAA dns records. For SRV records
+    the reported port by the DNS server will be used.</li>
+    <li><code>nodeWeight</code>: the relative weight for the balancer algorithm to assign to each A
+    or AAAA dns record. For SRV records the reported weight by the DNS server
+    will be used.</li>
+    <li><code>balancer</code>: the balancer object the host belongs to</li>
 </ul>
 
 
@@ -506,7 +507,7 @@ will be used.</li>
     <strong>objBalancer:onAddAddress (address)</strong>
     </dt>
     <dd>
-    This method is called after an address is being added to the balancer.</p>
+    This method is called after an address is being added to the balancer. </p>
 
 <p> When implementing a new balancer algorithm, you might want to override this method.
 
@@ -514,6 +515,8 @@ will be used.</li>
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">address</span>
+
+
 
         </li>
     </ul>
@@ -528,7 +531,7 @@ will be used.</li>
     <strong>objBalancer:onRemoveAddress (address)</strong>
     </dt>
     <dd>
-    This method is called after an address has been deleted from the balancer.</p>
+    This method is called after an address has been deleted from the balancer. </p>
 
 <p> When implementing a new balancer algorithm, you might want to override this method.
 
@@ -536,6 +539,8 @@ will be used.</li>
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">address</span>
+
+
 
         </li>
     </ul>
@@ -554,7 +559,8 @@ will be used.</li>
     <strong>new (opts)</strong>
     </dt>
     <dd>
-    <p>Creates a new base balancer.</p>
+
+<p>Creates a new base balancer. </p>
 
 <p> A single balancer can hold multiple hosts. A host can be an ip address or a
  name. As such each host can have multiple addresses (or actual ip+port
@@ -563,19 +569,19 @@ will be used.</li>
 <p> The options table has the following fields;</p>
 
 <ul>
-<li><code>dns</code> (required) a configured <a href="../modules/resty.dns.client.html">dns.client</a> object for querying the dns server.</li>
-<li><code>requery</code> (optional) interval of requerying the dns server for previously
-failed queries. Defaults to 30 if omitted (in seconds)</li>
-<li><code>ttl0</code> (optional) Maximum lifetime for records inserted with <code>ttl=0</code>, to verify
-the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
-<li><code>callback</code> (optional) a function called when an address is added. See
-<a href="../modules/resty.dns.balancer.base.html#objBalancer:setCallback">setCallback</a> for details.</li>
-<li><code>log_prefix</code> (optional) a name used in the prefix for log messages. Defaults to
-<code>&quot;balancer&quot;</code> which results in log prefix <code>&quot;[balancer 1]&quot;</code> (the number is a sequential
-id number)</li>
-<li><code>healthThreshold</code> (optional) minimum percentage of the balancer weight that must
-be healthy/available for the whole balancer to be considered healthy. Defaults
-to 0% if omitted.</li>
+    <li><code>dns</code> (required) a configured <a href="../modules/resty.dns.client.html">dns.client</a> object for querying the dns server.</li>
+    <li><code>requery</code> (optional) interval of requerying the dns server for previously
+    failed queries. Defaults to 30 if omitted (in seconds)</li>
+    <li><code>ttl0</code> (optional) Maximum lifetime for records inserted with <code>ttl=0</code>, to verify
+    the ttl is still 0. Defaults to 60 if omitted (in seconds)</li>
+    <li><code>callback</code> (optional) a function called when an address is added. See
+    <a href="../modules/resty.dns.balancer.base.html#objBalancer:setCallback">setCallback</a> for details.</li>
+    <li><code>log_prefix</code> (optional) a name used in the prefix for log messages. Defaults to
+    <code>&quot;balancer&quot;</code> which results in log prefix <code>&quot;[balancer 1]&quot;</code> (the number is a sequential
+    id number)</li>
+    <li><code>healthThreshold</code> (optional) minimum percentage of the balancer weight that must
+    be healthy/available for the whole balancer to be considered healthy. Defaults
+    to 0% if omitted.</li>
 </ul>
 
 
@@ -733,11 +739,10 @@ to 0% if omitted.</li>
  Call this either as:</p>
 
 <ul>
-<li><code>setAddressStatus(available, address)</code>,</li>
-<li><code>setAddressStatus(available, handle)</code>, or as</li>
-<li><code>setAddressStatus(available, ip, port, hostname)</code></li>
+    <li><code>setAddressStatus(available, address)</code>,</li>
+    <li><code>setAddressStatus(available, handle)</code>, or as</li>
+    <li><code>setAddressStatus(available, ip, port, hostname)</code></li>
 </ul>
-
 
 <p> Using the <code>address</code> or <a href="../modules/resty.dns.balancer.handle.html">handle</a> is preferred since it is guaranteed to match. By ip/port/name
  might fail if there are too many DNS levels.
@@ -849,7 +854,7 @@ to 0% if omitted.</li>
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2019-06-26 11:39:54 </i>
+<i style="float:right;">Last updated 2019-11-13 23:54:55 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
