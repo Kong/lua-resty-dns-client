@@ -1201,7 +1201,7 @@ function objBalancer:resolveTimerCallback()
 
   for _, host in ipairs(self.hosts) do
     -- only retry the errorred ones
-    if (host.lastQuery.expire or 0) < time() then
+    if not host.lastQuery or ((host.lastQuery.expire or 0) < time()) then
       ngx_log(ngx_DEBUG, self.log_prefix, "executing requery for: ", host.hostname)
       host:queryDns(false) -- timer-context; cacheOnly always false
     end
