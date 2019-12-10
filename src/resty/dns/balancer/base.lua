@@ -699,7 +699,7 @@ end
 
 function objHost:addressStillValid(cacheOnly, address)
 
-  if (self.lastQuery.expire or 0) < time() and not cacheOnly then
+  if ((self.lastQuery or empty).expire or 0) < time() and not cacheOnly then
     -- ttl expired, so must renew
     self:queryDns(cacheOnly)
 
