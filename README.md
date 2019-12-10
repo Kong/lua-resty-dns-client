@@ -43,6 +43,11 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
+### 4.1.2 (10-Dec-2019)
+
+- Fix: handle cases when `lastQuery` is `nil`, see [PR 81](https://github.com/Kong/lua-resty-dns-client/pull/81)
+and [PR 82](https://github.com/Kong/lua-resty-dns-client/pull/82).
+
 ### 4.1.1 (14-Nov-2019)
 
 - Fix: added logging of try-list to the TCP/UDP wrappers, see [PR 75](https://github.com/Kong/lua-resty-dns-client/pull/75).
