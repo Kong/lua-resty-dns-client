@@ -43,6 +43,16 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
+### 4.1.x (xx-xxx-2020)
+
+- Fix: fix ttl-0 records issues with the balancer, see Kong issue
+  https://github.com/Kong/kong/issues/5477
+  * the previous record was not properly detected as a ttl=0 record
+    by checking on the `__ttl0flag` we now do
+  * since the "fake" SRV record wasn't updated with a new expiry
+    time the expiry-check-timer would keep updating that record
+    every second
+
 ### 4.1.2 (10-Dec-2019)
 
 - Fix: handle cases when `lastQuery` is `nil`, see [PR 81](https://github.com/Kong/lua-resty-dns-client/pull/81)
