@@ -413,7 +413,8 @@ local function update_dns_result(self, newQuery, dns)
   -- So if we get a ttl=0 twice in a row (the old one, and the new one), we update it. And
   -- if the very first request ever reports ttl=0 (we assume we're not hitting the edgecase
   -- in that case)
-  if (newQuery[1] or empty).ttl == 0 and ((oldQuery[1] or empty).ttl or 0) == 0 then
+  if (newQuery[1] or empty).ttl == 0 and
+     (((oldQuery[1] or empty).ttl or 0) == 0 or oldQuery.__ttl0Flag) then
     -- ttl = 0 means we need to lookup on every request.
     -- To enable lookup on each request we 'abuse' a virtual SRV record. We set the ttl
     -- to `ttl0Interval` seconds, and set the `target` field to the hostname that needs
@@ -424,6 +425,8 @@ local function update_dns_result(self, newQuery, dns)
     -- so we fix them at the `nodeWeight` property, as with A and AAAA records.
     if oldQuery.__ttl0Flag then
       -- still ttl 0 so nothing changed
+      oldQuery.touched = time()
+      oldQuery.expire = oldQuery.touched + self.balancer.ttl0Interval
       ngx_log(ngx_DEBUG, self.log_prefix, "no dns changes detected for ",
               self.hostname, ", still using ttl=0")
       return true
