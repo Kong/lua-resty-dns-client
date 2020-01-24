@@ -43,7 +43,7 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### 4.1.x (xx-xxx-2020)
+### 4.1.3 (24-Jan-2020)
 
 - Fix: fix ttl-0 records issues with the balancer, see Kong issue
   https://github.com/Kong/kong/issues/5477
