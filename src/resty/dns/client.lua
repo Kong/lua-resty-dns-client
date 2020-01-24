@@ -43,8 +43,8 @@ local table_insert = table.insert
 local table_concat = table.concat
 local string_lower = string.lower
 
-local empty = setmetatable({},
-  {__newindex = function() error("The 'empty' table is read-only") end})
+local EMPTY = setmetatable({},
+  {__newindex = function() error("The 'EMPTY' table is read-only") end})
 
 -- resolver options
 local config
@@ -183,7 +183,7 @@ local cacheinsert = function(entry, qname, qtype)
 
     elseif entry.errcode and entry.errcode ~= 3 then
       -- an error, but no 'name error' (3)
-      if (cachelookup(qname, qtype) or empty)[1] then
+      if (cachelookup(qname, qtype) or EMPTY)[1] then
         -- we still have a stale record with data, so we're not replacing that
         --[[
         log(DEBUG, PREFIX, "cache set (skip on name error): ", key, " ", frecord(entry))
@@ -200,7 +200,7 @@ local cacheinsert = function(entry, qname, qtype)
 
     else
       -- empty record
-      if (cachelookup(qname, qtype) or empty)[1] then
+      if (cachelookup(qname, qtype) or EMPTY)[1] then
         -- we still have a stale record with data, so we're not replacing that
         --[[
         log(DEBUG, PREFIX, "cache set (skip on empty): ", key, " ", frecord(entry))
@@ -1068,7 +1068,7 @@ end
 -- @return `list of records + nil + try_list`, or `nil + err + try_list`.
 local function resolve(qname, r_opts, dnsCacheOnly, try_list)
   qname = string_lower(qname)
-  local qtype = (r_opts or empty).qtype
+  local qtype = (r_opts or EMPTY).qtype
   local err, records
 
   local opts = {}
@@ -1110,7 +1110,7 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
     else
       -- a valid non-stale record
       -- check for CNAME records, and dereferencing the CNAME
-      if (records[1] or empty).type == _M.TYPE_CNAME and qtype ~= _M.TYPE_CNAME then
+      if (records[1] or EMPTY).type == _M.TYPE_CNAME and qtype ~= _M.TYPE_CNAME then
         opts.qtype = nil
         try_status(try_list, "dereferencing")
         return resolve(records[1].cname, opts, dnsCacheOnly, try_list)

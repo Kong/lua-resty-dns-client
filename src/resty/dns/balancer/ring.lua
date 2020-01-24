@@ -46,8 +46,8 @@ local ngx_log = ngx.log
 local ngx_DEBUG = ngx.DEBUG
 local ngx_WARN = ngx.WARN
 
-local empty = setmetatable({},
-  {__newindex = function() error("The 'empty' table is read-only") end})
+local EMPTY = setmetatable({},
+  {__newindex = function() error("The 'EMPTY' table is read-only") end})
 
 local new_tab
 do
@@ -473,7 +473,7 @@ function _M.new(opts)
 
   -- Sort the hosts, to make order deterministic
   local hosts = {}
-  for i, host in ipairs(opts.hosts or empty) do
+  for i, host in ipairs(opts.hosts or EMPTY) do
     if type(host) == "table" then
       hosts[i] = host
     else

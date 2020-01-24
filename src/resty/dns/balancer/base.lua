@@ -145,8 +145,8 @@ local ngx_DEBUG = ngx.DEBUG
 local ngx_WARN = ngx.WARN
 local balancer_id_counter = 0
 
-local empty = setmetatable({},
-  {__newindex = function() error("The 'empty' table is read-only") end})
+local EMPTY = setmetatable({},
+  {__newindex = function() error("The 'EMPTY' table is read-only") end})
 
 local errors = setmetatable({
   ERR_DNS_UPDATED = "Cannot get peer, a DNS update changed the balancer structure, please retry",
@@ -220,7 +220,7 @@ end
 -- @see delete
 function objAddr:disable()
   ngx_log(ngx_DEBUG, self.log_prefix, "disabling address: ", self.ip, ":", self.port,
-          " (host ", (self.host or empty).hostname, ")")
+          " (host ", (self.host or EMPTY).hostname, ")")
 
   -- weight to 0; effectively disabling it
   self:change(0)
@@ -233,7 +233,7 @@ end
 function objAddr:delete()
   assert(self.disabled, "Cannot delete an address that wasn't disabled first")
   ngx_log(ngx_DEBUG, self.log_prefix, "deleting address: ", self.ip, ":", self.port,
-          " (host ", (self.host or empty).hostname, ")")
+          " (host ", (self.host or EMPTY).hostname, ")")
 
   self.host.balancer:callback("removed", self, self.ip,
                               self.port, self.host.hostname)
@@ -244,7 +244,7 @@ end
 -- Changes the weight of an address.
 function objAddr:change(newWeight)
   ngx_log(ngx_DEBUG, self.log_prefix, "changing address weight: ", self.ip, ":", self.port,
-          "(host ", (self.host or empty).hostname, ") ",
+          "(host ", (self.host or EMPTY).hostname, ") ",
           self.weight, " -> ", newWeight)
 
   self.host:addWeight(newWeight - self.weight)
@@ -413,8 +413,8 @@ local function update_dns_result(self, newQuery, dns)
   -- So if we get a ttl=0 twice in a row (the old one, and the new one), we update it. And
   -- if the very first request ever reports ttl=0 (we assume we're not hitting the edgecase
   -- in that case)
-  if (newQuery[1] or empty).ttl == 0 and
-     (((oldQuery[1] or empty).ttl or 0) == 0 or oldQuery.__ttl0Flag) then
+  if (newQuery[1] or EMPTY).ttl == 0 and
+     (((oldQuery[1] or EMPTY).ttl or 0) == 0 or oldQuery.__ttl0Flag) then
     -- ttl = 0 means we need to lookup on every request.
     -- To enable lookup on each request we 'abuse' a virtual SRV record. We set the ttl
     -- to `ttl0Interval` seconds, and set the `target` field to the hostname that needs
@@ -452,7 +452,7 @@ local function update_dns_result(self, newQuery, dns)
 
   -- a new dns record, was returned, but contents could still be the same, so check for changes
   -- sort table in unique order
-  local rtype = (newQuery[1] or empty).type
+  local rtype = (newQuery[1] or EMPTY).type
   if not rtype then
     -- we got an empty query table, so assume A record, because it's empty
     -- all existing addresses will be removed
@@ -463,10 +463,10 @@ local function update_dns_result(self, newQuery, dns)
   local newSorted = sorts[rtype](newQuery)
   local dirty
 
-  if rtype ~= (oldSorted[1] or empty).type then
+  if rtype ~= (oldSorted[1] or EMPTY).type then
     -- DNS recordtype changed; recycle everything
     ngx_log(ngx_DEBUG, self.log_prefix, "dns record type changed for ",
-            self.hostname, ", ", (oldSorted[1] or empty).type, " -> ",rtype)
+            self.hostname, ", ", (oldSorted[1] or EMPTY).type, " -> ",rtype)
     for i = #oldSorted, 1, -1 do  -- reverse order because we're deleting items
       self:disableAddress(oldSorted[i])
     end
@@ -476,7 +476,7 @@ local function update_dns_result(self, newQuery, dns)
     dirty = true
   else
     -- new record, but the same type
-    local topPriority = (newSorted[1] or empty).priority -- nil for non-SRV records
+    local topPriority = (newSorted[1] or EMPTY).priority -- nil for non-SRV records
     local done = {}
     local dCount = 0
     for _, newEntry in ipairs(newSorted) do
@@ -702,11 +702,11 @@ end
 
 function objHost:addressStillValid(cacheOnly, address)
 
-  if ((self.lastQuery or empty).expire or 0) < time() and not cacheOnly then
+  if ((self.lastQuery or EMPTY).expire or 0) < time() and not cacheOnly then
     -- ttl expired, so must renew
     self:queryDns(cacheOnly)
 
-    if (address or empty).host ~= self then
+    if (address or EMPTY).host ~= self then
       -- the address no longer points to this host, so it is not valid anymore
       ngx_log(ngx_DEBUG, self.log_prefix, "DNS record for ", self.hostname,
               " was updated and no longer contains the address")
@@ -1204,7 +1204,7 @@ function objBalancer:resolveTimerCallback()
 
   for _, host in ipairs(self.hosts) do
     -- only retry the errored ones
-    if ((host.lastQuery or empty).expire or 0) < time() then
+    if ((host.lastQuery or EMPTY).expire or 0) < time() then
       ngx_log(ngx_DEBUG, self.log_prefix, "executing requery for: ", host.hostname)
       host:queryDns(false) -- timer-context; cacheOnly always false
     end
