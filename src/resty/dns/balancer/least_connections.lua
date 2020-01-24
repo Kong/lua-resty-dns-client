@@ -19,8 +19,8 @@ local binaryHeap = require "binaryheap"
 local ngx_log = ngx.log
 local ngx_DEBUG = ngx.DEBUG
 
-local empty = setmetatable({},
-  {__newindex = function() error("The 'empty' table is read-only") end})
+local EMPTY = setmetatable({},
+  {__newindex = function() error("The 'EMPTY' table is read-only") end})
 
 local _M = {}
 local lc = {}
@@ -36,7 +36,7 @@ function lcAddr:updateConnectionCount(delta)
   end
 
   -- go update the heap position
-  local bh = ((self.host or empty).balancer or empty).binaryHeap
+  local bh = ((self.host or EMPTY).balancer or EMPTY).binaryHeap
   if bh then
     -- NOTE: we use `connectionCount + 1` this ensures that even on a balancer
     -- with 0 connections the heighest weighted entry is picked first. If we'd
@@ -135,7 +135,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
           self.binaryHeap:pop()
         end
         address = self.binaryHeap:peek()
-      until address == nil or not (handle.failedAddresses or empty)[address]
+      until address == nil or not (handle.failedAddresses or EMPTY)[address]
 
       if address == nil and handle.failedAddresses then
         -- we failed all addresses, so drop the list of failed ones, we are trying
@@ -225,7 +225,7 @@ function _M.new(opts)
   self.binaryHeap = binaryHeap.minUnique() -- binaryheap tracking next up address
 
   -- add the hosts provided
-  for _, host in ipairs(opts.hosts or empty) do
+  for _, host in ipairs(opts.hosts or EMPTY) do
     if type(host) ~= "table" then
       host = { name = host }
     end

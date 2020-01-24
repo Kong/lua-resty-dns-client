@@ -15,7 +15,8 @@
 
 local table_new = require "table.new"
 local table_clear = require "table.clear"
-local empty = {}
+local EMPTY = setmetatable({},
+  {__newindex = function() error("The 'EMPTY' table is read-only") end})
 
 
 local cache_max = 1000
@@ -36,7 +37,7 @@ do
     mt.handle = nil
     handle.__udata = nil
     -- find __gc method
-    local __gc = (handle or empty).__gc
+    local __gc = (handle or EMPTY).__gc
     if not __gc then
       return
     end
