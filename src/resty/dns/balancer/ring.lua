@@ -390,7 +390,8 @@ end
 -- indices will be randomly distributed over the targets. The number of indices
 -- assigned will be relative to the weight.
 --
--- The options table has the following fields;
+-- The options table has the following fields, additional to the ones from
+-- the `balancer_base`;
 --
 -- - `hosts` (optional) containing hostnames, ports and weights. If omitted,
 -- ports and weights default respectively to 80 and 10. The list will be sorted
@@ -409,12 +410,6 @@ end
 -- seems about right.
 -- - `order` (optional) if given, a list of random numbers, size `wheelSize`, used to
 -- randomize the wheel. Duplicates are not allowed in the list.
--- - `requery` (optional) interval of requerying the dns server for previously
--- failed queries. Defaults to 1 if omitted (in seconds)
--- - `ttl0` (optional) Maximum lifetime for records inserted with `ttl=0`, to verify
--- the ttl is still 0. Defaults to 60 if omitted (in seconds)
--- - `callback` (optional) a function called when an address is added. See
--- `setCallback` for details.
 -- @param opts table with options
 -- @return new balancer object or nil+error
 -- @usage -- hosts example

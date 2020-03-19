@@ -1324,7 +1324,7 @@ end
 -- failed queries. Defaults to 30 if omitted (in seconds)
 -- - `ttl0` (optional) Maximum lifetime for records inserted with `ttl=0`, to verify
 -- the ttl is still 0. Defaults to 60 if omitted (in seconds)
--- - `callback` (optional) a function called when an address is added. See
+-- - `callback` (optional) a function called when an address is added/changed. See
 -- `setCallback` for details.
 -- - `log_prefix` (optional) a name used in the prefix for log messages. Defaults to
 -- `"balancer"` which results in log prefix `"[balancer 1]"` (the number is a sequential
