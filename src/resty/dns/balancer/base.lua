@@ -71,6 +71,22 @@
 -- dereference them (so they will be resolved at balancer-runtime, not at
 -- balancer-buildtime).
 --
+-- There is another special case, in case a record has a ttl=0 setting. In that case
+-- a "fake" SRV record is inserted, to make sure we honour the ttl=0 and resolve
+-- on each `getPeer` invocation, without altering the balancer every time.
+-- Here's an example:
+--
+--    myhost    --> A with 1 entry: 192.168.1.10, and TTL=0
+--
+-- Internally it is converted into a fake SRV record which results in the following
+-- balancer structure:
+--
+--    host object 1   : hostname="myhost"
+--    address object 1: ip="myhost"  --> NOT an ip, but a name!
+--
+-- This in turn will result in DNS resolution on each call for an IP, and hence will
+-- make sure the ttl=0 setting is effectively being used.
+--
 -- __Handle management__
 --
 -- handles are used to retain state between consecutive invocations (calls to
@@ -1234,7 +1250,6 @@ end
 -- @within User properties
 function objBalancer:setCallback(callback)
   assert(type(callback) == "function", "expected a callback function")
-  self.callback = callback
 
   self.callback = function(balancer, action, address, ip, port, hostname)
     local ok, err = ngx.timer.at(0, function(premature)
@@ -1291,7 +1306,8 @@ end
 --- Gets the status of the balancer.
 -- This reports the full structure of the balancer state, including hosts,
 -- addresses, weights, and availability.
--- @return table with balancer stateus
+-- @return table with balancer status
+-- @within User properties
 function objBalancer:getStatus()
   local hosts = {}
   local status = {
@@ -1324,7 +1340,7 @@ end
 -- failed queries. Defaults to 30 if omitted (in seconds)
 -- - `ttl0` (optional) Maximum lifetime for records inserted with `ttl=0`, to verify
 -- the ttl is still 0. Defaults to 60 if omitted (in seconds)
--- - `callback` (optional) a function called when an address is added. See
+-- - `callback` (optional) a function called when an address is added/changed. See
 -- `setCallback` for details.
 -- - `log_prefix` (optional) a name used in the prefix for log messages. Defaults to
 -- `"balancer"` which results in log prefix `"[balancer 1]"` (the number is a sequential
