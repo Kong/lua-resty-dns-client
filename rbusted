@@ -1,5 +1,8 @@
 #!/usr/bin/env resty
 
+-- remove openresty write guard on _G
+setmetatable(_G, nil)
+
 package.path = "?/init.lua;"..package.path
 
 if ngx ~= nil then
