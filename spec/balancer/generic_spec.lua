@@ -141,6 +141,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -171,6 +172,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -189,6 +191,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 25,
                 weight = {
                   total = 50,
@@ -231,6 +234,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -261,6 +265,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -279,6 +284,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 25,
                 weight = {
                   total = 50,
@@ -315,6 +321,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -352,6 +359,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -382,6 +390,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -400,6 +409,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 25,
                 weight = {
                   total = 50,
@@ -438,6 +448,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -456,6 +467,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 25,
                 weight = {
                   total = 50,
@@ -493,6 +505,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -511,6 +524,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 25,
                 weight = {
                   total = 50,
@@ -554,6 +568,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -572,6 +587,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 25,
                 weight = {
                   total = 50,
@@ -608,6 +624,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -626,6 +643,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 50,
                 weight = {
                   total = 100,
@@ -669,6 +687,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -687,6 +706,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 25,
                 weight = {
                   total = 50,
@@ -724,6 +744,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -742,6 +763,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 25,
                 weight = {
                   total = 50,
@@ -778,6 +800,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -796,6 +819,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "arecord.tst",
                 port = 8001,
+                dns = "A",
                 nodeWeight = 50,
                 weight = {
                   total = 100,
@@ -843,6 +867,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -861,6 +886,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 25,
                 weight = {
                   total = 20,
@@ -904,6 +930,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -922,6 +949,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 25,
                 weight = {
                   total = 20,
@@ -958,6 +986,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -995,6 +1024,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -1013,6 +1043,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 25,
                 weight = {
                   total = 20,
@@ -1050,6 +1081,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -1068,6 +1100,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 25,
                 weight = {
                   total = 20,
@@ -1105,6 +1138,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -1123,6 +1157,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 25,
                 weight = {
                   total = 20,
@@ -1166,6 +1201,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -1184,6 +1220,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 10,
                 weight = {
                   total = 20,
@@ -1227,6 +1264,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -1245,6 +1283,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 99,
                 weight = {
                   total = 40,
@@ -1288,6 +1327,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -1306,6 +1346,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 25,
                 weight = {
                   total = 20,
@@ -1343,6 +1384,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -1361,6 +1403,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 25,
                 weight = {
                   total = 20,
@@ -1405,6 +1448,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "127.0.0.1",
                 port = 8000,
+                dns = "A",
                 nodeWeight = 100,
                 weight = {
                   total = 100,
@@ -1423,6 +1467,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
               {
                 host = "srvrecord.tst",
                 port = 8001,
+                dns = "SRV",
                 nodeWeight = 99,
                 weight = {
                   total = 40,
@@ -1593,6 +1638,151 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
           ngx.sleep(0.1)  -- wait a bit before retrying
         end
+
+      end)
+
+    end)
+
+
+
+    describe("status:", function()
+
+      local b
+
+      before_each(function()
+        b = balancer_module.new({
+          dns = client,
+        })
+      end)
+
+      after_each(function()
+        b = nil
+      end)
+
+
+
+      describe("reports DNS source", function()
+
+        it("status report",function()
+          b:addHost("127.0.0.1", 8000, 100)
+          b:addHost("0::1", 8080, 50)
+          dnsSRV({
+            { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 10 },
+            { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 10 },
+          })
+          b:addHost("srvrecord.tst", 1234, 9999)
+          dnsA({
+            { name = "getkong.org", address = "5.6.7.8", ttl = 0 },
+          })
+          b:addHost("getkong.org", 5678, 1000)
+          b:addHost("notachanceinhell.this.name.exists.konghq.com", 4321, 100)
+
+          assert.same({
+            healthy = true,
+            weight = {
+              total = 1170,
+              available = 1170,
+              unavailable = 0
+            },
+            hosts = {
+              {
+                host = "127.0.0.1",
+                port = 8000,
+                dns = "A",
+                nodeWeight = 100,
+                weight = {
+                  total = 100,
+                  available = 100,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "127.0.0.1",
+                    port = 8000,
+                    weight = 100
+                  },
+                },
+              },
+              {
+                host = "0::1",
+                port = 8080,
+                dns = "AAAA",
+                nodeWeight = 50,
+                weight = {
+                  total = 50,
+                  available = 50,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "[0::1]",
+                    port = 8080,
+                    weight = 50
+                  },
+                },
+              },
+              {
+                host = "srvrecord.tst",
+                port = 1234,
+                dns = "SRV",
+                nodeWeight = 9999,
+                weight = {
+                  total = 20,
+                  available = 20,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "1.1.1.1",
+                    port = 9000,
+                    weight = 10
+                  },
+                  {
+                    healthy = true,
+                    ip = "2.2.2.2",
+                    port = 9001,
+                    weight = 10
+                  },
+                },
+              },
+              {
+                host = "getkong.org",
+                port = 5678,
+                dns = "ttl=0, virtual SRV",
+                nodeWeight = 1000,
+                weight = {
+                  total = 1000,
+                  available = 1000,
+                  unavailable = 0
+                },
+                addresses = {
+                  {
+                    healthy = true,
+                    ip = "getkong.org",
+                    port = 5678,
+                    weight = 1000
+                  },
+                },
+              },
+              {
+                host = "notachanceinhell.this.name.exists.konghq.com",
+                port = 4321,
+                dns = "dns server error: 3 name error",
+                nodeWeight = 100,
+                weight = {
+                  total = 0,
+                  available = 0,
+                  unavailable = 0
+                },
+                addresses = {},
+              },
+
+            },
+          }, b:getStatus())
+        end)
 
       end)
 
