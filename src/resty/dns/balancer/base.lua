@@ -585,7 +585,8 @@ function objHost:queryDns(cacheOnly)
     -- the empty record will cause all existing addresses to be removed
     newQuery = {
       expire = time() + self.balancer.requeryInterval,
-      touched = time()
+      touched = time(),
+      __dnsError = err,
     }
   end
 
@@ -736,10 +737,34 @@ end
 
 -- Returns the status of the host, bubbles up to `objBalancer:getStatus`
 function objHost:getStatus()
+  local dns_source do
+    local dns_record = self.lastQuery or EMPTY
+    if dns_record.__dnsError then
+      dns_source = dns_record.__dnsError
+
+    elseif dns_record.__ttl0Flag then
+      dns_source = "ttl=0, virtual SRV"
+
+    elseif dns_record[1] and dns_record[1].type then
+      -- regular DNS record, lookup descriptive name from constants
+      local rtype = dns_record[1].type
+      for k, v in pairs(self.balancer.dns) do
+        if tostring(k):sub(1,5) == "TYPE_" and v == rtype then
+          dns_source = k:sub(6,-1)
+          break
+        end
+      end
+
+    else
+      dns_source = "unknown"
+    end
+  end
+
   local addresses = {}
   local status = {
     host = self.hostname,
     port = self.port,
+    dns = dns_source,
     nodeWeight = self.nodeWeight,
     weight = {
       total = self.weight,
@@ -1047,7 +1072,7 @@ end
 -- -- go do the connection stuff here...
 --
 -- -- on a retry do:
--- ip, port, port, handle = b:getPeer(true, handle)  -- pass in previous 'handle'
+-- ip, port, hostname, handle = b:getPeer(true, handle)  -- pass in previous 'handle'
 --
 -- -- go try again
 --

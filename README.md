@@ -43,6 +43,10 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
+### 4.2.0 (unreleased)
+
+- Change: export DNS source type on status report. See [PR 86](https://github.com/Kong/lua-resty-dns-client/pull/86).
+
 ### 4.1.3 (24-Jan-2020)
 
 - Fix: fix ttl-0 records issues with the balancer, see Kong issue
