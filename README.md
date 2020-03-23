@@ -43,7 +43,15 @@ History
 
 Versioning is strictly based on [Semantic Versioning](https://semver.org/)
 
-### 4.2.0 (unreleased)
+Release process:
+
+1. update the changelog below
+2. update the rockspec file
+3. generate the docs using `ldoc .`
+4. commit and tag the release
+5. upload rock to LuaRocks
+
+### 4.2.0 (23-Mar-2020)
 
 - Change: export DNS source type on status report. See [PR 86](https://github.com/Kong/lua-resty-dns-client/pull/86).
 
