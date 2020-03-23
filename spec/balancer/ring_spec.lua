@@ -1843,12 +1843,12 @@ describe("[ringbalancer]", function()
       assert.equal(b.wheelSize/2, toip_count)  -- one resolver hit for each index
       assert.equal(1, resolve_count) -- hit once, when adding the host to the balancer
 
-      -- wait for expiring the 0-ttl setting
-      sleep(b.ttl0Interval + 1)  -- 0 ttl is requeried, to check for changed ttl
-
       ttl = 60 -- set our records ttl to 60 now, so we only get one extra hit now
       toip_count = 0  --reset counters
       resolve_count = 0
+      -- wait for expiring the 0-ttl setting
+      sleep(b.ttl0Interval + 1)  -- 0 ttl will be requeried, to check for changed ttl
+
       -- run it down, count the dns queries done
       for _ = 1, b.wheelSize do b:getPeer() end
       assert.equal(0, toip_count)
