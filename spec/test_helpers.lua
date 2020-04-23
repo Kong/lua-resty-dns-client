@@ -73,6 +73,37 @@ function _M.dnsSRV(client, records, staleTtl)
 end
 
 
+-- creates an CNAME record in the cache
+function _M.dnsCNAME(client, records, staleTtl)
+  local dnscache = client.getcache()
+  -- if single table, then insert into a new list
+  if not records[1] then records = { records } end
+
+  for _, record in ipairs(records) do
+    record.type = client.TYPE_CNAME
+
+    -- check required input
+    assert(record.cname, "cname field is required for CNAME record")
+    assert(record.name, "name field is required for CNAME record")
+    record.name = record.name:lower()
+
+    -- optionals, insert defaults
+    record.ttl = record.ttl or 600
+    record.class = record.class or 1
+  end
+  -- set timeouts
+  records.touch = gettime()
+  records.expire = gettime() + records[1].ttl
+
+  -- create key, and insert it
+  local key = records[1].type..":"..records[1].name
+  dnscache:set(key, records, records[1].ttl + (staleTtl or 4))
+  -- insert last-succesful lookup type
+  dnscache:set(records[1].name, records[1].type)
+  return records
+end
+
+
 -- creates an A record in the cache
 function _M.dnsA(client, records, staleTtl)
   local dnscache = client.getcache()

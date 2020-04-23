@@ -1,6 +1,7 @@
 local writefile = require("pl.utils").writefile
 local tempfilename = require("pl.path").tmpname
 local pretty = require("pl.pretty").write
+local helpers = require("spec.test_helpers")
 
 
 -- empty records and not found errors should be identical, hence we
@@ -1176,6 +1177,84 @@ describe("[DNS client]", function()
       local ip, port, _ = client.toip("hello.world", 123, true)
       assert.is_nil(ip)
       assert.are.equal("recursion detected", port)
+    end)
+
+    describe("returns last hostname in resolution chain", function()
+
+      it("IPv4 address", function()
+        assert(client.init({ resolvConf = { "nameserver 8.8.8.8" }}))
+        local ip, _, _, hostname = client.toip("1.2.3.4")
+        assert.equal("1.2.3.4", ip)
+        assert.is_nil(hostname)
+
+        ip, _, _, hostname = client.toip("001.002.003.004")
+        assert.equal("001.002.003.004", ip)
+        assert.is_nil(hostname)
+      end)
+
+      it("IPv6 address", function()
+        assert(client.init({ resolvConf = { "nameserver 8.8.8.8" }}))
+        local ip, _, _, hostname = client.toip("[::1]")
+        assert.equal("[::1]", ip)
+        assert.is_nil(hostname)
+
+        ip, _, _, hostname = client.toip("::0001")
+        assert.equal("[::0001]", ip)
+        assert.is_nil(hostname)
+      end)
+
+      it("A record", function()
+        assert(client.init({ resolvConf = { "nameserver 8.8.8.8" }}))
+        helpers.dnsA(client, { address = "1.2.3.4", name = "a.to.ip" })
+        local ip, _, _, hostname = client.toip("a.to.ip")
+        assert.equal("1.2.3.4", ip)
+        assert.equal("a.to.ip", hostname)
+      end)
+
+      it("AAAA record", function()
+        assert(client.init({ resolvConf = { "nameserver 8.8.8.8" }}))
+        helpers.dnsAAAA(client, { address = "[::1]", name = "aaaa.to.ip" })
+        local ip, _, _, hostname = client.toip("aaaa.to.ip")
+        assert.equal("[::1]", ip)
+        assert.equal("aaaa.to.ip", hostname)
+      end)
+
+      it("SRV record -> IP address", function()
+        assert(client.init({ resolvConf = { "nameserver 8.8.8.8" }}))
+        helpers.dnsSRV(client, { target = "1.2.3.4", name = "srv.to.ip", port = 80 })
+        local ip, _, _, hostname = client.toip("srv.to.ip")
+        assert.equal("1.2.3.4", ip)
+        assert.equal("srv.to.ip", hostname)
+      end)
+
+      it("SRV record -> A record", function()
+        assert(client.init({ resolvConf = { "nameserver 8.8.8.8" }}))
+        helpers.dnsA(client, { address = "1.2.3.4", name = "a.to.ip" })
+        helpers.dnsSRV(client, { target = "a.to.ip", name = "srv.to.a", port = 80 })
+        local ip, _, _, hostname = client.toip("srv.to.a")
+        assert.equal("1.2.3.4", ip)
+        assert.equal("a.to.ip", hostname)
+      end)
+
+      it("CNAME record -> A record", function()
+        assert(client.init({ resolvConf = { "nameserver 8.8.8.8" }}))
+        helpers.dnsA(client, { address = "1.2.3.4", name = "a.to.ip" })
+        helpers.dnsCNAME(client, { cname = "a.to.ip", name = "cname.to.a", port = 80 })
+        local ip, _, _, hostname = client.toip("cname.to.a")
+        assert.equal("1.2.3.4", ip)
+        assert.equal("a.to.ip", hostname)
+      end)
+
+      it("CNAME record -> SRV record -> A record", function()
+        assert(client.init({ resolvConf = { "nameserver 8.8.8.8" }}))
+        helpers.dnsA(client, { address = "1.2.3.4", name = "a.to.ip" })
+        helpers.dnsSRV(client, { target = "a.to.ip", name = "srv.to.a", port = 80 })
+        helpers.dnsCNAME(client, { cname = "srv.to.a", name = "cname.to.srv", port = 80 })
+        local ip, _, _, hostname = client.toip("cname.to.srv")
+        assert.equal("1.2.3.4", ip)
+        assert.equal("a.to.ip", hostname)
+      end)
+
     end)
   end)
 

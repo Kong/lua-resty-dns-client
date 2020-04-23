@@ -51,6 +51,11 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### 4.3.0 (not released)
+
+- Change: `topip()` returns the last hostname resolved as an extra return value.
+  See [PR 86](https://github.com/Kong/lua-resty-dns-client/pull/87).
+
 ### 4.2.0 (23-Mar-2020)
 
 - Change: export DNS source type on status report. See [PR 86](https://github.com/Kong/lua-resty-dns-client/pull/86).

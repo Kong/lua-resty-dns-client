@@ -1384,8 +1384,12 @@ local function roundRobinW(rec)
   return target
 end
 
---- Resolves to an IP and port number.
+--- Resolves to an IP, port number, and hostname.
 -- Builds on top of `resolve`, but will also further dereference SRV type records.
+-- The `hostname` return-value will be the last hostname in the lookup chain that
+-- was resolved. So in a chain of CNAME -> SRV -> A -> ip-address, the `hostname`
+-- returned will contain the name of the A-record (the hostname will be
+-- `nil` if the `qname` that was resolved was an IP addres to begin with).
 --
 -- When calling multiple times on cached records, it will apply load-balancing
 -- based on a round-robin (RR) scheme. For SRV records this will be a _weighted_
@@ -1427,7 +1431,7 @@ end
 -- @param dnsCacheOnly Only check the cache, won't do server lookups (will
 -- not invalidate any ttl expired data and will hence possibly return expired data)
 -- @param try_list (optional) list of tries to add to
--- @return `ip address + port + try_list`, or in case of an error `nil + error + try_list`
+-- @return `ip address + port + try_list + hostname`, or in case of an error `nil + error + try_list`
 local function toip(qname, port, dnsCacheOnly, try_list)
   local rec, err
   rec, err, try_list = resolve(qname, nil, dnsCacheOnly, try_list)
@@ -1441,10 +1445,24 @@ local function toip(qname, port, dnsCacheOnly, try_list)
     -- our SRV entry might still contain a hostname, so recurse, with found port number
     local srvport = (entry.port ~= 0 and entry.port) or port -- discard port if it is 0
     try_status(try_list, "dereferencing SRV")
-    return toip(entry.target, srvport, dnsCacheOnly, try_list)
+    --return toip(entry.target, srvport, dnsCacheOnly, try_list)
+    local ip, port, try_list, hostname = toip(entry.target, srvport, dnsCacheOnly, try_list)
+    if not ip then
+      return ip, port, try_list, hostname
+    elseif hostname then
+      -- a hostname was returned, so we're done
+      return ip, port, try_list, hostname
+    end
+    -- we didn't get a hostname, so it already was an IP address, use the last hostname we had
+    return ip, port, try_list, entry.name
   else
     -- must be A or AAAA
-    return rec[roundRobin(rec)].address, port, try_list
+    local entry = rec[roundRobin(rec)]
+    local hostname = entry.name
+    if entry.name == entry.address or "[" .. entry.name .. "]" == entry.address then
+      hostname = nil  -- we tried to resolve an IP address, hence we have no hostname
+    end
+    return entry.address, port, try_list, hostname
   end
 end
 
