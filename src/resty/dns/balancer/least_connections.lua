@@ -10,7 +10,7 @@
 -- complete overview.
 --
 -- @author Thijs Schreijer
--- @copyright 2016-2019 Kong Inc. All rights reserved.
+-- @copyright 2016-2020 Kong Inc. All rights reserved.
 -- @license Apache 2.0
 
 

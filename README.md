@@ -24,7 +24,7 @@ Features
 Copyright and license
 =====================
 
-Copyright: (c) 2016-2019 Kong, Inc.
+Copyright: (c) 2016-2020 Kong, Inc.
 
 Author: Thijs Schreijer
 
