@@ -1222,7 +1222,7 @@ describe("[DNS client]", function()
     --empty/error responses should be cached for a configurable time
     local emptyTtl = 0.1
     local staleTtl = 0.1
-    local qname = "really.really.really.does.not.exist.mashape.com"
+    local qname = "really.really.really.does.not.exist.thijsschreijer.nl"
     assert(client.init({
           emptyTtl = emptyTtl,
           staleTtl = staleTtl,
