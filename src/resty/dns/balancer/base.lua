@@ -216,7 +216,7 @@ function objAddr:getPeer(cacheOnly)
 
   if self.ipType == "name" then
     -- SRV type record with a named target
-    local ip, port, try_list = dns_client.toip(self.ip, self.port, cacheOnly)
+    local ip, port, try_list = self.host.balancer.dns.toip(self.ip, self.port, cacheOnly)
     if not ip then
       port = tostring(port) .. ". Tried: " .. tostring(try_list)
     end

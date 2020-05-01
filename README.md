@@ -51,6 +51,11 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### 4.2.x unreleased
+
+- Fix: using the module instance instead of the passed one for dns resolution
+  in the balancer (only affected testing). See [PR 88](https://github.com/Kong/lua-resty-dns-client/pull/88).
+
 ### 4.2.0 (23-Mar-2020)
 
 - Change: export DNS source type on status report. See [PR 86](https://github.com/Kong/lua-resty-dns-client/pull/86).
