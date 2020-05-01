@@ -220,10 +220,11 @@ function objAddr:getPeer(cacheOnly)
     if not ip then
       port = tostring(port) .. ". Tried: " .. tostring(try_list)
     end
-    -- which is the proper name to return in this case?
-    -- `self.host.hostname`? or the named SRV entry: `self.ip`?
-    -- use our own hostname, as it might be used to mark this address
-    -- as unhealthy, so we must be able to find it
+    if self.useSRVname then
+      -- return the nested SRV name as the hostname
+      return ip, port, self.ip
+    end
+    -- use the hostname as it was added to the balancer
     return ip, port, self.host.hostname
   else
     -- just an IP address
@@ -650,6 +651,7 @@ function objHost:addAddress(entry)
     port = (entry.port ~= 0 and entry.port) or self.port,
     weight = weight or self.nodeWeight,
     host = self,
+    useSRVname = self.balancer.useSRVname,
   }
 end
 
@@ -1373,6 +1375,10 @@ end
 -- - `healthThreshold` (optional) minimum percentage of the balancer weight that must
 -- be healthy/available for the whole balancer to be considered healthy. Defaults
 -- to 0% if omitted.
+-- - `useSRVname` (optional) if truthy, then in case of the hostname resolving to
+-- an SRV record with another level of names, the returned hostname by `getPeer` will
+-- not be the name of the host as added, but the name of the entry in the SRV
+-- record.
 -- @param opts table with options
 -- @return new balancer object or nil+error
 -- @within User properties
@@ -1402,6 +1408,7 @@ _M.new = function(opts)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
     healthy = false, -- initial healthstatus of the balancer
     healthThreshold = opts.healthThreshold or 0, -- % healthy weight for overall balancer health
+    useSRVname = not not opts.useSRVname, -- force to boolean
   }
   self = setmetatable(self, mt_objBalancer)
   self.super = objBalancer

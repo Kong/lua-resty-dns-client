@@ -1507,6 +1507,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b = balancer_module.new({
           dns = client,
           healthThreshold = 50,
+          useSRVname = false,
         })
       end)
 
@@ -1515,7 +1516,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
       end)
 
 
-      it("returns expected results/types when using SRV", function()
+      it("returns expected results/types when using SRV with IP", function()
         dnsSRV({
           { name = "konghq.com", target = "1.1.1.1", port = 2, weight = 3 },
         })
@@ -1524,6 +1525,40 @@ for algorithm, balancer_module in helpers.balancer_types() do
         assert.equal("1.1.1.1", ip)
         assert.equal(2, port)
         assert.equal("konghq.com", hostname)
+        assert.equal("userdata", type(handle.__udata))
+      end)
+
+
+      it("returns expected results/types when using SRV with name ('useSRVname=false')", function()
+        dnsA({
+          { name = "getkong.org", address = "1.2.3.4" },
+        })
+        dnsSRV({
+          { name = "konghq.com", target = "getkong.org", port = 2, weight = 3 },
+        })
+        b:addHost("konghq.com", 8000, 50)
+        local ip, port, hostname, handle = b:getPeer()
+        assert.equal("1.2.3.4", ip)
+        assert.equal(2, port)
+        assert.equal("konghq.com", hostname)
+        assert.equal("userdata", type(handle.__udata))
+      end)
+
+
+      it("returns expected results/types when using SRV with name ('useSRVname=true')", function()
+        b.useSRVname = true -- override setting specified when creating
+
+        dnsA({
+          { name = "getkong.org", address = "1.2.3.4" },
+        })
+        dnsSRV({
+          { name = "konghq.com", target = "getkong.org", port = 2, weight = 3 },
+        })
+        b:addHost("konghq.com", 8000, 50)
+        local ip, port, hostname, handle = b:getPeer()
+        assert.equal("1.2.3.4", ip)
+        assert.equal(2, port)
+        assert.equal("getkong.org", hostname)
         assert.equal("userdata", type(handle.__udata))
       end)
 
