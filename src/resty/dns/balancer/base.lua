@@ -201,7 +201,7 @@ local mt_objBalancer = { __index = objBalancer }
 -- ===========================================================================
 
 -- Returns the peer info.
--- @return ip-address, port and hostname of the target, or nil+err if unavailable
+-- @return ip-address, port and hostheader for the target, or nil+err if unavailable
 -- or lookup error
 function objAddr:getPeer(cacheOnly)
   if not self.available then
@@ -219,17 +219,13 @@ function objAddr:getPeer(cacheOnly)
     local ip, port, try_list = self.host.balancer.dns.toip(self.ip, self.port, cacheOnly)
     if not ip then
       port = tostring(port) .. ". Tried: " .. tostring(try_list)
+      return ip, port
     end
-    if self.useSRVname then
-      -- return the nested SRV name as the hostname
-      return ip, port, self.ip
-    end
-    -- use the hostname as it was added to the balancer
-    return ip, port, self.host.hostname
-  else
-    -- just an IP address
-    return self.ip, self.port, self.host.hostname
+
+    return ip, port, self.hostHeader
   end
+
+  return self.ip, self.port, self.hostHeader
 end
 
 -- disables an address object from the balancer.
@@ -343,6 +339,24 @@ function objBalancer:newAddress(addr)
   addr.disabled = false      -- has this record been disabled? (before deleting)
 
   addr.host:addWeight(addr.weight)
+
+  if addr.host.nameType ~= "name" then
+    -- hostname is an IP address
+    addr.hostHeader = nil
+  else
+    -- hostname is an actual name
+    if addr.ipType ~= "name" then
+      -- the address is an ip, so use the hostname as header value
+      addr.hostHeader = addr.host.hostname
+    else
+      -- the address itself is a nested name (SRV)
+      if addr.useSRVname then
+        addr.hostHeader = addr.ip
+      else
+        addr.hostHeader = addr.host.hostname
+      end
+    end
+  end
 
   ngx_log(ngx_DEBUG, addr.host.log_prefix, "new address for host '", addr.host.hostname,
           "' created: ", addr.ip, ":", addr.port, " (weight ", addr.weight,")")
@@ -815,6 +829,7 @@ function objBalancer:newHost(host)
   host.lastSorted = nil      -- last successful dns query, sorted for comparison
   host.addresses = {}        -- list of addresses (address objects) this host resolves to
   host.expire = nil          -- time when the dns query this host is based upon expires
+  host.nameType = dns_utils.hostnameType(host.hostname)  -- 'ipv4', 'ipv6' or 'name'
 
 
   -- insert into our parent balancer before recalculating (in queryDns)
@@ -1065,16 +1080,16 @@ end
 -- retain some state over retries. See also `setAddressStatus`.
 -- @param hashValue (optional) number for consistent hashing, if supported by
 -- the algorithm. The hashValue must be an (evenly distributed) `integer >= 0`.
--- @return `ip + port + hostname` + `handle`, or `nil+error`
+-- @return `ip + port + hostheader` + `handle`, or `nil+error`
 -- @within User properties
 -- @usage
 -- -- get an IP address
--- local ip, port, hostname, handle = b:getPeer()
+-- local ip, port, hostheader, handle = b:getPeer()
 --
 -- -- go do the connection stuff here...
 --
 -- -- on a retry do:
--- ip, port, hostname, handle = b:getPeer(true, handle)  -- pass in previous 'handle'
+-- ip, port, hostheader, handle = b:getPeer(true, handle)  -- pass in previous 'handle'
 --
 -- -- go try again
 --

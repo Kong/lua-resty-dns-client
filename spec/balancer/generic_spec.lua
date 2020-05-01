@@ -1581,7 +1581,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         local ip, port, hostname, handle = b:getPeer()
         assert.equal("4.3.2.1", ip)
         assert.equal(8000, port)
-        assert.equal("4.3.2.1", hostname)
+        assert.equal(nil, hostname)
         assert.equal("userdata", type(handle.__udata))
       end)
 
@@ -1591,7 +1591,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         local ip, port, hostname, handle = b:getPeer()
         assert.equal("[::1]", ip)
         assert.equal(8000, port)
-        assert.equal("::1", hostname)
+        assert.equal(nil, hostname)
         assert.equal("userdata", type(handle.__udata))
       end)
 
