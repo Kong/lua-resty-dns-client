@@ -249,7 +249,7 @@ function objAddr:delete()
           " (host ", (self.host or EMPTY).hostname, ")")
 
   self.host.balancer:callback("removed", self, self.ip,
-                              self.port, self.host.hostname)
+                              self.port, self.host.hostname, self.hostHeader)
   self.host.balancer:removeAddress(self)
   self.host = nil
 end
@@ -980,7 +980,7 @@ function objBalancer:addAddress(address)
   local list = self.addresses
   assert(list[address] == nil, "Can't add address twice")
 
-  self:callback("added", address, address.ip, address.port, address.host.hostname)
+  self:callback("added", address, address.ip, address.port, address.host.hostname, address.hostHeader)
 
   list[#list + 1] = address
   self:onAddAddress(address)
@@ -1275,11 +1275,18 @@ end
 --
 -- Signature of the callback is for address adding/removing:
 --
---   `function(balancer, "added"/"removed", address, ip, port, hostname)`
+--   `function(balancer, "added"/"removed", address, ip, port, hostname, hostheader)`
 --
--- where `ip` might also
--- be a hostname if the DNS resolution returns another name (usually in
--- SRV records).
+-- - `address` is the address object added
+-- - `ip` is the IP address for this object, but might also be a hostname if
+--   the DNS resolution returns another name (usually in SRV records)
+-- - `port` is the port to use
+-- - `hostname` is the hostname for which the address was added to the balancer
+--   with `addHost` (resolving that name caused the creation of this address)
+-- - `hostheader` is the hostheader to be used. This can have 3 values; 1) `nil` if the
+--   `hostname` added was an ip-address to begin with, 2) it will be equal to the
+--   name in `ip` if there is a named SRV entry, and `useSRVname == true`, 3) otherwise
+--   it will be equal to `hostname`
 --
 -- For health updates the signature is:
 --
@@ -1293,9 +1300,9 @@ end
 function objBalancer:setCallback(callback)
   assert(type(callback) == "function", "expected a callback function")
 
-  self.callback = function(balancer, action, address, ip, port, hostname)
+  self.callback = function(balancer, action, address, ip, port, hostname, hostheader)
     local ok, err = ngx.timer.at(0, function(premature)
-      callback(balancer, action, address, ip, port, hostname)
+      callback(balancer, action, address, ip, port, hostname, hostheader)
     end)
 
     if not ok then

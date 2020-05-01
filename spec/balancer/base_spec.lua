@@ -157,7 +157,7 @@ describe("[balancer_base]", function()
   describe("callbacks", function()
 
     local list
-    local handler = function(balancer, eventname, address, ip, port, hostname)
+    local handler = function(balancer, eventname, address, ip, port, hostname, hostheader)
       assert(({
         added = true,
         removed = true,
@@ -174,7 +174,7 @@ describe("[balancer_base]", function()
         assert.is.equal(address.port, port)
       end
       list[#list + 1] = {
-        balancer, eventname, address, ip, port, hostname,
+        balancer, eventname, address, ip, port, hostname, hostheader,
       }
     end
 
@@ -202,7 +202,8 @@ describe("[balancer_base]", function()
       assert.is.table(list[2][3])
       assert.equal("127.0.0.1", list[2][4])
       assert.equal(80, list[2][5])
-      assert.equal("localhost", list[2][6])
+      assert.equal("localhost", list[2][6]) -- hostname
+      assert.equal("localhost", list[2][7]) -- hostheader
     end)
 
 
@@ -225,7 +226,8 @@ describe("[balancer_base]", function()
       assert.is.table(list[2][3])
       assert.equal("127.0.0.1", list[2][4])
       assert.equal(80, list[2][5])
-      assert.equal("localhost", list[2][6])
+      assert.equal("localhost", list[2][6]) -- hostname
+      assert.equal("localhost", list[2][7]) -- hostheader
 
       b:removeHost("localhost", 80)
       ngx.sleep(0.1)
@@ -240,7 +242,8 @@ describe("[balancer_base]", function()
       assert.equal(list[2][3], list[4][3])  -- same address object as added
       assert.equal("127.0.0.1", list[4][4])
       assert.equal(80, list[4][5])
-      assert.equal("localhost", list[4][6])
+      assert.equal("localhost", list[4][6]) -- hostname
+      assert.equal("localhost", list[4][7]) -- hostheader
     end)
 
   end)
