@@ -1541,6 +1541,26 @@ for algorithm, balancer_module in helpers.balancer_types() do
       end)
 
 
+      it("returns expected results/types when using IPv4", function()
+        b:addHost("4.3.2.1", 8000, 50)
+        local ip, port, hostname, handle = b:getPeer()
+        assert.equal("4.3.2.1", ip)
+        assert.equal(8000, port)
+        assert.equal("4.3.2.1", hostname)
+        assert.equal("userdata", type(handle.__udata))
+      end)
+
+
+      it("returns expected results/types when using IPv6", function()
+        b:addHost("::1", 8000, 50)
+        local ip, port, hostname, handle = b:getPeer()
+        assert.equal("[::1]", ip)
+        assert.equal(8000, port)
+        assert.equal("::1", hostname)
+        assert.equal("userdata", type(handle.__udata))
+      end)
+
+
       it("fails when there are no addresses added", function()
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
