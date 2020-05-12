@@ -1239,12 +1239,10 @@ end
 
 -- Timer invoked to update DNS records
 function objBalancer:resolveTimerCallback()
-  --check all hosts for expired records,
-  --including those with errors
+  --check all hosts for expired records, including those with errors
   --we update, so changes on the list while traversing can happen, keep track of that
 
   for _, host in ipairs(self.hosts) do
-    -- only retry the errored ones
     if ((host.lastQuery or EMPTY).expire or 0) < time() then
       ngx_log(ngx_DEBUG, self.log_prefix, "executing requery for: ", host.hostname)
       host:queryDns(false) -- timer-context; cacheOnly always false
