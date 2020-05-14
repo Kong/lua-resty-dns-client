@@ -201,7 +201,7 @@ local mt_objBalancer = { __index = objBalancer }
 -- ===========================================================================
 
 -- Returns the peer info.
--- @return ip-address, port and hostname of the target, or nil+err if unavailable
+-- @return ip-address, port and hostheader for the target, or nil+err if unavailable
 -- or lookup error
 function objAddr:getPeer(cacheOnly)
   if not self.available then
@@ -219,16 +219,13 @@ function objAddr:getPeer(cacheOnly)
     local ip, port, try_list = self.host.balancer.dns.toip(self.ip, self.port, cacheOnly)
     if not ip then
       port = tostring(port) .. ". Tried: " .. tostring(try_list)
+      return ip, port
     end
-    -- which is the proper name to return in this case?
-    -- `self.host.hostname`? or the named SRV entry: `self.ip`?
-    -- use our own hostname, as it might be used to mark this address
-    -- as unhealthy, so we must be able to find it
-    return ip, port, self.host.hostname
-  else
-    -- just an IP address
-    return self.ip, self.port, self.host.hostname
+
+    return ip, port, self.hostHeader
   end
+
+  return self.ip, self.port, self.hostHeader
 end
 
 -- disables an address object from the balancer.
@@ -252,7 +249,7 @@ function objAddr:delete()
           " (host ", (self.host or EMPTY).hostname, ")")
 
   self.host.balancer:callback("removed", self, self.ip,
-                              self.port, self.host.hostname)
+                              self.port, self.host.hostname, self.hostHeader)
   self.host.balancer:removeAddress(self)
   self.host = nil
 end
@@ -342,6 +339,24 @@ function objBalancer:newAddress(addr)
   addr.disabled = false      -- has this record been disabled? (before deleting)
 
   addr.host:addWeight(addr.weight)
+
+  if addr.host.nameType ~= "name" then
+    -- hostname is an IP address
+    addr.hostHeader = nil
+  else
+    -- hostname is an actual name
+    if addr.ipType ~= "name" then
+      -- the address is an ip, so use the hostname as header value
+      addr.hostHeader = addr.host.hostname
+    else
+      -- the address itself is a nested name (SRV)
+      if addr.useSRVname then
+        addr.hostHeader = addr.ip
+      else
+        addr.hostHeader = addr.host.hostname
+      end
+    end
+  end
 
   ngx_log(ngx_DEBUG, addr.host.log_prefix, "new address for host '", addr.host.hostname,
           "' created: ", addr.ip, ":", addr.port, " (weight ", addr.weight,")")
@@ -650,6 +665,7 @@ function objHost:addAddress(entry)
     port = (entry.port ~= 0 and entry.port) or self.port,
     weight = weight or self.nodeWeight,
     host = self,
+    useSRVname = self.balancer.useSRVname,
   }
 end
 
@@ -813,6 +829,7 @@ function objBalancer:newHost(host)
   host.lastSorted = nil      -- last successful dns query, sorted for comparison
   host.addresses = {}        -- list of addresses (address objects) this host resolves to
   host.expire = nil          -- time when the dns query this host is based upon expires
+  host.nameType = dns_utils.hostnameType(host.hostname)  -- 'ipv4', 'ipv6' or 'name'
 
 
   -- insert into our parent balancer before recalculating (in queryDns)
@@ -963,7 +980,7 @@ function objBalancer:addAddress(address)
   local list = self.addresses
   assert(list[address] == nil, "Can't add address twice")
 
-  self:callback("added", address, address.ip, address.port, address.host.hostname)
+  self:callback("added", address, address.ip, address.port, address.host.hostname, address.hostHeader)
 
   list[#list + 1] = address
   self:onAddAddress(address)
@@ -1063,16 +1080,16 @@ end
 -- retain some state over retries. See also `setAddressStatus`.
 -- @param hashValue (optional) number for consistent hashing, if supported by
 -- the algorithm. The hashValue must be an (evenly distributed) `integer >= 0`.
--- @return `ip + port + hostname` + `handle`, or `nil+error`
+-- @return `ip + port + hostheader` + `handle`, or `nil+error`
 -- @within User properties
 -- @usage
 -- -- get an IP address
--- local ip, port, hostname, handle = b:getPeer()
+-- local ip, port, hostheader, handle = b:getPeer()
 --
 -- -- go do the connection stuff here...
 --
 -- -- on a retry do:
--- ip, port, hostname, handle = b:getPeer(true, handle)  -- pass in previous 'handle'
+-- ip, port, hostheader, handle = b:getPeer(true, handle)  -- pass in previous 'handle'
 --
 -- -- go try again
 --
@@ -1256,11 +1273,18 @@ end
 --
 -- Signature of the callback is for address adding/removing:
 --
---   `function(balancer, "added"/"removed", address, ip, port, hostname)`
+--   `function(balancer, "added"/"removed", address, ip, port, hostname, hostheader)`
 --
--- where `ip` might also
--- be a hostname if the DNS resolution returns another name (usually in
--- SRV records).
+-- - `address` is the address object added
+-- - `ip` is the IP address for this object, but might also be a hostname if
+--   the DNS resolution returns another name (usually in SRV records)
+-- - `port` is the port to use
+-- - `hostname` is the hostname for which the address was added to the balancer
+--   with `addHost` (resolving that name caused the creation of this address)
+-- - `hostheader` is the hostheader to be used. This can have 3 values; 1) `nil` if the
+--   `hostname` added was an ip-address to begin with, 2) it will be equal to the
+--   name in `ip` if there is a named SRV entry, and `useSRVname == true`, 3) otherwise
+--   it will be equal to `hostname`
 --
 -- For health updates the signature is:
 --
@@ -1274,9 +1298,9 @@ end
 function objBalancer:setCallback(callback)
   assert(type(callback) == "function", "expected a callback function")
 
-  self.callback = function(balancer, action, address, ip, port, hostname)
+  self.callback = function(balancer, action, address, ip, port, hostname, hostheader)
     local ok, err = ngx.timer.at(0, function(premature)
-      callback(balancer, action, address, ip, port, hostname)
+      callback(balancer, action, address, ip, port, hostname, hostheader)
     end)
 
     if not ok then
@@ -1371,6 +1395,10 @@ end
 -- - `healthThreshold` (optional) minimum percentage of the balancer weight that must
 -- be healthy/available for the whole balancer to be considered healthy. Defaults
 -- to 0% if omitted.
+-- - `useSRVname` (optional) if truthy, then in case of the hostname resolving to
+-- an SRV record with another level of names, the returned hostname by `getPeer` will
+-- not be the name of the host as added, but the name of the entry in the SRV
+-- record.
 -- @param opts table with options
 -- @return new balancer object or nil+error
 -- @within User properties
@@ -1400,6 +1428,7 @@ _M.new = function(opts)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
     healthy = false, -- initial healthstatus of the balancer
     healthThreshold = opts.healthThreshold or 0, -- % healthy weight for overall balancer health
+    useSRVname = not not opts.useSRVname, -- force to boolean
   }
   self = setmetatable(self, mt_objBalancer)
   self.super = objBalancer
