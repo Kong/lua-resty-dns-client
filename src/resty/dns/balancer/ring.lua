@@ -103,6 +103,7 @@ function ring_address:addIndices(availableIndicesList, count)
   return self
 end
 
+
 -- Drop an amount of indices and return them to the overall balancer.
 -- @param availableIndicesList The list to add the dropped indices to
 -- @param count (optional) The number of indices to drop, defaults to ALL if omitted
@@ -133,7 +134,14 @@ function ring_address:dropIndices(availableIndicesList, count)
       -- table was reduced by at least half, so drop the original to reduce
       -- memory footprint
       self.indicesMax = size
+      --[[ next line disabled due to LuaJIT/ARM issue, see https://github.com/Kong/lua-resty-dns-client/issues/93
       self.indices = table.move(self.indices, 1, size, 1, {})
+      Below a pure-Lua implementation --]]
+      local replacement = {}
+      for i = 1, size do
+        replacement[i] = self.indices[i]
+      end
+      self.indices = replacement
     end
   end
   return availableIndicesList

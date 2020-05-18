@@ -51,6 +51,11 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### 5.0.x (unreleased)
+
+- Fix: workaround for LuaJIT/ARM bug, see [Issue 93](https://github.com/Kong/lua-resty-dns-client/issues/93).
+
+
 ### 5.0.0 (14-May-2020)
 
 - BREAKING: `getPeer` now returns the host-header value instead of the hostname
@@ -59,7 +64,7 @@ Release process:
   ip-address as the hostname, but will now return `nil`. See
   [PR 89](https://github.com/Kong/lua-resty-dns-client/pull/89).
 - Added: option `useSRVname`, if truthy then `getPeer` will return the name as found
-  in the SRV record, instead of the hostname as added to the balancer. 
+  in the SRV record, instead of the hostname as added to the balancer.
   See [PR 89](https://github.com/Kong/lua-resty-dns-client/pull/89).
 - Added: callback return an extra parameter; the host-header for the address added/removed.
 - Fix: using the module instance instead of the passed one for dns resolution
