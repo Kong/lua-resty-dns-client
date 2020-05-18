@@ -129,7 +129,7 @@ function ring_address:dropIndices(availableIndicesList, count)
       wheel[wheelIdx] = nil
     end
     -- track table size reduction
-    size = size + count
+    size = size - count
     if size * 2 < self.indicesMax then
       -- table was reduced by at least half, so drop the original to reduce
       -- memory footprint
