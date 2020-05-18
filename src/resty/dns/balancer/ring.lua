@@ -276,6 +276,10 @@ function ring_balancer:removeHost(hostname, port)
 end
 
 
+local lastAddress
+local lastIP
+local lastPort
+local lastHostname
 function ring_balancer:getPeer(cacheOnly, handle, hashValue)
   if not self.healthy then
     return nil, balancer_base.errors.ERR_BALANCER_UNHEALTHY
@@ -283,6 +287,9 @@ function ring_balancer:getPeer(cacheOnly, handle, hashValue)
 
   if handle then
     -- existing handle, so it's a retry
+    -- cache last addr
+    lastAddress = handle.address
+    lastIP, lastPort, lastHostname = lastAddress:getPeer(cacheOnly)
     if hashValue then
       -- we have a new hashValue, use it anyway
       handle.hashValue = hashValue
@@ -317,6 +324,24 @@ function ring_balancer:getPeer(cacheOnly, handle, hashValue)
   while true do
     local address = self.wheel[pointer]
     local ip, port, hostname = address:getPeer(cacheOnly)
+
+    -- if it's a retry, then get a new addr different from the last one
+    while ip == lastIP and port == lastPort and hostname == lastHostname do
+      pointer = pointer + 1
+      if pointer < self.wheelSize then
+        pointer = pointer + 1
+      else
+        pointer = 1
+      end
+      self.pointer = pointer
+      if pointer == initial_pointer then
+        break
+        -- we went around, but still nothing...
+      end
+      address = self.wheel[pointer]
+      ip, port, hostname = address:getPeer(cacheOnly)
+    end
+
     if ip then
       -- success, update handle
       handle.address = address
