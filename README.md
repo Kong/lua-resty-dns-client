@@ -54,7 +54,8 @@ Release process:
 ### 5.0.x (unreleased)
 
 - Fix: workaround for LuaJIT/ARM bug, see [Issue 93](https://github.com/Kong/lua-resty-dns-client/issues/93).
-
+- Fix: table reduction was calculated wrong. Not a "functional" bug, just causing
+  slightly less agressive memory releasing.
 
 ### 5.0.0 (14-May-2020)
 
