@@ -328,11 +328,7 @@ function ring_balancer:getPeer(cacheOnly, handle, hashValue)
     -- if it's a retry, then get a new addr different from the last one
     while ip == lastIP and port == lastPort and hostname == lastHostname do
       pointer = pointer + 1
-      if pointer < self.wheelSize then
-        pointer = pointer + 1
-      else
-        pointer = 1
-      end
+      if pointer > self.wheelSize then pointer = 1 end
       self.pointer = pointer
       if pointer == initial_pointer then
         break
