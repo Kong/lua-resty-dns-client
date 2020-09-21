@@ -16,9 +16,9 @@ description = {
 }
 dependencies = {
   "lua >= 5.1, < 5.4",
-  "penlight > 1.1, < 2.0",
+  "penlight ~> 1.0",
   "lrandom",
-  "lua-resty-timer < 1.0",
+  "lua-resty-timer ~> 1.0",
   "binaryheap >= 0.4",
   "luaxxhash >= 1.0",
 }
