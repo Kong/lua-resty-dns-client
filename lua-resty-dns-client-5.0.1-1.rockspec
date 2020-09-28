@@ -20,6 +20,7 @@ dependencies = {
   "lrandom",
   "lua-resty-timer < 1.0",
   "binaryheap >= 0.4",
+  "luaxxhash >= 1.0",
 }
 build = {
   type = "builtin",
@@ -30,5 +31,6 @@ build = {
     ["resty.dns.balancer.ring"] = "src/resty/dns/balancer/ring.lua",
     ["resty.dns.balancer.least_connections"] = "src/resty/dns/balancer/least_connections.lua",
     ["resty.dns.balancer.handle"] = "src/resty/dns/balancer/handle.lua",
+    ["resty.dns.balancer.consistent_hashing"] = "src/resty/dns/balancer/consistent_hashing.lua",
   },
 }
