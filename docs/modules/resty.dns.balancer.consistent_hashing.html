@@ -1,0 +1,287 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<head>
+    <title>DNS client for OpenResty</title>
+    <link rel="stylesheet" href="../ldoc.css" type="text/css" />
+</head>
+<body>
+
+<div id="container">
+
+<div id="product">
+	<div id="product_logo"></div>
+	<div id="product_name"><big><b></b></big></div>
+	<div id="product_description"></div>
+</div> <!-- id="product" -->
+
+
+<div id="main">
+
+
+<!-- Menu -->
+
+<div id="navigation">
+<br/>
+<h1>lua-resty-dns-client</h1>
+
+<ul>
+  <li><a href="../index.html">Index</a></li>
+</ul>
+
+<h2>Contents</h2>
+<ul>
+<li><a href="#Functions">Functions</a></li>
+</ul>
+
+
+<h2>Modules</h2>
+<ul class="nowrap">
+  <li><a href="../modules/resty.dns.balancer.base.html">resty.dns.balancer.base</a></li>
+  <li><strong>resty.dns.balancer.consistent_hashing</strong></li>
+  <li><a href="../modules/resty.dns.balancer.handle.html">resty.dns.balancer.handle</a></li>
+  <li><a href="../modules/resty.dns.balancer.least_connections.html">resty.dns.balancer.least_connections</a></li>
+  <li><a href="../modules/resty.dns.balancer.ring.html">resty.dns.balancer.ring</a></li>
+  <li><a href="../modules/resty.dns.client.html">resty.dns.client</a></li>
+  <li><a href="../modules/resty.dns.utils.html">resty.dns.utils</a></li>
+</ul>
+<h2>Topics</h2>
+<ul class="">
+  <li><a href="../topics/README.md.html">README</a></li>
+</ul>
+
+</div>
+
+<div id="content">
+
+<h1>Module <code>resty.dns.balancer.consistent_hashing</code></h1>
+<p>Consistent-Hashing balancer</p>
+
+<p> This balancer implements a consistent-hashing algorithm based on the
+ Ketama algorithm.</p>
+<p> This load balancer is designed to make sure that every time a load
+ balancer object is built, it is built the same, no matter the order the
+ process is done.</p>
+
+<p> <strong>NOTE:</strong> This documentation only described the altered user
+ methods/properties, see the <code>user properties</code> from the <code>balancer_base</code>
+ for a complete overview.</p>
+    <h3>Info:</h3>
+    <ul>
+        <li><strong>Copyright</strong>: 2020 Kong Inc. All rights reserved.</li>
+        <li><strong>License</strong>: Apache 2.0</li>
+        <li><strong>Author</strong>: Vinicius Mignot</li>
+    </ul>
+
+
+<h2><a href="#Functions">Functions</a></h2>
+<table class="function_list">
+	<tr>
+	<td class="name" nowrap><a href="#_get_continuum">_get_continuum ()</a></td>
+	<td class="summary">for testing only</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#addHost">addHost (hostname, port, weight)</a></td>
+	<td class="summary">Adds a host to the balancer.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#afterHostUpdate">afterHostUpdate (host)</a></td>
+	<td class="summary">Actually adds the addresses to the continuum.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#getPeer">getPeer (cacheOnly, handle, valueToHash)</a></td>
+	<td class="summary">Gets an IP/port/hostname combo for the value to hash
+ This function will hash the <code>valueToHash</code> param and use it as an index
+ in the continuum.</td>
+	</tr>
+	<tr>
+	<td class="name" nowrap><a href="#new">new (opts)</a></td>
+	<td class="summary">Creates a new balancer.</td>
+	</tr>
+</table>
+
+<br/>
+<br/>
+
+
+    <h2 class="section-header "><a name="Functions"></a>Functions</h2>
+
+    <dl class="function">
+    <dt>
+    <a name = "_get_continuum"></a>
+    <strong>_get_continuum ()</strong>
+    </dt>
+    <dd>
+    for testing only
+
+
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "addHost"></a>
+    <strong>addHost (hostname, port, weight)</strong>
+    </dt>
+    <dd>
+    Adds a host to the balancer.
+ This function checks if there is enough points to add more hosts and
+ then call the base class's <code>addHost()</code>.
+ see <code>addHost()</code> from the <code>balancer_base</code> for more details.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">hostname</span>
+
+
+
+        </li>
+        <li><span class="parameter">port</span>
+
+
+
+        </li>
+        <li><span class="parameter">weight</span>
+
+
+
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "afterHostUpdate"></a>
+    <strong>afterHostUpdate (host)</strong>
+    </dt>
+    <dd>
+    Actually adds the addresses to the continuum.
+ This function should not be called directly, as it will called by
+ <code>addHost()</code> after adding the new host.
+ This function makes sure the continuum will be built identically every
+ time, no matter the order the hosts are added.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">host</span>
+
+
+
+        </li>
+    </ul>
+
+
+
+
+
+</dd>
+    <dt>
+    <a name = "getPeer"></a>
+    <strong>getPeer (cacheOnly, handle, valueToHash)</strong>
+    </dt>
+    <dd>
+    Gets an IP/port/hostname combo for the value to hash
+ This function will hash the <code>valueToHash</code> param and use it as an index
+ in the continuum.  It will return the address that is at the hashed
+ value or the first one found going counter-clockwise in the continuum.
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">cacheOnly</span>
+         If truthy, no dns lookups will be done, only cache.
+        </li>
+        <li><span class="parameter">handle</span>
+         the <a href="../modules/resty.dns.balancer.handle.html">handle</a> returned by a previous call to <a href="../modules/resty.dns.balancer.consistent_hashing.html#getPeer">getPeer</a>.
+ This will retain some state over retries. See also <code>setAddressStatus</code>.
+        </li>
+        <li><span class="parameter">valueToHash</span>
+         value for consistent hashing. Please note that this
+ value will be hashed, so no need to hash it prior to calling this
+ function.
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        <code>ip + port + hostheader</code> + <a href="../modules/resty.dns.balancer.handle.html">handle</a>, or <code>nil+error</code>
+    </ol>
+
+
+
+
+</dd>
+    <dt>
+    <a name = "new"></a>
+    <strong>new (opts)</strong>
+    </dt>
+    <dd>
+
+<p>Creates a new balancer. </p>
+
+<p> The balancer is based on a wheel (continuum) with a number of points
+ between MIN<em>CONTINUUM</em>SIZE and MAX<em>CONTINUUM</em>SIZE points. Key points
+ will be assigned to addresses based on their IP and port. The number
+ of points each address will be assigned is proportional to their weight.</p>
+
+<p> The options table has the following fields, additional to the ones from
+ the <code>balancer_base</code>:</p>
+
+<ul>
+    <li><code>hosts</code> (optional) containing hostnames, ports, and weights. If
+    omitted, ports and weights default respectively to 80 and 10. The list
+    will be sorted before being added, so the order of entry is
+    deterministic.</li>
+    <li><code>wheelSize</code> (optional) for total number of positions in the
+    continuum. If omitted <code>DEFAULT_CONTINUUM_SIZE</code> is used. It is important
+    to have enough indices to fit all addresses entries, keep in mind that
+    each address will use 160 entries in the continuum (more or less,
+    proportional to its weight, but the total points will always be
+    <code>160 * addresses</code>). Consider the maximum number of targets expected, as
+    new hosts can be dynamically added, and DNS renewals might yield
+    larger record sets. The <code>wheelSize</code> cannot be altered, the object has
+    to built again to change this value. On a similar note, making it too
+    big will have a performance impact to get peers from the continuum, as
+    the values will be too dispersed among them.</li>
+</ul>
+
+
+
+    <h3>Parameters:</h3>
+    <ul>
+        <li><span class="parameter">opts</span>
+         table with options
+        </li>
+    </ul>
+
+    <h3>Returns:</h3>
+    <ol>
+
+        new balancer object or nil+error
+    </ol>
+
+
+
+
+</dd>
+</dl>
+
+
+</div> <!-- id="content" -->
+</div> <!-- id="main" -->
+<div id="about">
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
+<i style="float:right;">Last updated 2020-09-28 16:09:46 </i>
+</div> <!-- id="about" -->
+</div> <!-- id="container" -->
+</body>
+</html>

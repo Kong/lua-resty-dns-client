@@ -51,11 +51,15 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
-### 5.0.1 (unreleased)
+### 5.1.0 (28-Sep-2020)
 
 - Fix: workaround for LuaJIT/ARM bug, see [Issue 93](https://github.com/Kong/lua-resty-dns-client/issues/93).
 - Fix: table reduction was calculated wrong. Not a "functional" bug, just causing
   slightly less agressive memory releasing.
+- Added: alternative implementation of the consistent-hashing balancing algorithm,
+  which does not rely on the addresses addition and removal order to build the
+  same request distribution among different instances. See
+  [PR 97](https://github.com/Kong/lua-resty-dns-client/pull/97).
 
 ### 5.0.0 (14-May-2020)
 
