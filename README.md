@@ -51,6 +51,10 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### 5.1.1 (7-Oct-2020)
+
+- Dependency: Bump lua-resty-timer to 1.0
+
 ### 5.1.0 (28-Sep-2020)
 
 - Fix: workaround for LuaJIT/ARM bug, see [Issue 93](https://github.com/Kong/lua-resty-dns-client/issues/93).
