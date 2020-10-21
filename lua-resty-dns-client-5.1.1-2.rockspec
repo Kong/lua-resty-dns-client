@@ -1,5 +1,5 @@
 package = "lua-resty-dns-client"
-version = "5.1.1-1"
+version = "5.1.1-2"
 source = {
   url = "https://github.com/Kong/lua-resty-dns-client/archive/5.1.1.tar.gz",
   dir = "lua-resty-dns-client-5.1.1"
@@ -16,9 +16,9 @@ description = {
 }
 dependencies = {
   "lua >= 5.1, < 5.4",
-  "penlight ~> 1.0",
+  "penlight ~> 1",
   "lrandom",
-  "lua-resty-timer ~> 1.0",
+  "lua-resty-timer ~> 1",
   "binaryheap >= 0.4",
   "luaxxhash >= 1.0",
 }
