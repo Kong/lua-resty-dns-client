@@ -160,6 +160,8 @@ local errors = setmetatable({
 })
 
 
+local _balancers = setmetatable({}, { __mode = 'v' })
+
 local _M = {}
 
 
@@ -1196,21 +1198,6 @@ function objBalancer:setHostStatus(available, hostname, port)
 end
 
 
--- Timer invoked to update DNS records
-function objBalancer:resolveTimerCallback()
-  --check all hosts for expired records,
-  --including those with errors
-  --we update, so changes on the list while traversing can happen, keep track of that
-
-  for _, host in ipairs(self.hosts) do
-    -- only retry the errored ones
-    if ((host.lastQuery or EMPTY).expire or 0) < time() then
-      ngx_log(ngx_DEBUG, self.log_prefix, "executing requery for: ", host.hostname)
-      host:queryDns(false) -- timer-context; cacheOnly always false
-    end
-  end
-end
-
 
 --- Sets an event callback for user code. The callback is invoked for
 -- every address added to/removed from the balancer, and on health changes.
@@ -1356,7 +1343,6 @@ _M.new = function(opts)
     weight = 0,    -- total weight of all hosts
     unavailableWeight = 0,  -- the unavailable weight (range: 0 - weight)
     dns = opts.dns,  -- the configured dns client to use for resolving
-    resolveTimer = nil,
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
     healthy = false, -- initial healthstatus of the balancer
@@ -1367,22 +1353,45 @@ _M.new = function(opts)
 
   self:setCallback(opts.callback or function() end) -- callback for address mutations
 
-  do
-    local err
-    self.resolveTimer, err = resty_timer({
-        recurring = true,
-        interval = 1,  -- check for expired records every 1 second
-        detached = false,
-        expire = self.resolveTimerCallback,
-      }, self)
-
-    if not self.resolveTimer then
-      return nil, "failed to create timer for background DNS resolution: " .. err
-    end
-  end
+  _balancers[self] = true
 
   ngx_log(ngx_DEBUG, self.log_prefix, "balancer_base created")
   return self
+end
+
+
+do
+  local function delayed_host_querydns(premature, host)
+    if premature then
+      return
+    end
+    host:queryDns(false) -- timer-context; cacheOnly always false
+  end
+
+  local function check_for_expired_records()
+    for balancer in pairs(_balancers) do
+      --check all hosts for expired records,
+      --including those with errors
+      --we update, so changes on the list while traversing can happen, keep track of that
+      for _, host in ipairs(balancer.hosts) do
+        -- only retry the errored ones
+        if ((host.lastQuery or EMPTY).expire or 0) < time() then
+          ngx_log(ngx_DEBUG, balancer.log_prefix, "executing requery for: ", host.hostname)
+          ngx.timer.at(0, delayed_host_querydns, host)
+        end
+      end
+    end
+  end
+
+  local ok, err = resty_timer({
+    recurring = true,
+    interval = 1, -- check for expired records every 1 second
+    detached = false,
+    expire = check_for_expired_records,
+  })
+  if not ok then
+    error("failed to create timer for background DNS resolution: " .. err)
+  end
 end
 
 -- export the error constants
