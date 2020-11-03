@@ -176,6 +176,9 @@ local errors = setmetatable({
 })
 
 
+local _balancers = setmetatable({}, { __mode = "k" })
+local _expire_records_timer = nil
+
 local _M = {}
 
 
@@ -186,6 +189,21 @@ local objHost = {}
 local mt_objHost = { __index = objHost }
 local objBalancer = {}
 local mt_objBalancer = { __index = objBalancer }
+
+local function check_for_expired_records()
+  for balancer in pairs(_balancers) do
+    --check all hosts for expired records,
+    --including those with errors
+    --we update, so changes on the list while traversing can happen, keep track of that
+    for _, host in ipairs(balancer.hosts) do
+      -- only retry the errored ones
+      if ((host.lastQuery or EMPTY).expire or 0) < time() then
+        ngx_log(ngx_DEBUG, balancer.log_prefix, "executing requery for: ", host.hostname)
+        host:queryDns(false) -- timer-context; cacheOnly always false
+      end
+    end
+  end
+end
 
 ------------------------------------------------------------------------------
 -- Implementation properties.
@@ -1254,20 +1272,6 @@ function objBalancer:setHostStatus(available, hostname, port)
 end
 
 
--- Timer invoked to update DNS records
-function objBalancer:resolveTimerCallback()
-  --check all hosts for expired records, including those with errors
-  --we update, so changes on the list while traversing can happen, keep track of that
-
-  for _, host in ipairs(self.hosts) do
-    if ((host.lastQuery or EMPTY).expire or 0) < time() then
-      ngx_log(ngx_DEBUG, self.log_prefix, "executing requery for: ", host.hostname)
-      host:queryDns(false) -- timer-context; cacheOnly always false
-    end
-  end
-end
-
-
 --- Sets an event callback for user code. The callback is invoked for
 -- every address added to/removed from the balancer, and on health changes.
 --
@@ -1423,7 +1427,6 @@ _M.new = function(opts)
     weight = 0,    -- total weight of all hosts
     unavailableWeight = 0,  -- the unavailable weight (range: 0 - weight)
     dns = opts.dns,  -- the configured dns client to use for resolving
-    resolveTimer = nil,
     requeryInterval = opts.requery or REQUERY_INTERVAL,  -- how often to requery failed dns lookups (seconds)
     ttl0Interval = opts.ttl0 or TTL_0_RETRY, -- refreshing ttl=0 records
     healthy = false, -- initial healthstatus of the balancer
@@ -1435,17 +1438,17 @@ _M.new = function(opts)
 
   self:setCallback(opts.callback or function() end) -- callback for address mutations
 
-  do
+  _balancers[self] = true
+  if not _expire_records_timer then
     local err
-    self.resolveTimer, err = resty_timer({
-        recurring = true,
-        interval = 1,  -- check for expired records every 1 second
-        detached = false,
-        expire = self.resolveTimerCallback,
-      }, self)
-
-    if not self.resolveTimer then
-      return nil, "failed to create timer for background DNS resolution: " .. err
+    _expire_records_timer, err = resty_timer({
+      recurring = true,
+      interval = 1, -- check for expired records every 1 second
+      detached = true,
+      expire = check_for_expired_records,
+    })
+    if not _expire_records_timer then
+      error("failed to create expire records timer for background DNS resolution: " .. err)
     end
   end
 
