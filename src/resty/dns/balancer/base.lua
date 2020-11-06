@@ -1371,7 +1371,8 @@ _M.new = function(opts)
     local err
     self.resolveTimer, err = resty_timer({
         recurring = true,
-        interval = 1,  -- check for expired records every 1 second
+        interval = 3,  -- check for expired records every 1 second
+        jitter = 3,
         detached = false,
         expire = self.resolveTimerCallback,
       }, self)
