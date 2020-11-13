@@ -1662,8 +1662,8 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
 
       it("recovers when dns entries are replaced by healthy ones", function()
-        local record = dnsA({
-          { name = "getkong.org", address = "1.2.3.4" },
+        dnsA({
+          { name = "getkong.org", address = "1.2.3.4", ttl = 2 },
         })
         b:addHost("getkong.org", 8000, 50)
         assert.not_nil(b:getPeer())
@@ -1677,11 +1677,10 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }
         )
 
-        -- expire DNS and add a new backend IP
+        -- update DNS with a new backend IP
         -- balancer should now recover since a new healthy backend is available
-        record.expire = 0
         dnsA({
-          { name = "getkong.org", address = "5.6.7.8" },
+          { name = "getkong.org", address = "5.6.7.8", ttl = 60 },
         })
 
         local timeout = ngx.now() + 5   -- we'll try for 5 seconds
@@ -1873,18 +1872,23 @@ for algorithm, balancer_module in helpers.balancer_types() do
         })
         b:addHost("127.0.0.1", 8000, 100)
 
-        local test_table = setmetatable({}, { __mode = "k" })
-        test_table[b] = true
+        local test_table = setmetatable({}, { __mode = "v" })
+        test_table.key = b
         assert.not_nil(next(test_table))
 
         -- destroy it
+--b:removeHost("127.0.0.1", 8000) -- should not be necessary
         ngx.sleep(0)  -- without this it fails, why, why, why?
         b = nil       -- luacheck: ignore
+        -- base = require("resty.dns.balancer.base")
+        -- base._renewal_timer:cancel()
+        -- base._renewal_timer = nil
 
         collectgarbage()
         collectgarbage()
         --assert.is_nil(next(test_table))  -- doesn't work, hangs if failed, luassert bug
-        assert.equal("nil", tostring(next(test_table)))
+        assert.is_nil(test_table.key)
+        assert.equal("nil", tostring(test_table.key))
       end)
 
     end)
