@@ -27,6 +27,8 @@ for algorithm, balancer_module in helpers.balancer_types() do
       })
       snapshot = assert:snapshot()
       assert:set_parameter("TableFormatLevel", 10)
+      collectgarbage()
+      collectgarbage()
     end)
 
 
@@ -1839,6 +1841,50 @@ for algorithm, balancer_module in helpers.balancer_types() do
           }, b:getStatus())
         end)
 
+      end)
+
+    end)
+
+
+
+    describe("GC:", function()
+
+      it("removed Hosts get collected",function()
+        local b = balancer_module.new({
+          dns = client,
+        })
+        b:addHost("127.0.0.1", 8000, 100)
+
+        local test_table = setmetatable({}, { __mode = "v" })
+        test_table.key = b.hosts[1]
+        assert.not_nil(next(test_table))
+
+        -- destroy it
+        b:removeHost("127.0.0.1", 8000)
+        collectgarbage()
+        collectgarbage()
+        assert.is_nil(next(test_table))
+      end)
+
+
+      it("dropped balancers get collected",function()
+        local b = balancer_module.new({
+          dns = client,
+        })
+        b:addHost("127.0.0.1", 8000, 100)
+
+        local test_table = setmetatable({}, { __mode = "k" })
+        test_table[b] = true
+        assert.not_nil(next(test_table))
+
+        -- destroy it
+        ngx.sleep(0)  -- without this it fails, why, why, why?
+        b = nil       -- luacheck: ignore
+
+        collectgarbage()
+        collectgarbage()
+        --assert.is_nil(next(test_table))  -- doesn't work, hangs if failed, luassert bug
+        assert.equal("nil", tostring(next(test_table)))
       end)
 
     end)
