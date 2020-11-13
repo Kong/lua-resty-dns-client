@@ -1374,6 +1374,7 @@ _M.new = function(opts)
         interval = 1,  -- check for expired records every 1 second
         detached = false,
         expire = self.resolveTimerCallback,
+        --cancel = function(reason) print("timer cancelled: ", reason, " - ", tostring(self.log_prefix)) end
       }, self)
 
     if not self.resolveTimer then
