@@ -363,6 +363,10 @@ options ndots:2
     it("parses valid name address types", function()
       assert.are.same({"somename", nil, "name"}, {dnsutils.parseHostname("somename")})
       assert.are.same({"somename", 123, "name"}, {dnsutils.parseHostname("somename:123")})
+      assert.are.same({"somename456", nil, "name"}, {dnsutils.parseHostname("somename456")})
+      assert.are.same({"somename456", 123, "name"}, {dnsutils.parseHostname("somename456:123")})
+      assert.are.same({"somename456.domain.local789", nil, "name"}, {dnsutils.parseHostname("somename456.domain.local789")})
+      assert.are.same({"somename456.domain.local789", 123, "name"}, {dnsutils.parseHostname("somename456.domain.local789:123")})
     end)
   end)
 
