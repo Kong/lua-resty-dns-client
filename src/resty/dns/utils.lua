@@ -321,7 +321,7 @@ end
 -- @return `name/ip` + `port (or nil)` + `type` (one of: `"ipv4"`, `"ipv6"`, or `"name"`)
 _M.parseHostname = function(name)
   local t = _M.hostnameType(name)
-  if t == "ipv4" then
+  if t == "ipv4" or t == "name" then
     local ip, port = name:match("^([^:]+)%:*(%d*)$")
     return ip, tonumber(port), t
   elseif t == "ipv6" then
@@ -331,8 +331,7 @@ _M.parseHostname = function(name)
     end
     return "["..name.."]", nil, t  -- no brackets also means no port
   end
-  local host, port = name:match("^(.-)%:*(%d*)$")
-  return host, tonumber(port), t
+  return nil, nil, nil -- should never happen
 end
 
 return _M
