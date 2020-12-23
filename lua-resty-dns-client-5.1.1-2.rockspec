@@ -18,7 +18,7 @@ dependencies = {
   "lua >= 5.1, < 5.4",
   "penlight ~> 1",
   "lrandom",
-  "lua-resty-timer ~> 1",
+  "lua-resty-timer >= 1.1, < 2",
   "binaryheap >= 0.4",
   "luaxxhash >= 1.0",
 }
