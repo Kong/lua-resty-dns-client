@@ -159,6 +159,8 @@ local string_format = string.format
 local ngx_log = ngx.log
 local ngx_DEBUG = ngx.DEBUG
 local ngx_WARN = ngx.WARN
+local ngx_ERR = ngx.ERR
+local ngx_CRIT = ngx.CRIT
 local balancer_id_counter = 0
 
 local EMPTY = setmetatable({},
@@ -186,6 +188,13 @@ local objHost = {}
 local mt_objHost = { __index = objHost }
 local objBalancer = {}
 local mt_objBalancer = { __index = objBalancer }
+
+-- balancer objects (weak) table
+local balancers = setmetatable({}, {
+  __mode = "v",
+})
+
+local resolve_timer
 
 ------------------------------------------------------------------------------
 -- Implementation properties.
@@ -1255,14 +1264,26 @@ end
 
 
 -- Timer invoked to update DNS records
-function objBalancer:resolveTimerCallback()
+function objBalancer:resolveExpiredHosts()
   --check all hosts for expired records, including those with errors
   --we update, so changes on the list while traversing can happen, keep track of that
 
   for _, host in ipairs(self.hosts) do
     if ((host.lastQuery or EMPTY).expire or 0) < time() then
-      ngx_log(ngx_DEBUG, self.log_prefix, "executing requery for: ", host.hostname)
-      host:queryDns(false) -- timer-context; cacheOnly always false
+      local timer, err = resty_timer({
+        interval = 0,
+        recurring = false,
+        immediate = false,
+        detached = false,
+        expire = function()
+          ngx_log(ngx_DEBUG, self.log_prefix, "executing requery for: ", host.hostname)
+          host:queryDns(false) -- timer-context; cacheOnly always false
+        end,
+      })
+      if timer == nil then
+        ngx_log(ngx_ERR, self.log_prefix, "Failed to create timer to resolve host ",
+                host.hostname, ":", err)
+      end
     end
   end
 end
@@ -1435,20 +1456,24 @@ _M.new = function(opts)
 
   self:setCallback(opts.callback or function() end) -- callback for address mutations
 
-  do
+  if resolve_timer == nil then
     local err
-    self.resolveTimer, err = resty_timer({
-        recurring = true,
-        interval = 1,  -- check for expired records every 1 second
-        detached = false,
-        expire = self.resolveTimerCallback,
-      }, self)
-
-    if not self.resolveTimer then
-      return nil, "failed to create timer for background DNS resolution: " .. err
+    resolve_timer, err = resty_timer({
+      recurring = true,
+      interval = 1,
+      detached = false,
+      expire = function()
+        for _, balancer_obj in ipairs(balancers) do
+          balancer_obj:resolveExpiredHosts()
+        end
+      end,
+    })
+    if not resolve_timer then
+      ngx_log(ngx_CRIT, self.log_prefix, "Could not start resolve hosts timer: ", err)
     end
   end
 
+  table.insert(balancers, self)
   ngx_log(ngx_DEBUG, self.log_prefix, "balancer_base created")
   return self
 end
