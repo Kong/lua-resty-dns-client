@@ -9,5 +9,8 @@ if ngx ~= nil then
   ngx.exit = function() end
 end
 
+-- disable globals warning
+setmetatable(_G, nil)
+
 -- Busted command-line runner
 require 'busted.runner'({ standalone = false })
