@@ -1,0 +1,55 @@
+sudo: required
+
+language: c
+
+compiler: gcc
+
+notifications:
+  email: false
+
+cache:
+  directories:
+  - download-cache
+  - perl5
+
+env:
+  global:
+    - JOBS=2
+    - LUAROCKS_VER=3.3.0
+  matrix:
+    - OPENRESTY_VER=1.15.8.3
+    - OPENRESTY_VER=1.17.8.2
+
+install:
+  - mkdir -p download-cache
+  - if [ -z "$OPENRESTY_VER" ]; then export OPENRESTY_VER=1.15.8.3; fi
+  - if [ ! -f download-cache/openresty-$OPENRESTY_VER.tar.gz ]; then wget -O download-cache/openresty-$OPENRESTY_VER.tar.gz http://openresty.org/download/openresty-$OPENRESTY_VER.tar.gz; fi
+  - if [ ! -f download-cache/luarocks-$LUAROCKS_VER.tar.gz ]; then wget -O download-cache/luarocks-$LUAROCKS_VER.tar.gz https://luarocks.github.io/luarocks/releases/luarocks-$LUAROCKS_VER.tar.gz; fi
+  - tar -zxf download-cache/openresty-$OPENRESTY_VER.tar.gz
+  - tar -zxf download-cache/luarocks-$LUAROCKS_VER.tar.gz
+  - pushd openresty-$OPENRESTY_VER
+  - export OPENRESTY_PREFIX=$TRAVIS_BUILD_DIR/openresty-$OPENRESTY_VER
+  - ./configure --prefix=$OPENRESTY_PREFIX --without-http_ssl_module -j$JOBS > build.log 2>&1 || (cat build.log && exit 1)
+  - make -j$JOBS > build.log 2>&1 || (cat build.log && exit 1)
+  - make install > build.log 2>&1 || (cat build.log && exit 1)
+  - popd
+  - pushd luarocks-$LUAROCKS_VER
+  - export LUAROCKS_PREFIX=$TRAVIS_BUILD_DIR/luarocks-$LUAROCKS_VER
+  - ./configure --with-lua=$OPENRESTY_PREFIX/luajit --with-lua-include=$OPENRESTY_PREFIX/luajit/include/luajit-2.1 --lua-suffix=jit
+  - make build
+  - sudo make install
+  - popd
+  - export PATH=$OPENRESTY_PREFIX/nginx/sbin:$OPENRESTY_PREFIX/bin:$LUAROCKS_PREFIX/bin:$PATH
+  - sudo luarocks install luacheck > build.log 2>&1 || (cat build.log && exit 1)
+  - sudo luarocks install busted > build.log 2>&1 || (cat build.log && exit 1)
+  - sudo luarocks install penlight > build.log 2>&1 || (cat build.log && exit 1)
+  - sudo luarocks install lrandom > build.log 2>&1 || (cat build.log && exit 1)
+  - sudo luarocks install lua-resty-timer > build.log 2>&1 || (cat build.log && exit 1)
+  - sudo luarocks install binaryheap > build.log 2>&1 || (cat build.log && exit 1)
+  - sudo luarocks install luaxxhash > build.log 2>&1 || (cat build.log && exit 1)
+  - luarocks --version
+  - nginx -V
+
+script:
+  - luacheck ./src
+  - ./rbusted --lpath=`pwd`/src/?.lua ./spec/
