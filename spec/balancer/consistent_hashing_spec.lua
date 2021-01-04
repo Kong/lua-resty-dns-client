@@ -1,7 +1,6 @@
 
 assert:set_parameter("TableFormatLevel", 5) -- when displaying tables, set a bigger default depth
 
-local icopy = require("pl.tablex").icopy
 
 ------------------------
 -- START TEST HELPERS --
@@ -15,60 +14,6 @@ local dnsSRV = function(...) return helpers.dnsSRV(client, ...) end
 local dnsA = function(...) return helpers.dnsA(client, ...) end
 local dnsAAAA = function(...) return helpers.dnsAAAA(client, ...) end
 
-
--- checks the integrity of a list, returns the length of list + number of non-array keys
-local check_list = function(t)
-  local size = 0
-  local keys = 0
-  for i, _ in pairs(t) do
-    if (type(i) == "number") then
-      if (i > size) then size = i end
-    else
-      keys = keys + 1
-    end
-  end
-  for i = 1, size do
-    assert(t[i], "invalid sequence, index "..tostring(i).." is missing")
-  end
-  return size, keys
-end
-
--- checks the integrity of the balancer, hosts, addresses, and indices. returns the balancer.
-local check_balancer = function(balancer)
-  if true then return balancer end
-  assert.is.table(balancer)
-  check_list(balancer.hosts)
-  assert.are.equal(balancer.wheelSize, check_list(balancer.wheel)+check_list(balancer.unassignedWheelIndices))
-  if balancer.weight == 0 then
-    -- all hosts failed, so the balancer indices are unassigned/empty
-    assert.are.equal(balancer.wheelSize, #balancer.unassignedWheelIndices)
-    for _, address in ipairs(balancer.wheel) do
-      assert.is_nil(address)
-    end
-  else
-    -- addresses
-    local addrlist = {}
-    for _, address in ipairs(balancer.wheel) do -- calculate indices per address based on the wheel
-      addrlist[address] = (addrlist[address] or 0) + 1
-    end
-    for addr, count in pairs(addrlist) do
-      assert.are.equal(#addr.indices, count)
-    end
-    for _, host in ipairs(balancer.hosts) do -- remove indices per address based on hosts (results in 0)
-      for _, addr in ipairs(host.addresses) do
-        if addr.weight > 0 then
-          for _ in ipairs(addr.indices) do
-            addrlist[addr] = addrlist[addr] - 1
-          end
-        end
-      end
-    end
-    for _, count in pairs(addrlist) do
-      assert.are.equal(0, count)
-    end
-  end
-  return balancer
-end
 
 -- creates a hash table with "address:port" keys and as value the number of indices
 local function count_indices(balancer)
@@ -96,17 +41,6 @@ local copyWheel = function(b)
     copy[i] = i.." - "..address.ip.." @ "..address.port.." ("..address.host.hostname..")"
   end
   return copy
-end
-
-local updateWheelState = function(state, patt, repl)
-  for i, entry in pairs(state) do
-    if repl then
-      state[i] = entry:gsub(patt, repl, 1)
-    elseif entry:find(patt) then
-      state[i] = nil
-    end
-  end
-  return state
 end
 ----------------------
 -- END TEST HELPERS --
@@ -140,11 +74,11 @@ describe("[consistent_hashing]", function()
   end)
 
   it("ringbalancer with a running timer gets GC'ed", function()
-    local b = check_balancer(balancer.new({
+    local b = balancer.new({
       dns = client,
       wheelSize = 15,
       requery = 0.1,
-    }))
+    })
     assert(b:addHost("this.will.not.be.found", 80, 10))
 
     local tracker = setmetatable({ b }, {__mode = "v"})
@@ -173,7 +107,7 @@ describe("[consistent_hashing]", function()
       dnsA({
         { name = "getkong.org", address = "5.6.7.8" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           {name = "mashape.com", port = 123, weight = 10},
           {name = "getkong.org", port = 321, weight = 5},
@@ -210,7 +144,7 @@ describe("[consistent_hashing]", function()
       local res1 = {}
       local res2 = {}
       local res3 = {}
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           {name = "10.0.0.1", port = 1, weight = 100},
           {name = "10.0.0.2", port = 2, weight = 100},
@@ -278,7 +212,7 @@ describe("[consistent_hashing]", function()
       dnsA({
         { name = "getkong.org", address = "5.6.7.8" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           {name = "mashape.com", port = 123, weight = 100},
           {name = "getkong.org", port = 321, weight = 50},
@@ -304,7 +238,7 @@ describe("[consistent_hashing]", function()
       local record = dnsA({
         { name = "mashape.com", address = "1.2.3.4" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = { { name = "mashape.com", port = 80, weight = 5 } },
         dns = client,
         wheelSize = 10,
@@ -330,7 +264,7 @@ describe("[consistent_hashing]", function()
       local count_add = 0
       local count_remove = 0
       local b
-      b = check_balancer(balancer.new {
+      b = balancer.new({
         hosts = {},  -- no hosts, so balancer is empty
         dns = client,
         wheelSize = 10,
@@ -365,7 +299,7 @@ describe("[consistent_hashing]", function()
       local count_add = 0
       local count_remove = 0
       local b
-      b = check_balancer(balancer.new {
+      b = balancer.new({
         hosts = {},  -- no hosts, so balancer is empty
         dns = client,
         wheelSize = 10,
@@ -404,7 +338,7 @@ describe("[consistent_hashing]", function()
       local count_add = 0
       local count_remove = 0
       local b
-      b = check_balancer(balancer.new {
+      b = balancer.new({
         hosts = {},  -- no hosts, so balancer is empty
         dns = client,
         wheelSize = 10,
@@ -453,7 +387,7 @@ describe("[consistent_hashing]", function()
       -- https://github.com/Kong/lua-resty-dns-client/issues/49
       local order_of_events = {}
       local b
-      b = check_balancer(balancer.new {
+      b = balancer.new({
         hosts = {},  -- no hosts, so balancer is empty
         dns = client,
         wheelSize = 10,
@@ -499,7 +433,7 @@ describe("[consistent_hashing]", function()
         { name = "mashape.com", address = "1.2.3.4" },
         { name = "mashape.com", address = "1.2.3.5" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {"mashape.com"},
         dns = client,
         wheelSize = 1000,
@@ -523,7 +457,7 @@ describe("[consistent_hashing]", function()
         { name = "mashape.com", address = "1.2.3.9" },
         { name = "mashape.com", address = "1.2.3.10" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {"mashape.com"},
         dns = client,
         wheelSize = 1000,
@@ -541,7 +475,7 @@ describe("[consistent_hashing]", function()
         { name = "mashape.com", address = "1.2.3.10" },
         { name = "mashape.com", address = "1.2.3.7" },
       })
-      b = check_balancer(balancer.new {
+      b = balancer.new({
         hosts = {"mashape.com"},
         dns = client,
         wheelSize = 1000,
@@ -562,7 +496,7 @@ describe("[consistent_hashing]", function()
         wheelSize = 1000,
       }
       local expected = count_indices(b)
-      b = check_balancer(balancer.new {
+      b = balancer.new({
         hosts = {"getkong.org", "mashape.com"},  -- changed host order
         dns = client,
         wheelSize = 1000,
@@ -577,13 +511,12 @@ describe("[consistent_hashing]", function()
       dnsAAAA({
         { name = "getkong.org", address = "::1" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = { { name = "mashape.com", port = 80, weight = 5 } },
         dns = client,
         wheelSize = 2000,
       })
       b:addHost("getkong.org", 8080, 10 )
-      check_balancer(b)
       local expected = {
         ["1.2.3.4:80"] = 80,
         ["1.2.3.5:80"] = 80,
@@ -599,7 +532,7 @@ describe("[consistent_hashing]", function()
       dnsAAAA({
         { name = "getkong.org", address = "::1" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         dns = client,
         wheelSize = 1000,
       })
@@ -616,7 +549,7 @@ describe("[consistent_hashing]", function()
       dnsAAAA({
         { name = "getkong.org", address = "::1" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         dns = client,
         wheelSize = 1000,
       })
@@ -673,7 +606,7 @@ describe("[consistent_hashing]", function()
         { name = "getkong.org", address = "9.9.9.9", ttl = 60*60 },
       })
 
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           { name = "mashape.com", port = 80, weight = 50 },
           { name = "getkong.org", port = 123, weight = 50 },
@@ -708,7 +641,7 @@ describe("[consistent_hashing]", function()
       dnsAAAA({
         { name = "getkong.org", address = "::1" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         dns = client,
         wheelSize = 1000,
         requery = 1,
@@ -761,7 +694,7 @@ describe("[consistent_hashing]", function()
         { name = "gelato.io", target = "1.2.3.6", port = 8001, weight = 5 },
         { name = "gelato.io", target = "1.2.3.6", port = 8002, weight = 5 },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         dns = client,
         wheelSize = 1000,
       })
@@ -796,7 +729,7 @@ describe("[consistent_hashing]", function()
       dnsA({
         { name = "getkong.org", address = "9.9.9.9" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           { name = "mashape.com", port = 80, weight = 5 },
           { name = "getkong.org", port = 123, weight = 10 },
@@ -827,7 +760,7 @@ describe("[consistent_hashing]", function()
       dnsA({
         { name = "getkong.org", address = "9.9.9.9" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           { name = "mashape.com", port = 80, weight = 5 },
           { name = "getkong.org", port = 123, weight = 10 },
@@ -858,7 +791,7 @@ describe("[consistent_hashing]", function()
       dnsA({
         { name = "getkong.org", address = "9.9.9.9" },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           { name = "gelato.io" },
           { name = "getkong.org", port = 123, weight = 10 },
@@ -890,7 +823,7 @@ describe("[consistent_hashing]", function()
       dnsA({
         { name = "getkong.org", address = "9.9.9.9" },
       })
-      check_balancer(balancer.new {
+      balancer.new({
         hosts = {
           { name = "mashape.com", port = 80, weight = 99999 },
           { name = "getkong.org", port = 123, weight = 1 },
@@ -905,7 +838,7 @@ describe("[consistent_hashing]", function()
       dnsA({
         { name = "getkong.org", address = "9.9.9.9" },
       })
-      check_balancer(balancer.new {
+      balancer.new({
         hosts = {
           { name = "mashape.com", port = 80, weight = 1 },
           { name = "getkong.org", port = 123, weight = 99999 },
@@ -921,7 +854,7 @@ describe("[consistent_hashing]", function()
         { name = "gelato.io", target = "1.2.3.6", port = 8001, weight = 0 },
         { name = "gelato.io", target = "1.2.3.6", port = 8002, weight = 0 },
       })
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           -- port and weight will be overridden by the above
           { name = "gelato.io", port = 80, weight = 99999 },
@@ -968,7 +901,7 @@ describe("[consistent_hashing]", function()
       end
 
       -- create a new balancer
-      local b = check_balancer(balancer.new {
+      local b = balancer.new({
         hosts = {
           { name = hostname, port = 80, weight = 50 },
         },
