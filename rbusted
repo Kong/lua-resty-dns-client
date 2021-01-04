@@ -1,5 +1,30 @@
 #!/usr/bin/env resty
 
+local DEFAULT_RESTY_FLAGS="-c 4096"
+
+if not os.getenv("BUSTED_RESPAWNED") then
+  -- initial run, so go update the environment
+  -- rebuild the invoked commandline, while inserting extra resty-flags
+  local resty_flags = DEFAULT_RESTY_FLAGS
+  local cmd = { "exec" }
+  for i = -1, #arg do
+    if arg[i]:sub(1, 12) == "RESTY_FLAGS=" then
+      resty_flags = arg[i]:sub(13, -1)
+
+    else
+      table.insert(cmd, "'" .. arg[i] .. "'")
+    end
+  end
+
+  if resty_flags then
+    table.insert(cmd, 3, resty_flags)
+  end
+
+  local _, _, rc = os.execute("export BUSTED_RESPAWNED=1; " .. table.concat(cmd, " "))
+  os.exit(rc)
+end
+
+
 -- remove openresty write guard on _G
 setmetatable(_G, nil)
 
