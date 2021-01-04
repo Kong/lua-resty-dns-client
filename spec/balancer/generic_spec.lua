@@ -1877,7 +1877,6 @@ for algorithm, balancer_module in helpers.balancer_types() do
         assert.not_nil(next(test_table))
 
         -- destroy it
---b:removeHost("127.0.0.1", 8000) -- should not be necessary
         ngx.sleep(0)  -- without this it fails, why, why, why?
         b = nil       -- luacheck: ignore
         -- base = require("resty.dns.balancer.base")
