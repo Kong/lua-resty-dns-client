@@ -42,11 +42,7 @@ install:
   - export PATH=$OPENRESTY_PREFIX/nginx/sbin:$OPENRESTY_PREFIX/bin:$LUAROCKS_PREFIX/bin:$PATH
   - sudo luarocks install luacheck > build.log 2>&1 || (cat build.log && exit 1)
   - sudo luarocks install busted > build.log 2>&1 || (cat build.log && exit 1)
-  - sudo luarocks install penlight > build.log 2>&1 || (cat build.log && exit 1)
-  - sudo luarocks install lrandom > build.log 2>&1 || (cat build.log && exit 1)
-  - sudo luarocks install lua-resty-timer > build.log 2>&1 || (cat build.log && exit 1)
-  - sudo luarocks install binaryheap > build.log 2>&1 || (cat build.log && exit 1)
-  - sudo luarocks install luaxxhash > build.log 2>&1 || (cat build.log && exit 1)
+  - sudo luarocks make
   - luarocks --version
   - nginx -V
 
