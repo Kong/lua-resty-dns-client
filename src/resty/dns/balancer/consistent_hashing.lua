@@ -136,7 +136,6 @@ function consistent_hashing:afterHostUpdate(host)
         return
       end
     end
-    ::continue::
   end
 
   ngx_log(ngx_DEBUG, self.log_prefix, "continuum of size ", self.points,
