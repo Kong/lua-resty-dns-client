@@ -1879,9 +1879,6 @@ for algorithm, balancer_module in helpers.balancer_types() do
         -- destroy it
         ngx.sleep(0)  -- without this it fails, why, why, why?
         b = nil       -- luacheck: ignore
-        -- base = require("resty.dns.balancer.base")
-        -- base._renewal_timer:cancel()
-        -- base._renewal_timer = nil
 
         collectgarbage()
         collectgarbage()
