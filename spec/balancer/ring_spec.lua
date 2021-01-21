@@ -1288,7 +1288,7 @@ describe("[ringbalancer]", function()
       local b = check_balancer(balancer.new {
         dns = client,
         wheelSize = 60,
-        requery = 1,
+        requery = 0.1,
       })
       b:addHost("really.really.really.does.not.exist.thijsschreijer.nl", 80, 10)
       b:addHost("getkong.org", 80, 10)
@@ -1615,7 +1615,7 @@ describe("[ringbalancer]", function()
         },
         dns = client,
         wheelSize = 20,
-        requery = 1,   -- shorten default requery time for the test
+        requery = 0.1,   -- shorten default requery time for the test
       })
       local state1 = copyWheel(b)
       local state2 = copyWheel(b)
