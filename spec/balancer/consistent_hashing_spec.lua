@@ -644,7 +644,7 @@ describe("[consistent_hashing]", function()
       local b = balancer.new({
         dns = client,
         wheelSize = 1000,
-        requery = 1,
+        requery = 0.1,
       })
       b:addHost("really.really.really.does.not.exist.thijsschreijer.nl", 80, 10)
       b:addHost("getkong.org", 80, 10)
