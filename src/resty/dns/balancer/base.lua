@@ -460,7 +460,14 @@ local function schedule_dns_renewal(host)
   local record_expiry = (host.lastQuery or EMPTY).expire or 0
   local key = host.balancer.id .. ":" .. host.hostname .. ":" .. host.port
 
-  local new_renew_at = record_expiry + 0.05 -- ensure expired, but within stale_ttl
+  -- because of the DNS cache, a stale record will most likely be returned by the
+  -- client, and queryDns didn't do anything, other than start a background renewal
+  -- query. In that case record_expiry is based on the stale old query (lastQuery)
+  -- and it will be in the past. So we schedule a renew at least 0.5 seconds in
+  -- the future, so by then the background query is complete and that second call
+  -- to queryDns will do the actual updates. Without math.max is would create a
+  -- busy loop and hang.
+  local new_renew_at = math.max(ngx.now(), record_expiry) + 0.5
   local old_renew_at = renewal_heap:valueByPayload(key)
 
   -- always store the host in the registry, because the same key might be reused

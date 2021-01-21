@@ -51,12 +51,17 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### 5.2.1 (21-Jan-2021)
+
+- Fix: balancer DNS updates could go into a busy loop upon renewal. Reported as
+  [Kong issue #6739](https://github.com/Kong/kong/issues/6739),
+  fixed with [PR 116](https://github.com/Kong/lua-resty-dns-client/pull/116).
+
 ### 5.2.0 (7-Jan-2021)
 
 - Fix: now a single timer is used to check for expired records instead of one
   per host, significantly reducing the number of resources required for DNS
   resolution. [PR 112](https://github.com/Kong/lua-resty-dns-client/pull/112)
-
 
 ### 5.1.1 (7-Oct-2020)
 
