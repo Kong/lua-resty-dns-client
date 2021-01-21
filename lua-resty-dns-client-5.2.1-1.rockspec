@@ -1,8 +1,8 @@
 package = "lua-resty-dns-client"
-version = "5.2.0-1"
+version = "5.2.1-1"
 source = {
-  url = "https://github.com/Kong/lua-resty-dns-client/archive/5.2.0.tar.gz",
-  dir = "lua-resty-dns-client-5.2.0"
+  url = "https://github.com/Kong/lua-resty-dns-client/archive/5.2.1.tar.gz",
+  dir = "lua-resty-dns-client-5.2.1"
 }
 description = {
   summary = "DNS library",
