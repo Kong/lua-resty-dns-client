@@ -17,7 +17,7 @@
 -- Adding/deleting hosts, etc (as long as done in the same order) is always
 -- deterministic.
 --
--- Whenever dns resolution fails for a hostname, the host will relinguish all
+-- Whenever dns resolution fails for a hostname, the host will relinquish all
 -- the indices it owns, and they will be reassigned to other targets.
 -- Periodically the query for the hostname will be retried, and if it succeeds
 -- it will get (different) indices reassigned to it.
