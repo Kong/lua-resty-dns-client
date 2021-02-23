@@ -626,13 +626,17 @@ local function parseAnswer(qname, qtype, answers, try_list)
   -- eg. A, AAAA, SRV records may be accompanied by CNAME records
   -- store them all, leaving only the requested type in so we can return that set
   local others = {}
+
+  -- remove last '.' from FQDNs as the answer does not contain it
+  local check_qname = type(qname) == "string" and qname:gsub("%.$", "") or qname
+
   for i = #answers, 1, -1 do -- we're deleting entries, so reverse the traversal
     local answer = answers[i]
 
     -- normalize casing
     answer.name = string_lower(answer.name)
 
-    if (answer.type ~= qtype) or (answer.name ~= qname) then
+    if (answer.type ~= qtype) or (answer.name ~= check_qname) then
       local key = answer.type..":"..answer.name
       try_status(try_list, key .. " removed")
       local lst = others[key]
@@ -1129,11 +1133,15 @@ local function resolve(qname, r_opts, dnsCacheOnly, try_list)
     if name_type == "ipv4" then
       -- if no qtype is given, we're supposed to search, so forcing TYPE_A is safe
       records, _, try_list = check_ipv4(qname, qtype or _M.TYPE_A, try_list)
-    else
+    elseif name_type == "ipv6" then
 
-      -- it is 'ipv6'
       -- if no qtype is given, we're supposed to search, so forcing TYPE_AAAA is safe
       records, _, try_list = check_ipv6(qname, qtype or _M.TYPE_AAAA, try_list)
+    else
+
+       -- it is a 'fqdn' go look it up
+       opts.qtype = qtype or _M.TYPE_A
+       records, err, try_list = lookup(qname, opts, dnsCacheOnly, try_list)
     end
 
     if records.errcode then

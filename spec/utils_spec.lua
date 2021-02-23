@@ -335,7 +335,8 @@ options ndots:2
   end)
 
   describe("hostnameType", function()
-    -- no check on "name" type as anything not ipv4 and not ipv6 will be labelled as 'name' anyway
+    -- no check on "name" type as anything not ipv4 and not ipv6 and not fqdn
+    -- will be labelled as 'name' anyway
     it("checks valid IPv4 address types", function()
       assert.are.same("ipv4", dnsutils.hostnameType("123.123.123.123"))
       assert.are.same("ipv4", dnsutils.hostnameType("1.2.3.4"))
@@ -344,6 +345,11 @@ options ndots:2
       assert.are.same("ipv6", dnsutils.hostnameType("::1"))
       assert.are.same("ipv6", dnsutils.hostnameType("2345::6789"))
       assert.are.same("ipv6", dnsutils.hostnameType("0001:0001:0001:0001:0001:0001:0001:0001"))
+    end)
+    it("checks valid FQDN address types", function()
+      assert.are.same("fqdn", dnsutils.hostnameType("konghq."))
+      assert.are.same("fqdn", dnsutils.hostnameType("konghq.com."))
+      assert.are.same("fqdn", dnsutils.hostnameType("www.konghq.com."))
     end)
   end)
 
@@ -367,6 +373,14 @@ options ndots:2
       assert.are.same({"somename456", 123, "name"}, {dnsutils.parseHostname("somename456:123")})
       assert.are.same({"somename456.domain.local789", nil, "name"}, {dnsutils.parseHostname("somename456.domain.local789")})
       assert.are.same({"somename456.domain.local789", 123, "name"}, {dnsutils.parseHostname("somename456.domain.local789:123")})
+    end)
+    it("parses valid FQDN address types", function()
+      assert.are.same({"somename.", nil, "fqdn"}, {dnsutils.parseHostname("somename.")})
+      assert.are.same({"somename.", 123, "fqdn"}, {dnsutils.parseHostname("somename.:123")})
+      assert.are.same({"somename456.", nil, "fqdn"}, {dnsutils.parseHostname("somename456.")})
+      assert.are.same({"somename456.", 123, "fqdn"}, {dnsutils.parseHostname("somename456.:123")})
+      assert.are.same({"somename456.domain.local789.", nil, "fqdn"}, {dnsutils.parseHostname("somename456.domain.local789.")})
+      assert.are.same({"somename456.domain.local789.", 123, "fqdn"}, {dnsutils.parseHostname("somename456.domain.local789.:123")})
     end)
   end)
 

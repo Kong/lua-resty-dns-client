@@ -1544,4 +1544,48 @@ describe("[DNS client]", function()
     assert.equal(call_count, 10)
   end)
 
+  describe("FQDN resolution", function()
+
+    local client
+    local resolver
+    local result
+    local err
+
+    before_each(function()
+      client = require("resty.dns.client")
+      resolver = require("resty.dns.resolver")
+
+      result, err = assert(client.init({
+        nameservers = { "8.8.8.8:53" },
+        hosts = {},
+        resolvConf = {},
+      }))
+
+      assert.is.True(result)
+      assert.is.Nil(err)
+      assert.are.equal(#client.getcache(), 0)
+    end)
+
+    after_each(function()
+      package.loaded["resty.dns.client"] = nil
+      package.loaded["resty.dns.resolver"] = nil
+      client = nil
+      resolver = nil
+    end)
+
+    it("A record", function()
+      local answers, err, try_list = client.resolve("konghq.com.")
+      assert.are.equal(#answers, 1)
+      assert.are.equal(client.TYPE_A, answers[1].type)
+      assert.is.Nil(err)
+    end)
+
+    it("CNAME record", function()
+      local answers, err, try_list = client.resolve("www.konghq.com.", { qtype = client.TYPE_CNAME})
+      assert.are.equal(client.TYPE_CNAME, answers[1].type)
+      assert.is.Nil(err)
+    end)
+
+  end)
+
 end)

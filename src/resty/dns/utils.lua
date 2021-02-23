@@ -306,9 +306,14 @@ end
 -- hostnameType("127.0.0.1:8080")   -->  "ipv4"
 -- hostnameType("::1")              -->  "ipv6"
 -- hostnameType("[::1]:8000")       -->  "ipv6"
+-- hostnameType("an.fqdn.test.")    -->  "fqdn"
+-- hostnameType("fqdn.test.:6000")  -->  "fqdn"
 -- hostnameType("some::thing")      -->  "ipv6", but invalid...
 _M.hostnameType = function(name)
+  if string.match(name, "%.$") or string.match(name, "%.:%d+$") then return "fqdn" end
+
   local remainder, colons = gsub(name, ":", "")
+  if remainder:match("%.$") then return "fqdn" end
   if colons > 1 then return "ipv6" end
   if remainder:match("^[%d%.]+$") then return "ipv4" end
   return "name"
@@ -321,7 +326,7 @@ end
 -- @return `name/ip` + `port (or nil)` + `type` (one of: `"ipv4"`, `"ipv6"`, or `"name"`)
 _M.parseHostname = function(name)
   local t = _M.hostnameType(name)
-  if t == "ipv4" or t == "name" then
+  if t == "ipv4" or t == "name" or t == "fqdn" then
     local ip, port = name:match("^([^:]+)%:*(%d*)$")
     return ip, tonumber(port), t
   elseif t == "ipv6" then
