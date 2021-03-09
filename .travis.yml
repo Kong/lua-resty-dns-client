@@ -48,4 +48,4 @@ install:
 
 script:
   - luacheck ./src
-  - ./rbusted --lpath=`pwd`/src/?.lua ./spec/
+  - busted
