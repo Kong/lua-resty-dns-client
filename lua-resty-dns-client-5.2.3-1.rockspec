@@ -35,9 +35,9 @@ build = {
     ["resty.dns.utils"] = "src/resty/dns/utils.lua",
     ["resty.dns.client"] = "src/resty/dns/client.lua",
     ["resty.dns.balancer.base"] = "src/resty/dns/balancer/base.lua",
-    ["resty.dns.balancer.ring"] = "src/resty/dns/balancer/ring.lua",
+    ["resty.dns.balancer.consistent_hashing"] = "src/resty/dns/balancer/consistent_hashing.lua",
     ["resty.dns.balancer.least_connections"] = "src/resty/dns/balancer/least_connections.lua",
     ["resty.dns.balancer.handle"] = "src/resty/dns/balancer/handle.lua",
-    ["resty.dns.balancer.consistent_hashing"] = "src/resty/dns/balancer/consistent_hashing.lua",
+    ["resty.dns.balancer.round_robin"] = "src/resty/dns/balancer/round_robin.lua",
   },
 }
