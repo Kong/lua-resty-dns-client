@@ -1,5 +1,6 @@
 return {
   default = {
+    lua = "spec/resty-runner.lua",
     verbose = true,
     coverage = false,
     output = "gtest",
