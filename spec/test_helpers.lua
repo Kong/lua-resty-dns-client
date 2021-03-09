@@ -19,10 +19,9 @@ local gettime = _M.gettime
 function _M.balancer_types()
   local b_types = {
     -- algorithm             name
-    { "consistent-hashing (new)",      "consistent_hashing" },
-    { "consistent-hashing (obsolete)", "ring" },
-    { "round-robin",                   "ring" },
-    { "least-connections",             "least_connections" },
+    { "consistent-hashing", "consistent_hashing" },
+    { "round-robin",        "round_robin" },
+    { "least-connections",  "least_connections" },
   }
   local i = 0
   return function()

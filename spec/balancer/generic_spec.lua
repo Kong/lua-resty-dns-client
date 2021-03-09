@@ -111,8 +111,12 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b.getPeer = function(self)
           -- we do not really need to get a peer, just touch all addresses to
           -- potentially force DNS renewals
-          for _, addr in ipairs(self.addresses) do
-            addr:getPeer()
+          for i, addr in ipairs(self.addresses) do
+            if algorithm == "consistent-hashing" then
+              addr:getPeer(nil, nil, tostring(i))
+            else
+              addr:getPeer()
+            end
           end
         end
         b:addHost("127.0.0.1", 8000, 100)  -- add 1 initial host
@@ -1436,7 +1440,12 @@ for algorithm, balancer_module in helpers.balancer_types() do
             { name = "srvrecord.tst", target = "1.1.1.1", port = 9000, weight = 20 },
             { name = "srvrecord.tst", target = "2.2.2.2", port = 9001, weight = 20 },
           })
-          b:getPeer()  -- touch all adresses to force dns renewal
+          -- touch all adresses to force dns renewal
+          if algorithm == "consistent-hashing" then
+            b:getPeer(nil, nil, "value")
+          else
+            b:getPeer()
+          end
           b:addHost("srvrecord.tst", 8001, 99) -- add again to update nodeWeight
 
           assert.same({
@@ -1523,14 +1532,12 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "konghq.com", target = "1.1.1.1", port = 2, weight = 3 },
         })
         b:addHost("konghq.com", 8000, 50)
-
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "a string")
         else
           ip, port, hostname, handle = b:getPeer()
         end
-
         assert.equal("1.1.1.1", ip)
         assert.equal(2, port)
         assert.equal("konghq.com", hostname)
@@ -1546,14 +1553,12 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "konghq.com", target = "getkong.org", port = 2, weight = 3 },
         })
         b:addHost("konghq.com", 8000, 50)
-
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "a string")
         else
           ip, port, hostname, handle = b:getPeer()
         end
-
         assert.equal("1.2.3.4", ip)
         assert.equal(2, port)
         assert.equal("konghq.com", hostname)
@@ -1571,14 +1576,12 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "konghq.com", target = "getkong.org", port = 2, weight = 3 },
         })
         b:addHost("konghq.com", 8000, 50)
-
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "a string")
         else
           ip, port, hostname, handle = b:getPeer()
         end
-
         assert.equal("1.2.3.4", ip)
         assert.equal(2, port)
         assert.equal("getkong.org", hostname)
@@ -1591,14 +1594,12 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "getkong.org", address = "1.2.3.4" },
         })
         b:addHost("getkong.org", 8000, 50)
-
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "another string")
         else
           ip, port, hostname, handle = b:getPeer()
         end
-
         assert.equal("1.2.3.4", ip)
         assert.equal(8000, port)
         assert.equal("getkong.org", hostname)
@@ -1608,14 +1609,12 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
       it("returns expected results/types when using IPv4", function()
         b:addHost("4.3.2.1", 8000, 50)
-
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "a string")
         else
           ip, port, hostname, handle = b:getPeer()
         end
-
         assert.equal("4.3.2.1", ip)
         assert.equal(8000, port)
         assert.equal(nil, hostname)
@@ -1625,14 +1624,12 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
       it("returns expected results/types when using IPv6", function()
         b:addHost("::1", 8000, 50)
-
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "just a string")
         else
           ip, port, hostname, handle = b:getPeer()
         end
-
         assert.equal("[::1]", ip)
         assert.equal(8000, port)
         assert.equal(nil, hostname)
@@ -1641,10 +1638,16 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
 
       it("fails when there are no addresses added", function()
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "any string")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
-            b:getPeer(false, nil, "any string")
+            ip, port, hostname, handle
           }
         )
       end)
@@ -1657,10 +1660,16 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:setAddressStatus(false, "127.0.0.1", 8000)
         b:setAddressStatus(false, "127.0.0.2", 8000)
         b:setAddressStatus(false, "127.0.0.3", 8000)
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "a client string")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
-            b:getPeer(false, nil, "a client string")
+            ip, port, hostname, handle
           }
         )
       end)
@@ -1670,7 +1679,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.1", 8000, 100)
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           assert.not_nil(b:getPeer(false, nil, "any client string here"))
         else
           assert.not_nil(b:getPeer())
@@ -1678,9 +1687,8 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
         b:setAddressStatus(false, "127.0.0.1", 8000)
         b:setAddressStatus(false, "127.0.0.2", 8000)
-
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "any string here")
         else
           ip, port, hostname, handle = b:getPeer()
@@ -1698,8 +1706,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.1", 8000, 100)
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
-
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           assert.not_nil(b:getPeer(false, nil, "string from the client"))
         else
           assert.not_nil(b:getPeer())
@@ -1707,9 +1714,8 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
         b:setAddressStatus(false, "127.0.0.1", 8000)
         b:setAddressStatus(false, "127.0.0.2", 8000)
-
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "string from the client")
         else
           ip, port, hostname, handle = b:getPeer()
@@ -1722,7 +1728,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         )
 
         b:setAddressStatus(true, "127.0.0.2", 8000)
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           assert.not_nil(b:getPeer(false, nil, "a string"))
         else
           assert.not_nil(b:getPeer())
@@ -1735,7 +1741,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "getkong.org", address = "1.2.3.4", ttl = 2 },
         })
         b:addHost("getkong.org", 8000, 50)
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           assert.not_nil(b:getPeer(false, nil, "from the client"))
         else
           assert.not_nil(b:getPeer())
@@ -1744,7 +1750,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         -- mark it as unhealthy
         assert(b:setAddressStatus(false, "1.2.3.4", 8000, "getkong.org"))
         local ip, port, hostname, handle
-        if algorithm == "consistent-hashing (new)" then
+        if algorithm == "consistent-hashing" then
           ip, port, hostname, handle = b:getPeer(false, nil, "from the client")
         else
           ip, port, hostname, handle = b:getPeer()
@@ -1765,16 +1771,17 @@ for algorithm, balancer_module in helpers.balancer_types() do
         local timeout = ngx.now() + 5   -- we'll try for 5 seconds
         while true do
           assert(ngx.now() < timeout, "timeout")
-
           local ip
-          if algorithm == "consistent-hashing (new)" then
+          if algorithm == "consistent-hashing" then
             ip = b:getPeer(false, nil, "from the client")
+            if ip ~= nil then
+              break  -- expected result, success!
+            end
           else
             ip = b:getPeer()
-          end
-
-          if ip == "5.6.7.8" then
-            break  -- expected result, success!
+            if ip == "5.6.7.8" then
+              break  -- expected result, success!
+            end
           end
 
           ngx.sleep(0.1)  -- wait a bit before retrying
@@ -1818,115 +1825,218 @@ for algorithm, balancer_module in helpers.balancer_types() do
           b:addHost("getkong.org", 5678, 1000)
           b:addHost("notachanceinhell.this.name.exists.konghq.com", 4321, 100)
 
-          local expected_status = {
-            healthy = true,
-            weight = {
-              total = 1170,
-              available = 1170,
-              unavailable = 0
-            },
-            hosts = {
-              {
-                host = "127.0.0.1",
-                port = 8000,
-                dns = "A",
-                nodeWeight = 100,
-                weight = {
-                  total = 100,
-                  available = 100,
-                  unavailable = 0
+          if algorithm == "consistent-hashing" then
+            assert.same({
+              healthy = true,
+              weight = {
+                total = 1170,
+                available = 1170,
+                unavailable = 0
+              },
+              hosts = {
+                {
+                  host = "0::1",
+                  port = 8080,
+                  dns = "AAAA",
+                  nodeWeight = 50,
+                  weight = {
+                    total = 50,
+                    available = 50,
+                    unavailable = 0
+                  },
+                  addresses = {
+                    {
+                      healthy = true,
+                      ip = "[0::1]",
+                      port = 8080,
+                      weight = 50
+                    },
+                  },
                 },
-                addresses = {
-                  {
-                    healthy = true,
-                    ip = "127.0.0.1",
-                    port = 8000,
-                    weight = 100
+                {
+                  host = "127.0.0.1",
+                  port = 8000,
+                  dns = "A",
+                  nodeWeight = 100,
+                  weight = {
+                    total = 100,
+                    available = 100,
+                    unavailable = 0
+                  },
+                  addresses = {
+                    {
+                      healthy = true,
+                      ip = "127.0.0.1",
+                      port = 8000,
+                      weight = 100
+                    },
+                  },
+                },
+                {
+                  host = "getkong.org",
+                  port = 5678,
+                  dns = "ttl=0, virtual SRV",
+                  nodeWeight = 1000,
+                  weight = {
+                    total = 1000,
+                    available = 1000,
+                    unavailable = 0
+                  },
+                  addresses = {
+                    {
+                      healthy = true,
+                      ip = "getkong.org",
+                      port = 5678,
+                      weight = 1000
+                    },
+                  },
+                },
+                {
+                  host = "notachanceinhell.this.name.exists.konghq.com",
+                  port = 4321,
+                  dns = "dns server error: 3 name error",
+                  nodeWeight = 100,
+                  weight = {
+                    total = 0,
+                    available = 0,
+                    unavailable = 0
+                  },
+                  addresses = {},
+                },
+                {
+                  host = "srvrecord.tst",
+                  port = 1234,
+                  dns = "SRV",
+                  nodeWeight = 9999,
+                  weight = {
+                    total = 20,
+                    available = 20,
+                    unavailable = 0
+                  },
+                  addresses = {
+                    {
+                      healthy = true,
+                      ip = "1.1.1.1",
+                      port = 9000,
+                      weight = 10
+                    },
+                    {
+                      healthy = true,
+                      ip = "2.2.2.2",
+                      port = 9001,
+                      weight = 10
+                    },
                   },
                 },
               },
-              {
-                host = "0::1",
-                port = 8080,
-                dns = "AAAA",
-                nodeWeight = 50,
-                weight = {
-                  total = 50,
-                  available = 50,
-                  unavailable = 0
-                },
-                addresses = {
-                  {
-                    healthy = true,
-                    ip = "[0::1]",
-                    port = 8080,
-                    weight = 50
+            }, b:getStatus())
+          else
+            assert.same({
+              healthy = true,
+              weight = {
+                total = 1170,
+                available = 1170,
+                unavailable = 0
+              },
+              hosts = {
+                {
+                  host = "127.0.0.1",
+                  port = 8000,
+                  dns = "A",
+                  nodeWeight = 100,
+                  weight = {
+                    total = 100,
+                    available = 100,
+                    unavailable = 0
+                  },
+                  addresses = {
+                    {
+                      healthy = true,
+                      ip = "127.0.0.1",
+                      port = 8000,
+                      weight = 100
+                    },
                   },
                 },
-              },
-              {
-                host = "srvrecord.tst",
-                port = 1234,
-                dns = "SRV",
-                nodeWeight = 9999,
-                weight = {
-                  total = 20,
-                  available = 20,
-                  unavailable = 0
-                },
-                addresses = {
-                  {
-                    healthy = true,
-                    ip = "1.1.1.1",
-                    port = 9000,
-                    weight = 10
+                {
+                  host = "0::1",
+                  port = 8080,
+                  dns = "AAAA",
+                  nodeWeight = 50,
+                  weight = {
+                    total = 50,
+                    available = 50,
+                    unavailable = 0
                   },
-                  {
-                    healthy = true,
-                    ip = "2.2.2.2",
-                    port = 9001,
-                    weight = 10
+                  addresses = {
+                    {
+                      healthy = true,
+                      ip = "[0::1]",
+                      port = 8080,
+                      weight = 50
+                    },
                   },
                 },
-              },
-              {
-                host = "getkong.org",
-                port = 5678,
-                dns = "ttl=0, virtual SRV",
-                nodeWeight = 1000,
-                weight = {
-                  total = 1000,
-                  available = 1000,
-                  unavailable = 0
-                },
-                addresses = {
-                  {
-                    healthy = true,
-                    ip = "getkong.org",
-                    port = 5678,
-                    weight = 1000
+                {
+                  host = "srvrecord.tst",
+                  port = 1234,
+                  dns = "SRV",
+                  nodeWeight = 9999,
+                  weight = {
+                    total = 20,
+                    available = 20,
+                    unavailable = 0
+                  },
+                  addresses = {
+                    {
+                      healthy = true,
+                      ip = "1.1.1.1",
+                      port = 9000,
+                      weight = 10
+                    },
+                    {
+                      healthy = true,
+                      ip = "2.2.2.2",
+                      port = 9001,
+                      weight = 10
+                    },
                   },
                 },
-              },
-              {
-                host = "notachanceinhell.this.name.exists.konghq.com",
-                port = 4321,
-                dns = "dns server error: 3 name error",
-                nodeWeight = 100,
-                weight = {
-                  total = 0,
-                  available = 0,
-                  unavailable = 0
+                {
+                  host = "getkong.org",
+                  port = 5678,
+                  dns = "ttl=0, virtual SRV",
+                  nodeWeight = 1000,
+                  weight = {
+                    total = 1000,
+                    available = 1000,
+                    unavailable = 0
+                  },
+                  addresses = {
+                    {
+                      healthy = true,
+                      ip = "getkong.org",
+                      port = 5678,
+                      weight = 1000
+                    },
+                  },
                 },
-                addresses = {},
-              },
+                {
+                  host = "notachanceinhell.this.name.exists.konghq.com",
+                  port = 4321,
+                  dns = "dns server error: 3 name error",
+                  nodeWeight = 100,
+                  weight = {
+                    total = 0,
+                    available = 0,
+                    unavailable = 0
+                  },
+                  addresses = {},
+                },
 
-            },
-          }
-          local actual_status = b:getStatus()
-          assert.same(expected_status.healthy, actual_status.healthy)
-          assert.same(expected_status.weight, actual_status.weight)
-          assert.same(#expected_status.hosts, #actual_status.hosts)
+              },
+            }, b:getStatus())
+          end
         end)
 
       end)
