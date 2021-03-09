@@ -626,13 +626,23 @@ local function parseAnswer(qname, qtype, answers, try_list)
   -- eg. A, AAAA, SRV records may be accompanied by CNAME records
   -- store them all, leaving only the requested type in so we can return that set
   local others = {}
+
+  -- remove last '.' from FQDNs as the answer does not contain it
+  local check_qname do
+    if qname:sub(-1, -1) == "." then
+      check_qname = qname:sub(1, -2) -- FQDN, drop the last dot
+    else
+      check_qname = qname
+    end
+  end
+
   for i = #answers, 1, -1 do -- we're deleting entries, so reverse the traversal
     local answer = answers[i]
 
     -- normalize casing
     answer.name = string_lower(answer.name)
 
-    if (answer.type ~= qtype) or (answer.name ~= qname) then
+    if (answer.type ~= qtype) or (answer.name ~= check_qname) then
       local key = answer.type..":"..answer.name
       try_status(try_list, key .. " removed")
       local lst = others[key]
@@ -987,7 +997,14 @@ local function search_iter(qname, qtype)
   type_end = #type_list
 
   local i_type = type_start
-  local search = config.search
+  local search do
+    if qname:sub(-1, -1) == "." then
+      -- this is a FQDN, so no searches
+      search = {}
+    else
+      search = config.search
+    end
+  end
   local i_search, search_start, search_end
   local type_done = {}
   local type_current

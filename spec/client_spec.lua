@@ -265,6 +265,73 @@ describe("[DNS client]", function()
 
     end)
 
+    describe("FQDN without type", function()
+      it("works with a 'search' option", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "search one.com two.com",
+              "options ndots:1",
+            }
+          }))
+        local list = {}
+        for qname, qtype in client._search_iter("host.", nil) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+            'host.:33',
+            'host.:1',
+            'host.:28',
+            'host.:5',
+          }, list)
+      end)
+
+      it("works with a 'domain' option", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "domain local.domain.com",
+              "options ndots:1",
+            }
+          }))
+        local list = {}
+        for qname, qtype in client._search_iter("host.", nil) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+          'host.:33',
+          'host.:1',
+          'host.:28',
+          'host.:5',
+        }, list)
+      end)
+
+      it("handles last successful type", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "search one.com two.com",
+              "options ndots:1",
+            }
+          }))
+        local lrucache = client.getcache()
+        -- insert a last successful type
+        local hostname = "host."
+        lrucache:set(hostname, client.TYPE_CNAME)
+        local list = {}
+        for qname, qtype in client._search_iter(hostname, nil) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+            'host.:5',
+            'host.:33',
+            'host.:1',
+            'host.:28',
+          }, list)
+      end)
+
+    end)
+
     describe("with type", function()
       it("works with a 'search' option", function()
         assert(client.init({
@@ -324,6 +391,65 @@ describe("[DNS client]", function()
             'host.one.com:28',
             'host.two.com:28',
             'host:28',
+          }, list)
+      end)
+
+    end)
+
+    describe("FQDN with type", function()
+      it("works with a 'search' option", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "search one.com two.com",
+              "options ndots:1",
+            }
+          }))
+        local list = {}
+        -- search using IPv6 type
+        for qname, qtype in client._search_iter("host.", client.TYPE_AAAA) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+            'host.:28',
+          }, list)
+      end)
+
+      it("works with a 'domain' option", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "domain local.domain.com",
+              "options ndots:1",
+            }
+          }))
+        local list = {}
+        -- search using IPv6 type
+        for qname, qtype in client._search_iter("host.", client.TYPE_AAAA) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+          'host.:28',
+        }, list)
+      end)
+
+      it("ignores last successful type", function()
+        assert(client.init({
+            resolvConf = {
+              "nameserver 8.8.8.8",
+              "search one.com two.com",
+              "options ndots:1",
+            }
+          }))
+        -- insert a last successful type
+        client.getcache()["host"] = client.TYPE_CNAME
+        local list = {}
+        -- search using IPv6 type
+        for qname, qtype in client._search_iter("host.", client.TYPE_AAAA) do
+          table.insert(list, tostring(qname)..":"..tostring(qtype))
+        end
+        assert.same({
+            'host.:28',
           }, list)
       end)
 
@@ -430,6 +556,18 @@ describe("[DNS client]", function()
     assert.are.equal(#answers, 1)
   end)
 
+  it("fetching a CNAME record FQDN", function()
+    assert(client.init())
+
+    local host = "smtp.thijsschreijer.nl"
+    local typ = client.TYPE_CNAME
+
+    local answers = assert(client.resolve(host .. ".", { qtype = typ }))
+    assert.are.equal(host, answers[1].name)
+    assert.are.equal(typ, answers[1].type)
+    assert.are.equal(#answers, 1)
+  end)
+
   it("expire and touch times", function()
     assert(client.init())
 
@@ -493,6 +631,20 @@ describe("[DNS client]", function()
     local typ = client.TYPE_A
 
     local answers = assert(client.resolve(host, { qtype = typ }))
+    assert.are.equal(#answers, 2)
+    assert.are.equal(host, answers[1].name)
+    assert.are.equal(typ, answers[1].type)
+    assert.are.equal(host, answers[2].name)
+    assert.are.equal(typ, answers[2].type)
+  end)
+
+  it("fetching multiple A records FQDN", function()
+    assert(client.init())
+
+    local host = "atest.thijsschreijer.nl"
+    local typ = client.TYPE_A
+
+    local answers = assert(client.resolve(host .. ".", { qtype = typ }))
     assert.are.equal(#answers, 2)
     assert.are.equal(host, answers[1].name)
     assert.are.equal(typ, answers[1].type)
