@@ -215,6 +215,14 @@ function objAddr:getPeer(cacheOnly)
     return nil, errors.ERR_ADDRESS_UNAVAILABLE
   end
 
+  if self.host == nil then
+    if self.ipType ~= "name" then
+      -- self.host is missing, return potentially stale record
+      return self.ip, self.port, self.hostHeader
+    end
+    return nil, errors.ERR_ADDRESS_UNAVAILABLE
+  end
+
   -- check with our Host whether the DNS record is still up to date
   if not self.host:addressStillValid(cacheOnly, self) then
     -- DNS expired, and this address was removed
