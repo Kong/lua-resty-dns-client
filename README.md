@@ -51,6 +51,12 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### 5.2.2 (11-Mar-2021)
+
+- Fix: do not iterate over all the search domains when resolving an unambiguous
+  fully-qualified domain name (FQDN), i.e. ended in a dot.
+  [PR 122](https://github.com/Kong/lua-resty-dns-client/pull/122)
+
 ### 5.2.1 (21-Jan-2021)
 
 - Fix: balancer DNS updates could go into a busy loop upon renewal. Reported as
