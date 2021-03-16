@@ -69,6 +69,13 @@ function lcAddr:setState(available)
 end
 
 
+-- disabling the address, so delete from binaryHeap
+function lcAddr:disable()
+  self.host.balancer.binaryHeap:remove(self)
+  self.super.disable(self)
+end
+
+
 function lc:newAddress(addr)
   addr = self.super.newAddress(self, addr)
 
@@ -86,12 +93,6 @@ function lc:newAddress(addr)
   end
 
   return addr
-end
-
-
--- removing the address, so delete from binaryHeap
-function lc:onRemoveAddress(address)
-  self.binaryHeap:remove(address)
 end
 
 
@@ -113,7 +114,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
     handle.retryCount = 0
   end
 
-  local address, ip, port, host, reinsert
+  local address, ip, port, host
   while true do
     if not self.healthy then
       -- Balancer unhealthy, nothing we can do.
@@ -126,6 +127,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
 
     -- go and find the next `address` object according to the LB policy
     do
+      local reinsert
       repeat
         if address then
           -- this address we failed before, so temp store it and pop it from
@@ -151,7 +153,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
           local addr = reinsert[i]
           self.binaryHeap:insert((addr.connectionCount + 1) / addr.weight, addr)
         end
-        reinsert = nil
+        reinsert = nil -- luacheck: ignore
       end
     end
 
