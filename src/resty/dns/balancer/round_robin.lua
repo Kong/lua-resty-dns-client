@@ -13,14 +13,15 @@
 local balancer_base = require "resty.dns.balancer.base"
 
 local ngx_log = ngx.log
-local ngx_CRIT = ngx.CRIT
 local ngx_DEBUG = ngx.DEBUG
+local random = math.random
 
 local MAX_WHEEL_SIZE = 2^32
 
 
 local _M = {}
 local roundrobin_balancer = {}
+local random_indexes = {}
 
 
 -- calculate the greater common divisor, used to find the smallest wheel
@@ -33,57 +34,79 @@ local function gcd(a, b)
   return gcd(b, a % b)
 end
 
+--- get a list of random indexes
+-- @param count number of random indexes
+-- @return table with random indexes
+local function get_random_indexes(count)
+  -- if new wheel is smaller than before redo the indexes, else just add more
+  if count < #random_indexes then
+    random_indexes = {}
+  end
+
+  -- create a list of missing indexes
+  local seq = {}
+  for i = #random_indexes + 1, count do
+    table.insert(seq, i)
+  end
+
+  -- randomize missing indexes
+  for i = #random_indexes + 1, count do
+    local index = random(#seq)
+    random_indexes[i] = seq[index]
+    table.remove(seq, index)
+  end
+
+  return random_indexes
+end
+
 
 function roundrobin_balancer:afterHostUpdate(host)
   local new_wheel = {}
-  local addresses = {}
   local total_points = 0
   local total_weight = 0
+  local addr_count = 0
   local divisor = 0
+  local indexes
 
-  for weight, address in self:addressIter() do
-    divisor = gcd(divisor, weight)
-    table.insert(addresses, { address = address, weight = weight })
+  -- calculate the gcd to find the proportional weight of each address
+  for host_idx = 1, #self.hosts do
+    local host = self.hosts[host_idx]
+    for addr_idx = 1, #host.addresses do
+      addr_count = addr_count + 1
+      local address_weight = host.addresses[addr_idx].weight
+      divisor = gcd(divisor, address_weight)
+      total_weight = total_weight + address_weight
+    end
   end
 
-  if #addresses < 1 then
+  if divisor > 0 then
+    total_points = total_weight / divisor
+  end
+
+  if total_points == 0 then
     ngx_log(ngx_DEBUG, self.log_prefix, "trying to set a round-robin balancer with no addresses")
     return
   end
 
-  -- set the proportional weight in each address to use least amount of entries
-  -- in the wheel
-  for i = 1, #addresses do
-    total_weight = total_weight + addresses[i].weight
-    local address_points = addresses[i].weight/divisor
-    total_points = total_points + address_points
-    addresses[i].weight = address_points
+
+  -- get wheel indexes
+  -- note: if one of the addresses has much greater weight than the others
+  -- it is not relevant to randomize the indexes
+  if total_points/divisor < 100 then
+    -- get random indexes so the addresses are distributed in the wheel
+    indexes = get_random_indexes(total_points)
   end
 
-  if total_points > self.maxWheelSize then
-    ngx_log(ngx_CRIT, self.log_prefix, "round-robin balancer requires more ",
-                "entries than available, please increase the wheel size or ",
-                "use closer host weights")
-    return
-  end
-
-  -- actually set the wheel entries
-  local cur_addr = 1
-  for i = 1, total_points do
-    local added = false
-    while not added do
-      if cur_addr > #addresses then
-        cur_addr = 1
+  local wheel_index = 1
+  for host_idx = 1, #self.hosts do
+    local host = self.hosts[host_idx]
+    for addr_idx = 1, #host.addresses do
+      local address_points = host.addresses[addr_idx].weight / divisor
+      for _ = 1, address_points do
+        local actual_index = indexes and indexes[wheel_index] or wheel_index
+        new_wheel[actual_index] = host.addresses[addr_idx]
+        wheel_index = wheel_index + 1
       end
-
-      -- if not all address weight was added to the wheel, add now
-      if addresses[cur_addr].weight > 0 then
-        new_wheel[i] = addresses[cur_addr].address
-        addresses[cur_addr].weight = addresses[cur_addr].weight - 1
-        added = true
-      end
-
-      cur_addr = cur_addr + 1
     end
   end
 

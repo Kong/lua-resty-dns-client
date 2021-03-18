@@ -1251,7 +1251,7 @@ describe("[round robin balancer]", function()
       dnsA({
         { name = "mashape.test", address = "1.2.3.4" },
       })
-      sleep(b.requeryInterval + 1) --requery timer runs, so should be fixed after this
+      sleep(b.requeryInterval + 2) --requery timer runs, so should be fixed after this
 
       -- wheel should be back in original state
       assert.same(state1, copyWheel(b))
