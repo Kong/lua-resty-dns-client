@@ -51,6 +51,11 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### unreleased
+
+- Fix: potential synchronisation issue in the least-connections balancer.
+  [PR 126](https://github.com/Kong/lua-resty-dns-client/pull/126)
+
 ### 5.2.2 (11-Mar-2021)
 
 - Fix: do not iterate over all the search domains when resolving an unambiguous
