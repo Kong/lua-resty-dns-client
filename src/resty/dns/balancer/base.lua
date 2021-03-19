@@ -441,7 +441,7 @@ local function resolve_timer_callback()
 
   while (renewal_heap:peekValue() or math.huge) < now do
     local key = renewal_heap:pop()
-    local host = renewal_weak_cache[key] --- can return nil if GC'ed
+    local host = renewal_weak_cache[key] -- can return nil if GC'ed
 
     --print("timer on: ",key, " the value is: ", tostring((host or EMPTY).hostname))
     if host then

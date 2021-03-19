@@ -1,8 +1,15 @@
-package = "lua-resty-dns-client"
-version = "5.2.2-1"
+local package_name = "lua-resty-dns-client"
+local package_version = "5.2.3"
+local rockspec_revision = "1"
+local github_account_name = "Kong"
+local github_repo_name = package_name
+
+
+package = package_name
+version = package_version.."-"..rockspec_revision
 source = {
-  url = "https://github.com/Kong/lua-resty-dns-client/archive/5.2.2.tar.gz",
-  dir = "lua-resty-dns-client-5.2.2"
+  url = "git://github.com/"..github_account_name.."/"..github_repo_name..".git",
+  tag = package_version,
 }
 description = {
   summary = "DNS library",
@@ -11,7 +18,7 @@ description = {
     a load balancers for round-robin, consistent-hashing, and least-
     connections approaches.
   ]],
-  homepage = "https://github.com/Kong/lua-resty-dns-client",
+  homepage = "https://github.com/"..github_account_name.."/"..github_repo_name,
   license = "Apache 2.0"
 }
 dependencies = {

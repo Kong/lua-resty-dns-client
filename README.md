@@ -51,7 +51,7 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
-### unreleased
+### 5.2.3 (19-Mar-2021)
 
 - Fix: potential synchronisation issue in the least-connections balancer.
   [PR 126](https://github.com/Kong/lua-resty-dns-client/pull/126)
