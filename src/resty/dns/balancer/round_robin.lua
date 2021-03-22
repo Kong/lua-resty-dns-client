@@ -69,25 +69,23 @@ function roundrobin_balancer:afterHostUpdate(host)
   local indexes
 
   -- calculate the gcd to find the proportional weight of each address
-  for host_idx = 1, #self.hosts do
-    local host = self.hosts[host_idx]
-    for addr_idx = 1, #host.addresses do
+  for _, host in ipairs(self.hosts) do
+    for _, address in ipairs(host.addresses) do
       addr_count = addr_count + 1
-      local address_weight = host.addresses[addr_idx].weight
+      local address_weight = address.weight
       divisor = gcd(divisor, address_weight)
       total_weight = total_weight + address_weight
     end
   end
 
-  if divisor > 0 then
-    total_points = total_weight / divisor
-  end
-
-  if total_points == 0 then
+  if total_weight == 0 then
     ngx_log(ngx_DEBUG, self.log_prefix, "trying to set a round-robin balancer with no addresses")
     return
   end
 
+  if divisor > 0 then
+    total_points = total_weight / divisor
+  end
 
   -- get wheel indexes
   -- note: if one of the addresses has much greater weight than the others
@@ -98,13 +96,12 @@ function roundrobin_balancer:afterHostUpdate(host)
   end
 
   local wheel_index = 1
-  for host_idx = 1, #self.hosts do
-    local host = self.hosts[host_idx]
-    for addr_idx = 1, #host.addresses do
-      local address_points = host.addresses[addr_idx].weight / divisor
+  for _, host in ipairs(self.hosts) do
+    for _, address in ipairs(host.addresses) do
+      local address_points = address.weight / divisor
       for _ = 1, address_points do
-        local actual_index = indexes and indexes[wheel_index] or wheel_index
-        new_wheel[actual_index] = host.addresses[addr_idx]
+        local index = indexes and indexes[wheel_index] or wheel_index
+        new_wheel[index] = address
         wheel_index = wheel_index + 1
       end
     end
