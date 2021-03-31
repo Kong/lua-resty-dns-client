@@ -1,10 +1,6 @@
 --------------------------------------------------------------------------
 -- Round-Robin balancer
 --
--- __NOTE:__ This documentation only described the altered user
--- methods/properties, see the `user properties` from the `balancer_base`
--- for a complete overview.
---
 -- @author Vinicius Mignot
 -- @copyright 2021 Kong Inc. All rights reserved.
 -- @license Apache 2.0
@@ -21,7 +17,6 @@ local MAX_WHEEL_SIZE = 2^32
 
 local _M = {}
 local roundrobin_balancer = {}
-local random_indexes = {}
 
 
 -- calculate the greater common divisor, used to find the smallest wheel
@@ -34,29 +29,13 @@ local function gcd(a, b)
   return gcd(b, a % b)
 end
 
---- get a list of random indexes
--- @param count number of random indexes
--- @return table with random indexes
-local function get_random_indexes(count)
-  -- if new wheel is smaller than before redo the indexes, else just add more
-  if count < #random_indexes then
-    random_indexes = {}
-  end
 
-  -- create a list of missing indexes
-  local seq = {}
-  for i = #random_indexes + 1, count do
-    table.insert(seq, i)
+local function wheel_shuffle(wheel)
+  for i = #wheel, 2, -1 do
+    local j = random(i)
+    wheel[i], wheel[j] = wheel[j], wheel[i]
   end
-
-  -- randomize missing indexes
-  for i = #random_indexes + 1, count do
-    local index = random(#seq)
-    random_indexes[i] = seq[index]
-    table.remove(seq, index)
-  end
-
-  return random_indexes
+  return wheel
 end
 
 
@@ -66,7 +45,6 @@ function roundrobin_balancer:afterHostUpdate(host)
   local total_weight = 0
   local addr_count = 0
   local divisor = 0
-  local indexes
 
   -- calculate the gcd to find the proportional weight of each address
   for _, host in ipairs(self.hosts) do
@@ -87,27 +65,18 @@ function roundrobin_balancer:afterHostUpdate(host)
     total_points = total_weight / divisor
   end
 
-  -- get wheel indexes
-  -- note: if one of the addresses has much greater weight than the others
-  -- it is not relevant to randomize the indexes
-  if total_points/divisor < 100 then
-    -- get random indexes so the addresses are distributed in the wheel
-    indexes = get_random_indexes(total_points)
-  end
-
-  local wheel_index = 1
+  -- add all addresses to the wheel
   for _, host in ipairs(self.hosts) do
     for _, address in ipairs(host.addresses) do
       local address_points = address.weight / divisor
       for _ = 1, address_points do
-        local index = indexes and indexes[wheel_index] or wheel_index
-        new_wheel[index] = address
-        wheel_index = wheel_index + 1
+        new_wheel[#new_wheel + 1] = address
       end
     end
   end
 
-  self.wheel = new_wheel
+  -- store the shuffled wheel
+  self.wheel = wheel_shuffle(new_wheel)
   self.wheelSize = total_points
   self.weight = total_weight
 
@@ -162,6 +131,8 @@ function roundrobin_balancer:getPeer(cacheOnly, handle, hashValue)
     end
 
   until self.pointer == starting_pointer
+
+  return nil, balancer_base.errors.ERR_NO_PEERS_AVAILABLE
 end
 
 
