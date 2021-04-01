@@ -417,6 +417,11 @@ local poolMaxRetry
 -- -- `resolv.conf` or otherwise set to 1
 -- local ndots = 1
 --
+-- -- `no_random`, if set disables randomly picking the first nameserver, if not
+-- -- given it is taken from `resolv.conf` option `rotate` (inverted).
+-- -- Defaults to `true`.
+-- local no_random = true
+--
 -- -- `search`, same as the `resolv.conf` option, if not given it is taken from
 -- -- `resolv.conf`, or set to the `domain` option, or no search is performed
 -- local search = {
@@ -434,6 +439,7 @@ local poolMaxRetry
 --          hosts = hosts,
 --          resolvConf = resolvConf,
 --          ndots = ndots,
+--          no_random = no_random,
 --          search = search,
 --          order = order,
 --          badTtl = badTtl,
@@ -582,6 +588,13 @@ _M.init = function(options)
 
   options.retrans = options.retrans or resolv.options.attempts or 5 -- 5 is openresty default
   log(DEBUG, PREFIX, "attempts = ", options.retrans)
+
+  if options.no_random == nil then
+    options.no_random = not resolv.options.rotate
+  else
+    options.no_random = not not options.no_random -- force to boolean
+  end
+  log(DEBUG, PREFIX, "no_random = ", options.no_random)
 
   if not options.timeout then
     if resolv.options.timeout then
