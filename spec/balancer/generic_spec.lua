@@ -1523,7 +1523,14 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "konghq.com", target = "1.1.1.1", port = 2, weight = 3 },
         })
         b:addHost("konghq.com", 8000, 50)
-        local ip, port, hostname, handle = b:getPeer()
+
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "a string")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
+
         assert.equal("1.1.1.1", ip)
         assert.equal(2, port)
         assert.equal("konghq.com", hostname)
@@ -1539,7 +1546,14 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "konghq.com", target = "getkong.org", port = 2, weight = 3 },
         })
         b:addHost("konghq.com", 8000, 50)
-        local ip, port, hostname, handle = b:getPeer()
+
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "a string")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
+
         assert.equal("1.2.3.4", ip)
         assert.equal(2, port)
         assert.equal("konghq.com", hostname)
@@ -1557,7 +1571,14 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "konghq.com", target = "getkong.org", port = 2, weight = 3 },
         })
         b:addHost("konghq.com", 8000, 50)
-        local ip, port, hostname, handle = b:getPeer()
+
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "a string")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
+
         assert.equal("1.2.3.4", ip)
         assert.equal(2, port)
         assert.equal("getkong.org", hostname)
@@ -1570,7 +1591,14 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "getkong.org", address = "1.2.3.4" },
         })
         b:addHost("getkong.org", 8000, 50)
-        local ip, port, hostname, handle = b:getPeer()
+
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "another string")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
+
         assert.equal("1.2.3.4", ip)
         assert.equal(8000, port)
         assert.equal("getkong.org", hostname)
@@ -1580,7 +1608,14 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
       it("returns expected results/types when using IPv4", function()
         b:addHost("4.3.2.1", 8000, 50)
-        local ip, port, hostname, handle = b:getPeer()
+
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "a string")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
+
         assert.equal("4.3.2.1", ip)
         assert.equal(8000, port)
         assert.equal(nil, hostname)
@@ -1590,7 +1625,14 @@ for algorithm, balancer_module in helpers.balancer_types() do
 
       it("returns expected results/types when using IPv6", function()
         b:addHost("::1", 8000, 50)
-        local ip, port, hostname, handle = b:getPeer()
+
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "just a string")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
+
         assert.equal("[::1]", ip)
         assert.equal(8000, port)
         assert.equal(nil, hostname)
@@ -1602,7 +1644,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
-            b:getPeer()
+            b:getPeer(false, nil, "any string")
           }
         )
       end)
@@ -1618,7 +1660,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
-            b:getPeer()
+            b:getPeer(false, nil, "a client string")
           }
         )
       end)
@@ -1628,14 +1670,25 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.1", 8000, 100)
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
-        assert.not_nil(b:getPeer())
+        if algorithm == "consistent-hashing (new)" then
+          assert.not_nil(b:getPeer(false, nil, "any client string here"))
+        else
+          assert.not_nil(b:getPeer())
+        end
 
         b:setAddressStatus(false, "127.0.0.1", 8000)
         b:setAddressStatus(false, "127.0.0.2", 8000)
+
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "any string here")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
-            b:getPeer()
+            ip, port, hostname, handle
           }
         )
       end)
@@ -1645,19 +1698,35 @@ for algorithm, balancer_module in helpers.balancer_types() do
         b:addHost("127.0.0.1", 8000, 100)
         b:addHost("127.0.0.2", 8000, 100)
         b:addHost("127.0.0.3", 8000, 100)
-        assert.not_nil(b:getPeer())
+
+        if algorithm == "consistent-hashing (new)" then
+          assert.not_nil(b:getPeer(false, nil, "string from the client"))
+        else
+          assert.not_nil(b:getPeer())
+        end
 
         b:setAddressStatus(false, "127.0.0.1", 8000)
         b:setAddressStatus(false, "127.0.0.2", 8000)
+
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "string from the client")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
-            b:getPeer()
+            ip, port, hostname, handle
           }
         )
 
         b:setAddressStatus(true, "127.0.0.2", 8000)
-        assert.not_nil(b:getPeer())
+        if algorithm == "consistent-hashing (new)" then
+          assert.not_nil(b:getPeer(false, nil, "a string"))
+        else
+          assert.not_nil(b:getPeer())
+        end
       end)
 
 
@@ -1666,14 +1735,24 @@ for algorithm, balancer_module in helpers.balancer_types() do
           { name = "getkong.org", address = "1.2.3.4", ttl = 2 },
         })
         b:addHost("getkong.org", 8000, 50)
-        assert.not_nil(b:getPeer())
+        if algorithm == "consistent-hashing (new)" then
+          assert.not_nil(b:getPeer(false, nil, "from the client"))
+        else
+          assert.not_nil(b:getPeer())
+        end
 
         -- mark it as unhealthy
         assert(b:setAddressStatus(false, "1.2.3.4", 8000, "getkong.org"))
+        local ip, port, hostname, handle
+        if algorithm == "consistent-hashing (new)" then
+          ip, port, hostname, handle = b:getPeer(false, nil, "from the client")
+        else
+          ip, port, hostname, handle = b:getPeer()
+        end
         assert.same({
             nil, "Balancer is unhealthy", nil, nil,
           }, {
-            b:getPeer()
+            ip, port, hostname, handle,
           }
         )
 
@@ -1687,7 +1766,13 @@ for algorithm, balancer_module in helpers.balancer_types() do
         while true do
           assert(ngx.now() < timeout, "timeout")
 
-          local ip = b:getPeer()
+          local ip
+          if algorithm == "consistent-hashing (new)" then
+            ip = b:getPeer(false, nil, "from the client")
+          else
+            ip = b:getPeer()
+          end
+
           if ip == "5.6.7.8" then
             break  -- expected result, success!
           end
@@ -1733,7 +1818,7 @@ for algorithm, balancer_module in helpers.balancer_types() do
           b:addHost("getkong.org", 5678, 1000)
           b:addHost("notachanceinhell.this.name.exists.konghq.com", 4321, 100)
 
-          assert.same({
+          local expected_status = {
             healthy = true,
             weight = {
               total = 1170,
@@ -1837,7 +1922,11 @@ for algorithm, balancer_module in helpers.balancer_types() do
               },
 
             },
-          }, b:getStatus())
+          }
+          local actual_status = b:getStatus()
+          assert.same(expected_status.healthy, actual_status.healthy)
+          assert.same(expected_status.weight, actual_status.weight)
+          assert.same(#expected_status.hosts, #actual_status.hosts)
         end)
 
       end)
