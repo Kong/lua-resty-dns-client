@@ -15,9 +15,8 @@ Features
  - caches dns query results in memory
  - synchronizes requests (a single request for many requestors, eg. when cached ttl expires under heavy load)
  - `toip` applies a local (weighted) round-robin scheme on the query results
- - ring-balancer for:
-   - (weighted) round-robin, and
-   - consistent-hashing balancing
+ - (weighted) round-robin balancer
+ - consistent-hashing balancer
  - least-connections balancer
 
 
@@ -50,6 +49,19 @@ Release process:
 3. generate the docs using `ldoc .`
 4. commit and tag the release
 5. upload rock to LuaRocks
+
+### 6.0.0 (05-Apr-2021)
+
+- BREAKING: the round-robin balancing algorithm is now implemented in
+  `resty.dns.round_robin` and has no consistent-hashing algorithm features,
+  which are now all restricted to `resty.dns.consistent_hashing`.
+  [PR 123](https://github.com/Kong/lua-resty-dns-client/pull/123)
+- Added: option to enable or disable nameservers randomization. Note: this
+  feature depends on
+  [the to-be-released feature](https://github.com/openresty/lua-resty-dns/commit/ad4a51c8cae8c3fb8f712fa91fda660ab8a89669)
+  in [lua-resty-dns](https://github.com/openresty/lua-resty-dns).
+  [PR 119](https://github.com/Kong/lua-resty-dns-client/pull/119)
+
 
 ### 5.2.3 (19-Mar-2021)
 
@@ -181,7 +193,7 @@ and [PR 82](https://github.com/Kong/lua-resty-dns-client/pull/82).
 
 ### 2.1.0 (21-May-2018) Fixes
 
-- Fix: the round robin scheme for the balanceer starts at a randomized position
+- Fix: the round-robin scheme for the balancer starts at a randomized position
   to prevent all workers from starting with the same peer.
 - Fix: the balancer no longer returns `port = 0` for SRV records without a
   port, the default port is now returned.
