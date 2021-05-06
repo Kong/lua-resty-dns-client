@@ -53,18 +53,18 @@ end
 
 
 function lcAddr:setState(available)
-  local old_available = self.available
-  self.super.setState(self, available)
-  if old_available == self.available then
+  if available == self.available then
     -- nothing changed
     return
   end
 
   local bh = self.host.balancer.binaryHeap
-  if self.available then
+  if available then
+    self.super.setState(self, available)
     bh:insert((self.connectionCount + 1) / self.weight, self)
   else
     bh:remove(self)
+    self.super.setState(self, available)
   end
 end
 
@@ -137,7 +137,7 @@ function lc:getPeer(cacheOnly, handle, hashValue)
           self.binaryHeap:pop()
         end
         address = self.binaryHeap:peek()
-      until address == nil or not (handle.failedAddresses or EMPTY)[address]
+      until address == nil or (not (handle.failedAddresses or EMPTY)[address] and address.host)
 
       if address == nil and handle.failedAddresses then
         -- we failed all addresses, so drop the list of failed ones, we are trying
