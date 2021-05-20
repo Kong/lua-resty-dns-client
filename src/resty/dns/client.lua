@@ -822,6 +822,10 @@ local function syncQuery(qname, r_opts, try_list, count)
     try_status(try_list, "in progress (sync)")
   end
 
+  if ngx.get_phase() == "init" or ngx.get_phase() == "init_worker" then
+    return item, nil, try_list
+  end
+
   -- block and wait for the async query to complete
   local ok, err = item.semaphore:wait(poolMaxWait)
   if ok and item.result then
