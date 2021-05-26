@@ -25,6 +25,10 @@ install:
   - if [ -z "$OPENRESTY_VER" ]; then export OPENRESTY_VER=1.15.8.3; fi
   - if [ ! -f download-cache/openresty-$OPENRESTY_VER.tar.gz ]; then wget -O download-cache/openresty-$OPENRESTY_VER.tar.gz http://openresty.org/download/openresty-$OPENRESTY_VER.tar.gz; fi
   - if [ ! -f download-cache/luarocks-$LUAROCKS_VER.tar.gz ]; then wget -O download-cache/luarocks-$LUAROCKS_VER.tar.gz https://luarocks.github.io/luarocks/releases/luarocks-$LUAROCKS_VER.tar.gz; fi
+  - if [ ! -f download-cache/cpanm ]; then wget -O download-cache/cpanm https://cpanmin.us/; fi
+  - chmod +x download-cache/cpanm
+  - download-cache/cpanm --notest Test::Nginx >build.log 2>&1 || (cat build.log && exit 1)
+  - download-cache/cpanm --notest --local-lib=$TRAVIS_BUILD_DIR/perl5 local::lib && eval $(perl -I $TRAVIS_BUILD_DIR/perl5/lib/perl5/ -Mlocal::lib)
   - tar -zxf download-cache/openresty-$OPENRESTY_VER.tar.gz
   - tar -zxf download-cache/luarocks-$LUAROCKS_VER.tar.gz
   - pushd openresty-$OPENRESTY_VER
@@ -49,3 +53,4 @@ install:
 script:
   - luacheck ./src
   - busted
+  - TEST_NGINX_RANDOMIZE=1 prove -v -r t
