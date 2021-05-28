@@ -502,33 +502,30 @@ local function update_dns_result(self, newQuery, dns)
     return true    -- exit, nothing changed
   end
 
-  -- To detect ttl = 0 we validate both the old and new record. This is done to ensure
-  -- we do not hit the edgecase of https://github.com/Kong/lua-resty-dns-client/issues/51
-  -- So if we get a ttl=0 twice in a row (the old one, and the new one), we update it. And
-  -- if the very first request ever reports ttl=0 (we assume we're not hitting the edgecase
-  -- in that case)
-  if (newQuery[1] or EMPTY).ttl == 0 and
-     (((oldQuery[1] or EMPTY).ttl or 0) == 0 or oldQuery.__ttl0Flag) then
-    -- ttl = 0 means we need to lookup on every request.
-    -- To enable lookup on each request we 'abuse' a virtual SRV record. We set the ttl
-    -- to `ttl0Interval` seconds, and set the `target` field to the hostname that needs
-    -- resolving. Now `getPeer` will resolve on each request if the target is not an IP address,
-    -- and after `ttl0Interval` seconds we'll retry to see whether the ttl has changed to non-0.
-    -- Note: if the original record is an SRV we cannot use the dns provided weights,
-    -- because we can/are not going to possibly change weights on each request
-    -- so we fix them at the `nodeWeight` property, as with A and AAAA records.
+  if (newQuery[1] or EMPTY).ttl == 0 then
+    --TTL=0 handling
     if oldQuery.__ttl0Flag then
-      -- still ttl 0 so nothing changed
+      -- Old/original record still ttl 0 so nothing changed
       oldQuery.touched = time()
       oldQuery.expire = oldQuery.touched + self.balancer.ttl0Interval
       ngx_log(ngx_DEBUG, self.log_prefix, "no dns changes detected for ",
               self.hostname, ", still using ttl=0")
       return true
-    end
+    elseif self.lastQuery == nil then
+      -- If the very first request ever reports ttl=0 then to enable lookup
+      -- on each request we 'abuse' a virtual SRV record. We set the ttl
+      -- to `ttl0Interval` seconds, and set the `target` field to the hostname
+      -- that needs resolving. Now `getPeer` will resolve on each request if
+      -- the target is not an IP address, and after `ttl0Interval` seconds
+      -- we'll retry to see whether the ttl has changed to non-0.
+      -- Note: if the original record is an SRV we cannot use the dns provided weights,
+      -- because we can/are not going to possibly change weights on each request
+      -- so we fix them at the `nodeWeight` property, as with A and AAAA records.(then we assume we're not hitting the edgecase
+      -- in that case)
 
-    ngx_log(ngx_DEBUG, self.log_prefix, "ttl=0 detected for ",
-            self.hostname)
-    newQuery = {
+      ngx_log(ngx_DEBUG, self.log_prefix, "new DNS record with ttl=0 for ",
+              self.hostname)
+      newQuery = {
         {
           type = dns.TYPE_SRV,
           target = self.hostname,
@@ -542,6 +539,15 @@ local function update_dns_result(self, newQuery, dns)
         touched = time(),
         __ttl0Flag = true,        -- flag marking this record as a fake SRV one
       }
+    end
+
+    -- When ttl = 0 for an existing record then we we assume that the record
+    -- that was returned is valid (but should not be cached). So, we update
+    -- as per usual and allow `schedule_dns_renewal` to reschedule for
+    -- "immediate" (`math.max(ngx.now(), record_expiry) + 0.5`) resolution
+    ngx_log(ngx_DEBUG, self.log_prefix, "ttl=0 for ",
+              self.hostname)
+
   end
 
   -- a new dns record, was returned, but contents could still be the same, so check for changes
