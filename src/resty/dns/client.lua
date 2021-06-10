@@ -33,6 +33,7 @@ local WARN = ngx.WARN
 local DEBUG = ngx.DEBUG
 local PREFIX = "[dns-client] "
 local timer_at = ngx.timer.at
+local get_phase = ngx.get_phase
 
 local math_min = math.min
 local math_max = math.max
@@ -820,6 +821,25 @@ local function syncQuery(qname, r_opts, try_list, count)
     log(DEBUG, PREFIX, "Query sync (exists): ", key, " ", fquery(item)," count=", count)
     --]]
     try_status(try_list, "in progress (sync)")
+  end
+
+  local supported_semaphore_wait_phases = {
+    rewrite = true,
+    access = true,
+    content = true,
+    timer = true,
+  }
+
+  local ngx_phase = get_phase()
+
+  if not supported_semaphore_wait_phases[ngx_phase] then
+    -- phase not supported by `semaphore:wait`
+    -- return existing query (item)
+    --
+    -- this will avoid:
+    -- "dns lookup pool exceeded retries" (second try and subsequent retries)
+    -- "API disabled in the context of init_worker_by_lua" (first try)
+    return item, nil, try_list
   end
 
   -- block and wait for the async query to complete

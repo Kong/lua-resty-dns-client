@@ -50,6 +50,10 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### Unreleased
+
+- Performance: reduce amount of timers on init_worker. [PR 130](https://github.com/Kong/lua-resty-dns-client/pull/130)
+
 ### 6.0.0 (05-Apr-2021)
 
 - BREAKING: the round-robin balancing algorithm is now implemented in
