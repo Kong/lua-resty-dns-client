@@ -52,7 +52,7 @@ Release process:
 
 ### Unreleased
 
-- Performance: reduce amount of timers on init_worker
+- Performance: reduce amount of timers on init_worker. [PR 130](https://github.com/Kong/lua-resty-dns-client/pull/130)
 
 ### 6.0.0 (05-Apr-2021)
 
