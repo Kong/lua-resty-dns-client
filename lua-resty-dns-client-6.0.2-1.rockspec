@@ -1,5 +1,5 @@
 local package_name = "lua-resty-dns-client"
-local package_version = "6.0.1"
+local package_version = "6.0.2"
 local rockspec_revision = "1"
 local github_account_name = "Kong"
 local github_repo_name = package_name
