@@ -460,9 +460,6 @@ _M.init = function(options)
   staleTtl = options.staleTtl or 4
   log(DEBUG, PREFIX, "staleTtl = ", staleTtl)
 
-  validTtl = options.validTtl
-  log(DEBUG, PREFIX, "validTtl = ", tostring(validTtl))
-
   cacheSize = options.cacheSize or 10000  -- default set here to be able to reset the cache
   noSynchronisation = options.noSynchronisation
   log(DEBUG, PREFIX, "noSynchronisation = ", tostring(noSynchronisation))
@@ -543,6 +540,12 @@ _M.init = function(options)
     end
   end
 
+  -- see: https://github.com/Kong/kong/issues/7444
+  -- since the validTtl affects ttl of caching entries,
+  -- only set it after hosts entries are inserted
+  -- so that the 10 years of TTL for hosts file actually takes effect.
+  validTtl = options.validTtl
+  log(DEBUG, PREFIX, "validTtl = ", tostring(validTtl))
 
   -- Deal with the `resolv.conf` file
 

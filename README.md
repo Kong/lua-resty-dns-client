@@ -50,7 +50,12 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
-### 6.0.1 (22-Jun-2021) 
+### 6.0.x (unreleased)
+
+- Fix: `validTtl` should not be used for host-file entries.
+  [PR 134](https://github.com/Kong/lua-resty-dns-client/pull/134)
+
+### 6.0.1 (22-Jun-2021)
 
 - Performance: reduce amount of timers on init_worker. [PR 130](https://github.com/Kong/lua-resty-dns-client/pull/130)
 

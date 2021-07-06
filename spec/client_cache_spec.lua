@@ -551,4 +551,31 @@ describe("[DNS client cache]", function()
 
   end)
 
+
+  describe("hosts entries", function()
+    -- hosts file names are cached for 10 years, verify that
+    -- it is not overwritten with validTtl settings.
+    -- Regressions reported in https://github.com/Kong/kong/issues/7444
+    local lrucache, mock_records, config  -- luacheck: ignore
+    before_each(function()
+      config = {
+        nameservers = { "8.8.8.8" },
+        hosts = {"127.0.0.1 myname.lan"},
+        resolvConf = {},
+        validTtl = 0.1,
+        staleTtl = 0,
+      }
+
+      assert(client.init(config))
+      lrucache = client.getcache()
+    end)
+
+    it("entries from hosts file ignores validTtl overrides, Kong/kong #7444", function()
+      ngx.sleep(0.2) -- must be > validTtl + staleTtl
+
+      record = client.getcache():get("1:myname.lan")
+      assert.equal("127.0.0.1", record[1].address)
+    end)
+  end)
+
 end)
