@@ -50,6 +50,11 @@ Release process:
 4. commit and tag the release
 5. upload rock to LuaRocks
 
+### 6.0.3 (04-Oct-2021)
+
+- Fix:  allow semaphore wait in some ssl\_\* phases.
+ [PR 137](https://github.com/Kong/lua-resty-dns-client/pull/137)
+
 ### 6.0.2 (05-Jul-2021)
 
 - Fix: `validTtl` should not be used for host-file entries.
