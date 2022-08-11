@@ -158,6 +158,7 @@ local math_floor = math.floor
 local string_format = string.format
 local ngx_log = ngx.log
 local ngx_DEBUG = ngx.DEBUG
+local ngx_NOTICE = ngx.NOTICE
 local ngx_WARN = ngx.WARN
 local balancer_id_counter = 0
 
@@ -631,6 +632,9 @@ local function update_dns_result(self, newQuery, dns)
 
     -- delete addresses previously disabled
     self:deleteAddresses()
+  else
+    ngx_log(ngx_NOTICE, self.log_prefix, "skipping afterHostUpdate dirty[",
+            dirty, "] healthy[", self.healthy, "] addresses[", #self.addresses, "]")
   end
 
   ngx_log(ngx_DEBUG, self.log_prefix, "querying dns and updating for ", self.hostname, " completed")
@@ -1019,6 +1023,9 @@ function objBalancer:addHost(hostname, port, nodeWeight)
       if dirty and (self.healthy or #self.addresses > 0) then
         -- update had an impact so must redistribute indices
         self:afterHostUpdate(host)
+      else
+        ngx_log(ngx_NOTICE, self.log_prefix, "skipping afterHostUpdate dirty[",
+                dirty, "] healthy[", self.healthy, "] addresses[", #self.addresses, "]")
       end
     end
   end
