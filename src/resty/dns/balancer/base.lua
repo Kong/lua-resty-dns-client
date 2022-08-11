@@ -620,7 +620,7 @@ local function update_dns_result(self, newQuery, dns)
   self.lastQuery = newQuery
   self.lastSorted = newSorted
 
-  if dirty then
+  if dirty and (self.healthy or #self.addresses > 0) then
     -- above we already added and updated records. Removed addresses are disabled, and
     -- need yet to be deleted from the Host
     ngx_log(ngx_DEBUG, self.log_prefix, "updating balancer based on dns changes for ",
@@ -1016,7 +1016,7 @@ function objBalancer:addHost(hostname, port, nodeWeight)
     if host.nodeWeight ~= nodeWeight then
       -- weight changed, go update
       local dirty = host:change(nodeWeight)
-      if dirty then
+      if dirty and (self.healthy or #self.addresses > 0) then
         -- update had an impact so must redistribute indices
         self:afterHostUpdate(host)
       end
